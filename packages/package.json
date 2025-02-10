@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "build": "father build",
+    "build:no-clean": "father build --no-clean",
+    "dev": "father dev",
+    "dev:no-clean": "father dev --no-clean",
+    "doctor": "father doctor",
+    "version": "father version"
+  },
+  "devDependencies": {
+    "electron": "^34.1.1",
+    "father": "^4.5.2"
+  }
+}

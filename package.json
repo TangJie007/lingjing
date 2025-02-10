@@ -14,5 +14,10 @@
     "docs:preview": "vitepress preview"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "engines": {
+    "node": ">=10",
+    "pnpm": ">=3"
+  },
+  "packageManager": "pnpm@9.0.5"
 }
