@@ -1,12 +1,12 @@
 {
   "devDependencies": {
-    "@electron-forge/cli": "^7.6.1"
+    "@electron-forge/cli": "^7.6.1",
+    "vitepress": "^1.6.3"
   },
   "name": "wet-deskapp",
   "version": "0.0.1-dev",
   "description": "",
   "main": "index.js",
-  "dependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
