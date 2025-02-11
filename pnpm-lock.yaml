@@ -7,25 +7,41 @@ settings:
 importers:
 
   .:
+    dependencies:
+      electron-squirrel-startup:
+        specifier: ^1.0.1
+        version: 1.0.1
     devDependencies:
       '@electron-forge/cli':
         specifier: ^7.6.1
         version: 7.6.1(encoding@0.1.13)
+      '@wetspace/deskapp':
+        specifier: workspace:*
+        version: link:packages/app
+      '@wetspace/deskclient':
+        specifier: workspace:*
+        version: link:packages/client
       vitepress:
         specifier: ^1.6.3
         version: 1.6.3(@algolia/client-search@5.20.1)(@types/node@22.13.1)(lightningcss@1.22.1)(postcss@8.5.1)(search-insights@2.17.3)(terser@5.38.1)(typescript@5.3.3)
 
-  packages:
-
-    dependencies:
-      father:
-        specifier: ^4.5.2
-        version: 4.5.2(@babel/core@7.26.8)(@types/node@22.13.1)(styled-components@6.1.15(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(type-fest@1.4.0)(webpack@5.97.1)
-
+  packages/app:
     devDependencies:
       electron:
         specifier: ^34.1.1
         version: 34.1.1
+      father:
+        specifier: ^4.5.2
+        version: 4.5.2(@babel/core@7.26.8)(@types/node@22.13.1)(styled-components@6.1.15(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(type-fest@1.4.0)(webpack@5.97.1)
+
+  packages/client:
+    devDependencies:
+      electron:
+        specifier: ^34.1.1
+        version: 34.1.1
+      father:
+        specifier: ^4.5.2
+        version: 4.5.2(@babel/core@7.26.8)(@types/node@22.13.1)(styled-components@6.1.15(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(type-fest@1.4.0)(webpack@5.97.1)
 
 packages:
 
@@ -2111,6 +2127,9 @@ packages:
 
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
+
+  electron-squirrel-startup@1.0.1:
+    resolution: {integrity: sha512-sTfFIHGku+7PsHLJ7v0dRcZNkALrV+YEozINTW8X1nM//e5O3L+rfYuvSW00lmGHnYmUjARZulD8F2V8ISI9RA==}
 
   electron-to-chromium@1.5.96:
     resolution: {integrity: sha512-8AJUW6dh75Fm/ny8+kZKJzI1pgoE8bKLZlzDU2W1ENd+DXKJrx7I7l9hb8UWR4ojlnb5OlixMt00QWiYJoVw1w==}
@@ -6859,6 +6878,12 @@ snapshots:
       stream-shift: 1.0.3
 
   eastasianwidth@0.2.0: {}
+
+  electron-squirrel-startup@1.0.1:
+    dependencies:
+      debug: 2.6.9
+    transitivePeerDependencies:
+      - supports-color
 
   electron-to-chromium@1.5.96: {}
 

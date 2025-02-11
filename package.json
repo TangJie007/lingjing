@@ -1,12 +1,11 @@
 {
-  "devDependencies": {
-    "@electron-forge/cli": "^7.6.1",
-    "vitepress": "^1.6.3"
-  },
   "name": "wet-deskapp",
   "version": "0.0.1-dev",
   "description": "",
   "main": "index.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "docs:dev": "vitepress dev",
@@ -19,5 +18,14 @@
     "node": ">=10",
     "pnpm": ">=3"
   },
-  "packageManager": "pnpm@9.0.5"
+  "packageManager": "pnpm@9.0.5",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.6.1",
+    "vitepress": "^1.6.3",
+    "@wetspace/deskapp":"workspace:*",
+    "@wetspace/deskclient":"workspace:*"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1"
+  }
 }

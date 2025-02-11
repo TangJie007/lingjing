@@ -1,0 +1,27 @@
+{
+  "name": "@wetspace/deskclient",
+  "version": "1.0.0",
+  "homepage": "https://wetspace.gitee.io/deskapp",
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/wetspace/deskapp.git"
+  },
+  "scripts": {
+    "build": "father build",
+    "build:no-clean": "father build --no-clean",
+    "dev": "father dev",
+    "dev:no-clean": "father dev --no-clean",
+    "doctor": "father doctor",
+    "version": "father version"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "devDependencies": {
+    "electron": "^34.1.1",
+    "father": "^4.5.2"
+  }
+}

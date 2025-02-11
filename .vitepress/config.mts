@@ -14,6 +14,7 @@ export default defineConfig({
 
     sidebar: {
       '/docs/study/':[
+        { text: '进程间通信', link: '/docs/study/进程间通信' },
         { text: '首页', link: '/' }
       ]
     },
