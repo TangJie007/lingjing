@@ -1,43 +1,39 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import type { BrowserWindow } from 'electron'
+import type { ClientWindow,RenderderEventsCallback } from '../types'
 
-export type RendererRegisterType = 'invoke' | 'send'
+const eventsMap:Record<string,Function[] | null> = {}
 
-export class RenderderEvents {
-    private eventsMap:Record<string,any> = {}
-    public electronEvents = {
-        addListener:(type:string,callBack:any,options:any)=>{
-            // console.log(this.eventsMap,this.eventsMap === callBack)
-            console.dir(callBack)
-            this.eventsMap = callBack
-            ipcRenderer.addListener(type,callBack)
-        },
-        removeListener:(type:string,callBack:any)=>{
-            ipcRenderer.removeListener(type,callBack)
-        }
-    }
-    public init(){
-        contextBridge.exposeInMainWorld('electronEvents',this.electronEvents)
-    }
-    
-    public addListener(){
-        // ipcRenderer.addListener()
-    }
-    public removeListener(){
+export const removeAllListeners = (channel:string)=>{
+    (window as ClientWindow).electronEvents.removeAllListeners(channel);
+}
 
-    }
-
-    public sender(){
-
+export const removeListener = (channel:string,fn:Function)=>{
+    if(!eventsMap[channel]) return
+    eventsMap[channel] =  eventsMap[channel].filter(item=>{
+        return item!==fn
+    })
+    if(eventsMap[channel].length === 0){
+        eventsMap[channel] = null
+        removeAllListeners(channel)
     }
 }
 
-export class MainEvents {
-    private win:BrowserWindow
-    constructor(win:BrowserWindow){
-        this.win = win
+export const addListener = (
+    channel:string,
+    fn:RenderderEventsCallback,
+)=>{
+    // removeAllListeners(channel)
+    if(!eventsMap[channel]){
+        console.log('xxxxx,事件注册')
+        eventsMap[channel] = [];
+        (window as ClientWindow).electronEvents.addListener(channel,(event,params)=>{
+            console.log('xxxxx,事件监听响应')
+            eventsMap[channel] && eventsMap[channel].forEach(itemFn=>{
+                itemFn(event,params)
+            })
+        })
     }
-    public send<T>(channel:string,p:T){
-        this.win.webContents.send(channel,p)
+    if(!eventsMap[channel].includes(fn)){
+        eventsMap[channel].push(fn)
     }
 }
+

@@ -7,5 +7,5 @@ export default defineConfig({
   alias: {
     '@': path.resolve(__dirname, './src'),
   },
-  platform: 'node',
+  platform: 'browser',
 });

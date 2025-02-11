@@ -25,8 +25,10 @@ const createMainWindow = ()=>{
   mainEvents = new MainEvents(mainWin)
   setInterval(()=>{
     mainEvents.send('privews:files','hhhh')
-    console.log('xxxx')
   },1000)
+  setInterval(()=>{
+    mainEvents.send('privews:imags','xxx')
+  },2000)
 }
 
 // const createWindow = () => {
