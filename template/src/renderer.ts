@@ -20,6 +20,7 @@ sumbit1.addEventListener('click',()=>{
     // window.electronEvents.addListener('privews:files',fn)
 }) 
 sumbit2.addEventListener('click',()=>{
+    removeListener('privews:files',fn)
     removeListener('privews:files',fn1)
     // window.electronEvents.removeListener('privews:files',fn)
 })

@@ -23,10 +23,8 @@ export const addListener = (
 )=>{
     // removeAllListeners(channel)
     if(!eventsMap[channel]){
-        console.log('xxxxx,事件注册')
         eventsMap[channel] = [];
         (window as ClientWindow).electronEvents.addListener(channel,(event,params)=>{
-            console.log('xxxxx,事件监听响应')
             eventsMap[channel] && eventsMap[channel].forEach(itemFn=>{
                 itemFn(event,params)
             })
