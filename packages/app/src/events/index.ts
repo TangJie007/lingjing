@@ -1,42 +1,32 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BrowserWindow,IpcRendererEvent } from 'electron'
+import type {
+    IpcRendererEvent
+} from 'electron'
 
-export type RendererRegisterType = 'invoke' | 'send'
-export type electronEventsOptions = {
-    once?:boolean,
-    signalId:string
-}
-export type RenderderEventsCallback = (event:IpcRendererEvent, ...args: any[])=>void
-
-export class RenderderEvents {
-    public addListenerFnMaps:Record<string,RenderderEventsCallback | null> = {}
-    public electronEvents = {
-        addListener:(channel:string,callBack:RenderderEventsCallback)=>{
-            ipcRenderer.addListener(channel,callBack)
-            this.addListenerFnMaps[channel] = callBack
+export type ElectronEventsCallback = (event: IpcRendererEvent, ...args: any[]) => void
+export const registerPreloadEvent = () => {
+    const registerEventMap: Record<string, any> = {}
+    return {
+        run: () => {
+            contextBridge.exposeInMainWorld('electronEvents', registerEventMap)
         },
-        removeListener:(channel:string)=>{
-            const fn = this.addListenerFnMaps[channel]
-            if(fn){
-                ipcRenderer.removeListener(channel,fn)
-                this.addListenerFnMaps[channel] = null
+        invoke() {
+
+        },
+        send() {
+
+        },
+        on(channel: string, callBack: ElectronEventsCallback) {
+            registerEventMap[channel] = (ipcRendererCallBack: ElectronEventsCallback) => {
+                const runFn: ElectronEventsCallback = (event, ...args) => {
+                    const res = callBack(event, ...args)
+                    ipcRendererCallBack(event, res)
+                }
+                ipcRenderer.on(channel, runFn)
+                return () => {
+                    ipcRenderer.removeListener(channel, runFn)
+                }
             }
-        },
-        removeAllListeners:(channel?:string)=>{
-            ipcRenderer.removeAllListeners(channel)
         }
-    }
-    public init(){
-        contextBridge.exposeInMainWorld('electronEvents',this.electronEvents)
-    }
-}
-
-export class MainEvents {
-    private win:BrowserWindow
-    constructor(win:BrowserWindow){
-        this.win = win
-    }
-    public send<T>(channel:string,p:T){
-        this.win.webContents.send(channel,p)
     }
 }

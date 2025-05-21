@@ -1,5 +1,5 @@
 import { defineConfig } from 'father';
-const path = require('path');
+import path from 'path';
 
 export default defineConfig({
   esm: {},
@@ -7,5 +7,5 @@ export default defineConfig({
   alias: {
     '@': path.resolve(__dirname, './src'),
   },
-  platform: 'browser',
+  platform: 'node',
 });

@@ -1,5 +1,5 @@
 import { defineConfig } from 'father';
-const path = require('path');
+import path from 'path';
 
 export default defineConfig({
   esm: {},

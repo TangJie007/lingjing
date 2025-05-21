@@ -1,34 +1,30 @@
-import { app, BrowserWindow,ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import appConfig from './config'
 import started from 'electron-squirrel-startup';
-import { createWindow, MainEvents } from '@wetspace/deskapp'
+import { createWindow } from '@wetspace/deskapp'
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
 
-let mainWin:BrowserWindow;
-let mainEvents:MainEvents;
-const createMainWindow = ()=>{
+let mainWin: BrowserWindow;
+// let mainEvents:MainEvents;
+const createMainWindow = () => {
   mainWin = createWindow({
     ...appConfig.shape,
-    webPreferences:{
+    webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     }
-  },{
-    loadURL:appConfig.loadFile,
-    openDevTool:true
+  }, {
+    loadURL: 'http://localhost:5173/',
+    openDevTool: true
   })
 
-  mainEvents = new MainEvents(mainWin)
-  setInterval(()=>{
-    mainEvents.send('privews:files','hhhh')
-  },1000)
-  setInterval(()=>{
-    mainEvents.send('privews:imags','xxx')
-  },2000)
+  setInterval(() => {
+    mainWin.webContents.send('privews:files', '3')
+  }, 1000)
 }
 
 // const createWindow = () => {
@@ -55,7 +51,7 @@ const createMainWindow = ()=>{
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', ()=>{
+app.on('ready', () => {
   createMainWindow()
 });
 
