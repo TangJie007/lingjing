@@ -21,6 +21,12 @@ export default defineConfig({
       '/docs/overview/':[
         { text: '工具包简介',link:'/docs/overview/' },
         {
+          text:'窗口管理',
+          items:[
+            {text:'主窗口创建',link:'/docs/overview/窗口创建.md'}
+          ]
+        },
+        {
           text:'事件管理',
           items:[
             {text:'主进程端',link:'/docs/overview/主进程事件处理.md'},

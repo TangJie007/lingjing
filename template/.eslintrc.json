@@ -1,16 +1,20 @@
 {
-  "env": {
-    "browser": true,
-    "es6": true,
-    "node": true
-  },
+  "root": true,
   "extends": [
+    "plugin:vue/vue3-essential",
     "eslint:recommended",
     "plugin:@typescript-eslint/eslint-recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:import/recommended",
-    "plugin:import/electron",
-    "plugin:import/typescript"
+    "@vue/eslint-config-prettier/skip-formatting",
+    "plugin:vue/vue3-recommended"
   ],
-  "parser": "@typescript-eslint/parser"
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": "latest"
+  },
+  "rules": {
+    "import/no-unresolved":"off",
+    "no-unused-vars": "off",
+    "vue/multi-word-component-names": "off",
+    "vue/require-default-prop": "off",
+  }
 }

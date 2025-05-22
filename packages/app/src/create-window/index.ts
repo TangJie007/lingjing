@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow,dialog } from 'electron'
 import type { BrowserWindowConstructorOptions,App} from 'electron';
 
 export const createWindow = (loadURL:string,config:BrowserWindowConstructorOptions = {
@@ -36,5 +36,26 @@ export const createMainWindow = (loadURL:string,config:BrowserWindowConstructorO
     })
     return (callBack:(app: App, mainWindow: BrowserWindow) => void)=>{
         eventsFn = callBack
+    }
+}
+
+export type  CreateDialogType = 'browser' | 'dialog'
+export  const createDialog = (type:CreateDialogType = 'dialog',options:BrowserWindowConstructorOptions & {
+    loadURL:string
+})=>{
+    if(type === 'browser'){
+        const child = new BrowserWindow({ 
+            modal:true,
+            show:false,
+            // frame:false,
+            ...options
+        })
+        child.setMenuBarVisibility(false)
+        child.loadURL(options.loadURL)
+        child.once('ready-to-show', () => {
+            child.show()
+        })
+    }else{
+        dialog.showOpenDialog(options)
     }
 }

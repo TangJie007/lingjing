@@ -12,8 +12,8 @@ export const exposeIpcRendererEvent = () => {
         run: () => {
             contextBridge.exposeInMainWorld('electronEvents', registerEventMap)
         },
-        invoke() {
-
+        invoke(channel:string) {
+            registerEventMap[channel] = <T>(data:T)=>ipcRenderer.invoke(channel,data)
         },
         send(channel: string) {
             registerEventMap[channel] = <T>(data:T)=>ipcRenderer.send(channel,data)

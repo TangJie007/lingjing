@@ -14,3 +14,8 @@ export const addEventListener = (channel: string, callBack: any) => {
 
     return [run, removeFn]
 }
+
+export const invokeEvents = async <D>(channel:string,data:D)=>{
+   const result = await window.electronEvents[channel](data)
+   return result
+}

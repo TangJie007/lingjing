@@ -5,8 +5,9 @@
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
   "scripts": {
-    "start": "electron-forge start && vite",
-    "start:front":"vite",
+    "dev": "electron-forge start vite",
+    "start": "electron-forge start",
+    "start:front": "vite",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
@@ -26,9 +27,12 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/eslint-config-prettier": "^9.0.0",
+    "@vue/eslint-config-typescript": "^13.0.0",
     "electron": "34.1.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-vue": "^9.23.0",
     "ts-node": "^10.9.2",
     "typescript": "~4.5.4",
     "vite": "^5.4.14"
@@ -41,6 +45,7 @@
   "license": "MIT",
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",
-    "vue": "^3.5.14"
+    "vue": "^3.5.14",
+    "vue-router": "^4.5.1"
   }
 }
