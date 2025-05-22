@@ -3,7 +3,7 @@
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
-    "module": "commonjs",
+    "module": "ESNext",
     "moduleResolution": "node",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -16,5 +16,8 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["./src/**/*.ts", "./src/**/*.d.ts"]
+  "include": [
+    "./src/**/*.ts", 
+    "./src/**/*.d.ts"
+  ]
 }

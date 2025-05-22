@@ -9,8 +9,8 @@ export default defineConfig({
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: '首页', link: '/' },
+      { text:'文档',link:'/docs/overview/'},
       { text: '快速上手Electron应用', link: '/docs/study/' },
-      { text: 'Electron工具包', link: '/docs/tools/' }
     ],
 
     sidebar: {
@@ -18,18 +18,15 @@ export default defineConfig({
         { text: '进程间通信', link: '/docs/study/进程间通信' },
         { text: '首页', link: '/' }
       ],
-      '/docs/tools/':[
-        { text: '工具包简介',link:'/docs/tools/' },
+      '/docs/overview/':[
+        { text: '工具包简介',link:'/docs/overview/' },
         {
-          text:'主程序端工具包',
+          text:'事件管理',
           items:[
-
+            {text:'主进程端',link:'/docs/overview/主进程事件处理.md'},
+            {text:'渲染进程端',link:'/docs/overview/渲染进程事件处理.md'}
           ]
         },
-        {
-          text:'渲染端工具包',
-          items:[]
-        }
       ],
       // '/docs/client':[
       //   { text: '事件' }

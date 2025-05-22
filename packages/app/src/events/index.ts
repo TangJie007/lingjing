@@ -4,7 +4,9 @@ import type {
 } from 'electron'
 
 export type ElectronEventsCallback = (event: IpcRendererEvent, ...args: any[]) => void
-export const registerPreloadEvent = () => {
+export type ExposeIpcRendererCallBack =(...args:any[]) =>void
+// 注册到ipcerender的事件函数
+export const exposeIpcRendererEvent = () => {
     const registerEventMap: Record<string, any> = {}
     return {
         run: () => {
@@ -13,14 +15,14 @@ export const registerPreloadEvent = () => {
         invoke() {
 
         },
-        send() {
-
+        send(channel: string) {
+            registerEventMap[channel] = <T>(data:T)=>ipcRenderer.send(channel,data)
         },
-        on(channel: string, callBack: ElectronEventsCallback) {
-            registerEventMap[channel] = (ipcRendererCallBack: ElectronEventsCallback) => {
+        on(channel: string, callBack: ElectronEventsCallback = (_,args)=> args) {
+            registerEventMap[channel] = (ipcRendererCallBack: ExposeIpcRendererCallBack) => {
                 const runFn: ElectronEventsCallback = (event, ...args) => {
                     const res = callBack(event, ...args)
-                    ipcRendererCallBack(event, res)
+                    ipcRendererCallBack(res)
                 }
                 ipcRenderer.on(channel, runFn)
                 return () => {

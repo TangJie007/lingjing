@@ -1,5 +1,1 @@
-import { addEventListener } from './events'
-
-export {
-    addEventListener
-}
+export * from './events'

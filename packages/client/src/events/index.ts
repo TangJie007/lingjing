@@ -1,7 +1,3 @@
-
-
-import type { ClientWindow } from '../types'
-
 export const addEventListener = (channel: string, callBack: any) => {
     let removetigger: any = null
     const removeFn = () => {
@@ -13,7 +9,7 @@ export const addEventListener = (channel: string, callBack: any) => {
     }
 
     const run = () => {
-        removetigger = (window as ClientWindow).electronEvents[channel](callBack)
+        removetigger = window.electronEvents[channel](callBack)
     }
 
     return [run, removeFn]
