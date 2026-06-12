@@ -28,9 +28,12 @@
 | 基础设置 | SET-001 ~ SET-005 | 通用/API/壁纸/性能/存储/i18n |
 | 国际化框架 | SET-005 | i18n key 体系 + zh-CN 完整 + en 骨架 |
 
+- **What Changes** 新增 5 条强制设计准则：单一职责、不过度设计、文件 500 行上限、优先第三方库 + 库白名单、关键代码必须注释
+
 ## Impact
 
 - **Spec**：`specs/` 下 7 模块 21 功能，全部纳入本设计
 - **配置**：新增 `src/config/` 统一管理常量（API 端点、模型参数、性能阈值等）
-- **测试**：`src/<module-slug>/__tests__/`，按 AC 嵌套 describe
+- **测试**：`__tests__/`，按 AC 嵌套 describe
+- **设计准则**：4 条强制准则（单一职责、不过度设计、500 行上限、第三方库优先），见 design.md §2.1
 - **风险**：Tauri 在 Windows 壁纸渲染方面需验证可行性（通过 Rust Win32 API 或第三方 crate）

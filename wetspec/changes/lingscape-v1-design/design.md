@@ -41,6 +41,44 @@
 | 全屏检测 | **Win32 Event Hook** (Rust) | `EVENT_SYSTEM_FOREGROUND` + `GetWindowPlacement` |
 | 开机自启 | **Windows 注册表 Run key** | 标准方案，Tauri 提供 plugin |
 
+## 2.1 设计准则
+
+以下准则在全部代码编写中**强制遵守**，Code Review 时逐条检查：
+
+| # | 准则 | 说明 |
+|---|------|------|
+| 1 | **单一职责** | 每个模块/文件/函数只做一件事。Vue 组件：一个组件只负责一个 UI 区域或一个交互单元；Rust 模块：一个 `.rs` 文件只负责一个明确的领域（如 `crypto.rs` 只管加解密，不混入 HTTP 或文件 I/O）；Pinia store：一个 store 只管理一个业务域的状态。 |
+| 2 | **不过度设计** | V1 只做 Spec 明确要求的功能。不做"以后可能需要"的抽象层、不做多余的接口定义、不做未在 PRD 中出现的配置项。3 行能解决的问题不写 30 行的设计模式。 |
+| 3 | **文件行数上限 500 行** | 任何 `.rs` / `.ts` / `.vue` 文件超过 500 行时必须考虑拆分。Rust — 按职责拆为新模块/文件；Vue — 提取子组件或 composable；TypeScript — 按功能域拆文件。超过 500 行且确认无法合理拆分时，在文件头部注释说明原因。 |
+| 4 | **优先第三方库** | 遇到工具方法、功能方法时，先查找是否有成熟第三方库可用。选择标准：① npm/crates.io 上最近 3 个月内有更新；② 周下载量 > 10k（npm）或总下载 > 50k（crates.io）；③ 非个人开发者单维护（2+ 贡献者或知名组织）。**不满足以上标准的库，必须先找我确认再引入。** 找不到合适库时才手写，手写时在函数头部注释说明"已调研 xxx 库但不满足条件，因此手写"。 |
+| 5 | **关键代码必须注释** | 以下场景必须有清晰注释：① 每个 Rust 模块顶部 `//!` 说明模块职责和设计意图；② 每个公开函数/方法有 doc comment 说明参数、返回值、副作用；③ 复杂算法或非直觉的逻辑（如 Win32 API 调用、位运算、状态机转换）逐行注释；④ 使用第三方库的非典型用法时注释"为什么这样用"。注释语言：Rust 用英文，Vue/TS 用中文。**注释不是越多越好——简单的 getter/setter、一眼能看懂的赋值不需要注释。** |
+
+### 2.1.1 拆分阈值速查
+
+| 语言 | 文件上限 | 拆分信号 | 拆分方式 |
+|------|---------|---------|---------|
+| Rust `.rs` | 500 行 | struct/trait/impl 超过 3 组、函数超过 15 个 | 按领域拆为新模块文件 |
+| Vue `.vue` | 500 行（含 template+script+style） | template 超过 150 行 或 script 超过 250 行 | 提取子组件或 composable |
+| TypeScript `.ts` | 500 行 | 导出符号超过 20 个 | 按功能域拆文件 |
+
+### 2.1.2 第三方库白名单（预审通过，可直接使用）
+
+以下库经预先审查满足维护标准，开发时可直接引入：
+
+| 类别 | 库名 | 版本 | 用途 |
+|------|------|------|------|
+| Vue 生态 | `vue` `vue-router` `pinia` `vue-i18n` | latest stable | 框架核心 |
+| 构建 | `vite` `@vitejs/plugin-vue` `typescript` | latest stable | 构建工具链 |
+| CSS | `tailwindcss` `postcss` `autoprefixer` | latest stable | 样式 |
+| 测试 | `vitest` `@vue/test-utils` `jsdom` | latest stable | 单元测试 |
+| 工具 | `@vueuse/core` | latest stable | Vue composables 工具集（防抖、事件监听、localStorage 等） |
+| Rust HTTP | `reqwest` | latest stable | Rust 侧 HTTP 客户端 |
+| Rust 加密 | `ring` | latest stable | AEAD 加密 |
+| Rust 序列化 | `serde` `serde_json` | latest stable | JSON 序列化 |
+| Rust 视频 | `ffmpeg-next` | latest stable | 视频解码 |
+
+> 不在白名单中的库，引入前须按准则 4 验证并找我确认。
+
 ## 3. 项目结构
 
 ```
