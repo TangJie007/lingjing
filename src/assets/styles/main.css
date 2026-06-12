@@ -1,0 +1,156 @@
+/* ============================================
+   灵境 (LingScape) — "晨露" 设计系统
+   基于 OKLCH 色彩空间，Tailwind CSS v4
+   ============================================ */
+
+@import 'tailwindcss';
+
+/* --- Design Tokens --- */
+@theme {
+  /* 色彩 — "晨露" 亮色主题 */
+  --color-primary: oklch(70% 0.17 163);
+  --color-primary-light: oklch(88% 0.08 163);
+  --color-primary-dark: oklch(50% 0.14 163);
+  --color-primary-surface: oklch(96% 0.02 163);
+
+  --color-accent: oklch(75% 0.16 90);
+  --color-accent-light: oklch(90% 0.08 90);
+  --color-accent-dark: oklch(55% 0.12 90);
+
+  --color-bg-deep: oklch(98% 0.005 163);
+  --color-bg-base: oklch(99% 0.004 163);
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: oklch(99.5% 0.002 163);
+  --color-bg-overlay: #ffffff;
+
+  --color-text-primary: oklch(22% 0.01 250);
+  --color-text-secondary: oklch(45% 0.015 250);
+  --color-text-tertiary: oklch(65% 0.015 250);
+  --color-text-inverse: oklch(98% 0.005 163);
+
+  --color-border-subtle: oklch(92% 0.005 163);
+  --color-border-default: oklch(86% 0.008 163);
+  --color-border-strong: oklch(75% 0.015 163);
+
+  --color-success: oklch(70% 0.17 163);
+  --color-warning: oklch(75% 0.16 90);
+  --color-error: oklch(55% 0.22 20);
+  --color-info: oklch(75% 0.12 200);
+
+  /* 字体 */
+  --font-display: 'SmileySans', 'Space Grotesk', 'LXGW WenKai', 'PingFang SC', system-ui, sans-serif;
+  --font-heading: 'LXGW WenKai', 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  --font-body: 'LXGW WenKai', 'Inter', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --font-ui: 'Inter', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* 字号 (Major Third 1.25) */
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  /* 间距 (4pt base) */
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* 阴影 (亮色模式) */
+  --shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.06);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.08);
+  --shadow-lg: 0 8px 24px oklch(0% 0 0 / 0.12);
+
+  /* 布局 */
+  --sidebar-width: 220px;
+  --titlebar-height: 48px;
+  --statusbar-height: 36px;
+}
+
+/* --- Base Styles --- */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--color-text-primary);
+    background: oklch(99.5% 0.002 163 / 0.4);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    user-select: none;
+  }
+
+  #app { height: 100%; width: 100%; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--color-border-subtle); border-radius: var(--radius-full); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-border-default); }
+}
+
+/* --- Aurora Border (核心视觉签名) --- */
+@utility aurora-border {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, oklch(75% 0.16 90), oklch(70% 0.17 163), oklch(75% 0.12 200), oklch(75% 0.16 90));
+    background-size: 300% 300%;
+    animation: aurora-shift 4s ease infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  &:focus-within::before { opacity: 1; }
+}
+
+@keyframes aurora-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* --- Animations --- */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 oklch(65% 0.16 155 / 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 4px oklch(65% 0.16 155 / 0); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Reduced Motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

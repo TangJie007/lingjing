@@ -1,6 +1,6 @@
 version: '1.0'
 workflow: full
-phase: design
+phase: build
 mode: incremental
 prd:
   current: AI动态桌面_V1_PRD.md

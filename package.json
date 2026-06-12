@@ -1,13 +1,18 @@
 {
-  "name": "wet-deskapp",
-  "version": "0.0.1-dev",
-  "description": "",
+  "name": "lingscape",
+  "version": "1.0.0-dev",
+  "description": "灵境 LingScape — AI 动态桌面创作工具",
+  "type": "module",
   "main": "index.js",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview"
@@ -20,6 +25,22 @@
   },
   "packageManager": "pnpm@9.0.5",
   "devDependencies": {
-    "@wetspace/wetspec-cli": "^1.2.2"
+    "@tailwindcss/vite": "^4.3.0",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/test-utils": "^2.4.11",
+    "@wetspace/wetspec-cli": "^1.2.2",
+    "jsdom": "^29.1.1",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8",
+    "vue-tsc": "^3.3.4"
+  },
+  "dependencies": {
+    "@vueuse/core": "^14.3.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.38",
+    "vue-i18n": "10",
+    "vue-router": "4"
   }
 }
