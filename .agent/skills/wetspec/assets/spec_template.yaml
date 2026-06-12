@@ -1,0 +1,83 @@
+# ============================================================
+# PRD-to-Spec YAML 模板
+# 用于存储结构化的需求规格数据
+# ============================================================
+
+metadata:
+  id: ""                    # 功能唯一标识，格式：{模块编号}-{功能编号}
+  module: ""                # 所属模块名称（中文）
+  feature: ""               # 功能名称（中文）
+  version: "1.0.0"          # 当前版本号
+  status: draft             # 状态：draft | review | approved | implemented | deprecated
+  priority: P2              # 优先级：P0(最高) | P1 | P2 | P3(最低)
+  created_at: ""            # 创建日期，格式 YYYY-MM-DD
+  updated_at: ""            # 最后更新日期
+  author: ""                # 作者
+  prd_source: ""            # 来源 PRD 文件名
+
+description:
+  summary: ""               # 一句话描述
+  detail: ""                # 详细描述（多行文本）
+  scope: ""                 # 功能范围说明
+
+user_stories:
+  - id: "US-001"
+    role: ""                # 角色，如"管理员"
+    action: ""              # 希望做什么
+    goal: ""                # 达成什么目的
+    priority: P2
+
+acceptance_criteria:
+  - id: "AC-001"
+    description: ""          # 验收标准描述
+    expected_result: ""     # 预期结果
+    test_method: auto       # manual | auto | both（both 视为 auto）
+    # verify_status / verified_at / verify_reason 由 wetspec verify 写入，解析时勿手写
+
+api_spec:
+  endpoints:                # API 接口列表（可选）
+    - method: GET           # HTTP 方法
+      path: ""              # 接口路径
+      description: ""       # 接口说明
+      request:
+        params: []          # 请求参数
+        body_schema: {}     # 请求体结构（JSON Schema）
+      response:
+        success: {}         # 成功响应结构
+        errors: []          # 错误码说明
+
+data_model:                 # 数据模型（可选）
+  - entity: ""              # 实体名称
+    fields:
+      - name: ""            # 字段名
+        type: ""            # 类型
+        required: false     # 是否必填
+        description: ""     # 字段说明
+        constraints: []     # 约束条件
+
+dependencies:               # 依赖关系
+  internal: []              # 依赖的其他功能 ID
+  external: []              # 依赖的外部系统/服务
+  blocked_by: []            # 被阻塞原因
+
+non_functional:             # 非功能性需求
+  performance: ""           # 性能要求
+  security: ""              # 安全要求
+  availability: ""          # 可用性要求
+  data_retention: ""        # 数据存储要求
+
+ui_requirements:            # 界面需求（可选）
+  pages: []                 # 涉及的页面
+  components: []            # 涉及的前端组件
+  interaction_flow: ""      # 交互流程描述
+
+changelog:                  # 变更历史（增量更新关键字段）
+  - version: "1.0.0"
+    date: ""
+    changes:
+      - type: added | modified | removed | deprecated
+        field: ""           # 变更的字段路径
+        old_value: ""       # 旧值（modified/removed 时填写）
+        new_value: ""       # 新值（added/modified 时填写）
+        reason: ""          # 变更原因
+        related_prd_change: ""  # 关联的 PRD 变更描述

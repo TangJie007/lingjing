@@ -20,12 +20,6 @@
   },
   "packageManager": "pnpm@9.0.5",
   "devDependencies": {
-    "@electron-forge/cli": "^7.6.1",
-    "vitepress": "^1.6.3",
-    "@wetspace/deskapp":"workspace:*",
-    "@wetspace/deskclient":"workspace:*"
-  },
-  "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "@wetspace/wetspec-cli": "^1.2.2"
   }
 }

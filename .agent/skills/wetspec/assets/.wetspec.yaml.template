@@ -1,0 +1,35 @@
+# wetspec 工作流状态
+# 由 wetspec_state.js 管理，请勿手动编辑 phase/mode 除非你知道自己在做什么
+
+version: "1.0"
+scope: main
+workflow: full
+phase: idle
+mode: incremental
+
+prd:
+  current: null
+  previous: null
+
+last_diff: null
+last_sync_at: null
+affected_specs: []
+archived: false
+auto_transition: true
+changes_root: wetspec/changes
+active_change: null
+design_doc: null
+build_target: null
+verify_result: pending
+verification_report: null
+
+# 单元测试基建（DP-0 首次 init 后配置；AC 验收仍用 wetspec verify + node --test）
+unit_test: null
+# 配置后示例:
+# unit_test:
+#   framework: node:test
+#   deferred: false
+#   path: src/**/__tests__/**/*.test.js
+#   command: npm run test:unit
+#   configured_at: YYYY-MM-DD
+#   ac_runner: node:test
