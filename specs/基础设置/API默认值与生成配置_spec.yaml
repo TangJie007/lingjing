@@ -1,0 +1,25 @@
+# Spec 文件: API默认值与生成配置
+# 模块: 基础设置
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "基础设置-API默认值与生成配置"
+  name: "API默认值与生成配置"
+  module: "基础设置"
+  description: "第一步默认模型/第二步默认模型/默认生成数量/默认分辨率"
+  status: "draft"
+  priority: "medium"
+  tags: []
+  acceptance:
+  - "Given 用户在设置页面，When 修改API默认模型/生成数量/分辨率，Then 下次生成时使用新默认值"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

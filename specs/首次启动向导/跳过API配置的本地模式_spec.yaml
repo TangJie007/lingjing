@@ -1,0 +1,25 @@
+# Spec 文件: 跳过API配置的本地模式
+# 模块: 首次启动向导
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "首次启动向导-跳过API配置的本地模式"
+  name: "跳过API配置的本地模式"
+  module: "首次启动向导"
+  description: "用户可跳过API配置进入本地模式，可导入本地图片/视频，顶部常驻引导条提示配置API Key"
+  status: "draft"
+  priority: "medium"
+  tags: []
+  acceptance:
+  - "Given 用户跳过API配置，When 进入主界面，Then 显示本地导入功能+顶部常驻API配置引导条"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

@@ -1,0 +1,25 @@
+# Spec 文件: 火山引擎注册引导
+# 模块: 首次启动向导
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "首次启动向导-火山引擎注册引导"
+  name: "火山引擎注册引导"
+  module: "首次启动向导"
+  description: "提供30秒视频教程+一键打开注册页+逐步截图教程+API Key输入+连接诊断"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 用户在向导第2步，When 查看引导内容，Then 显示视频教程/注册链接/截图教程/Key输入框/测试连接按钮"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

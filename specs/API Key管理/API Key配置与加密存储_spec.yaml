@@ -1,0 +1,25 @@
+# Spec 文件: API Key配置与加密存储
+# 模块: API Key管理
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "API Key管理-API Key配置与加密存储"
+  name: "API Key配置与加密存储"
+  module: "API Key管理"
+  description: "支持配置火山引擎API Key（一个Key覆盖两步），本地加密存储，掩码显示（sk-****abcd），支持粘贴自动去空格"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 用户从零开始配置火山引擎API Key，When 跟随向导操作，Then 在2分钟内完成注册+获取+填入+测试通过"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

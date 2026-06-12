@@ -1,0 +1,25 @@
+# Spec 文件: 静态图片壁纸播放
+# 模块: 壁纸播放引擎
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "壁纸播放引擎-静态图片壁纸播放"
+  name: "静态图片壁纸播放"
+  module: "壁纸播放引擎"
+  description: "支持JPG/PNG/WebP格式，缩放模式：填充/适应/拉伸/平铺"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 用户选择一张JPG/PNG/WebP壁纸，When 设为桌面，Then 壁纸正确渲染且CPU占用<0.5%"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

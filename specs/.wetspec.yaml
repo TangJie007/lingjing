@@ -1,0 +1,20 @@
+version: '1.0'
+workflow: full
+phase: specs-ready
+mode: incremental
+prd:
+  current: AI动态桌面_V1_PRD.md
+  previous: null
+last_diff: null
+last_sync_at: null
+affected_specs: []
+archived: false
+auto_transition: true
+changes_root: wetspec/changes
+active_change: null
+openspec_change: null
+design_doc: null
+build_target: null
+verify_result: pending
+verification_report: null
+unit_test: null

@@ -1,0 +1,25 @@
+# Spec 文件: 本地壁纸管理
+# 模块: 壁纸库管理
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "壁纸库管理-本地壁纸管理"
+  name: "本地壁纸管理"
+  module: "壁纸库管理"
+  description: "浏览、应用、删除、导出本地壁纸，支持JPG/PNG/WebP/MP4/WebM/GIF"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 壁纸库中有多张壁纸，When 用户浏览壁纸库，Then 网格展示所有壁纸，可应用/删除/导出"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

@@ -1,0 +1,25 @@
+# Spec 文件: API Key有效性检测
+# 模块: API Key管理
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "API Key管理-API Key有效性检测"
+  name: "API Key有效性检测"
+  module: "API Key管理"
+  description: "点击测试连接发送最小请求验证Key有效性，状态指示灯（绿=有效/红=无效/灰=未配置）"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 用户填入API Key，When 点击测试连接，Then 3秒内返回连接状态并显示对应指示灯"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

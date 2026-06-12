@@ -1,0 +1,25 @@
+# Spec 文件: 构建方案预览与确认
+# 模块: AI生成管线
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "AI生成管线-构建方案预览与确认"
+  name: "构建方案预览与确认"
+  module: "AI生成管线"
+  description: "生成前展示优化后的prompt卡片+风格标签+色调预览色块，用户可确认或手动修改后再生成"
+  status: "draft"
+  priority: "medium"
+  tags: []
+  acceptance:
+  - "Given 第一步分析完成，When 展示构建方案卡片，Then 用户可查看prompt/风格标签/色调并可手动修改"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

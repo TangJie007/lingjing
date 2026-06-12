@@ -1,0 +1,25 @@
+# Spec 文件: AI生成历史
+# 模块: 壁纸库管理
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "壁纸库管理-AI生成历史"
+  name: "AI生成历史"
+  module: "壁纸库管理"
+  description: "显示每次生成的prompt、构建方案、使用模型、生成时间、费用"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 用户已生成过壁纸，When 查看AI生成历史，Then 显示prompt/构建方案/模型/时间/费用信息"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"

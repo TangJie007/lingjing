@@ -1,0 +1,93 @@
+metadata:
+  id: "SET-005"
+  module: "基础设置"
+  feature: "国际化框架（i18n）"
+  version: "1.0.0"
+  status: draft
+  priority: P0
+  created_at: "2026-06-12"
+  updated_at: "2026-06-12"
+  author: "AI"
+  prd_source: "AI动态桌面_V1_PRD.md"
+
+description:
+  summary: "预留多语言能力，所有UI文案统一走i18n key，本期实现中文简体（zh-CN），预留英文（en）骨架"
+  detail: >
+    国际化框架是应用的架构基础，要求所有面向用户的文本（UI标签、提示、错误信息、Toast、
+    菜单项、向导文案）统一使用 i18n key 引用，禁止在业务代码中硬编码中文字符串。
+    本期完整实现中文简体（zh-CN），预留英文（en）翻译文件骨架。后续新增语言只需添加
+    翻译文件，无需修改业务代码。语言切换支持热切换（无需重启应用）。数字和日期格式化
+    走标准 Intl API。
+  scope: "i18n 初始化与语言切换、zh-CN 完整翻译、en 骨架预留、Intl 格式化封装、语言检测"
+
+user_stories:
+  - id: "US-001"
+    role: "开发者"
+    action: "所有 UI 文案统一走 i18n key"
+    goal: "后续新增语言只需添加翻译文件，无需改业务代码"
+    priority: P0
+
+acceptance_criteria:
+  - id: "AC-001"
+    description: "无硬编码中文"
+    expected_result: "Given 应用启动，When 检查所有 UI 文案（菜单/按钮/提示/错误/Toast/向导），Then 无硬编码中文字符串，全部通过 i18n key 引用"
+    test_method: auto
+  - id: "AC-002"
+    description: "zh-CN 完整覆盖"
+    expected_result: "Given 语言设为中文简体，When 遍历所有页面和组件，Then 所有文本正确显示为简体中文，无缺失 key 导致的占位符"
+    test_method: auto
+  - id: "AC-003"
+    description: "en 骨架文件存在"
+    expected_result: "Given 检查 i18n 翻译目录，When 查看 locales/，Then 存在 zh-CN.json（完整）和 en.json（骨架，含所有 key 但值为英文占位）"
+    test_method: auto
+  - id: "AC-004"
+    description: "语言热切换"
+    expected_result: "Given 运行时切换语言，When 调用 setLocale()，Then 所有已渲染 UI 立即更新为新语言，无需刷新页面或重启"
+    test_method: auto
+  - id: "AC-005"
+    description: "缺失 key 回退"
+    expected_result: "Given 当前语言缺少某个 key 的翻译，When 渲染该 key，Then 回退到 zh-CN 默认值并 console.warn 提示"
+    test_method: auto
+  - id: "AC-006"
+    description: "格式化方法"
+    expected_result: "Given 需要格式化数字/日期/货币，When 调用 i18n 格式化方法，Then 按当前语言区域正确格式化（如 zh-CN 日期为 2026年6月12日）"
+    test_method: auto
+
+data_model:
+  - entity: "I18nConfig"
+    fields:
+      - name: "locale"
+        type: "string"
+        required: true
+        description: "当前语言标识，如 'zh-CN'"
+      - name: "fallbackLocale"
+        type: "string"
+        required: true
+        description: "回退语言，默认 'zh-CN'"
+      - name: "messages"
+        type: "Record<string, string>"
+        required: true
+        description: "当前加载的翻译 key-value 映射"
+
+dependencies:
+  internal: ["SET-001"]
+  external: []
+  blocked_by: []
+
+non_functional:
+  performance: "翻译文件按需加载，首屏 zh-CN 文件 < 50KB"
+  security: "翻译文件不含敏感信息，客户端明文存储即可"
+
+ui_requirements:
+  pages: []
+  components: ["i18n Provider/Context", "useI18n Hook", "格式化工具函数"]
+  interaction_flow: "应用启动 → 检测系统语言 → 加载对应翻译文件 → 渲染UI；用户切换语言 → 更新 locale → 重新渲染"
+
+changelog:
+  - version: "1.0.0"
+    date: "2026-06-12"
+    changes:
+      - type: added
+        field: "*"
+        new_value: "初始版本，由PRD V1.4新增"
+        reason: "V1.4 新增国际化框架需求，为Steam全球分发做架构准备"

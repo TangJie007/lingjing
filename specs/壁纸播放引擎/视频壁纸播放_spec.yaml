@@ -1,0 +1,25 @@
+# Spec 文件: 视频壁纸播放
+# 模块: 壁纸播放引擎
+# 生成时间: 2026-06-12
+# 版本: 1.0.0
+
+spec:
+  id: "壁纸播放引擎-视频壁纸播放"
+  name: "视频壁纸播放"
+  module: "壁纸播放引擎"
+  description: "支持MP4/WebM循环播放，1080P/30fps，CPU占用<3%"
+  status: "draft"
+  priority: "high"
+  tags: []
+  acceptance:
+  - "Given 1080P/30fps MP4壁纸应用，When 正常办公1小时，Then CPU平均占用<3%"
+  dependencies: []
+  notes: ""
+  changelog:
+    - date: "2026-06-12"
+      author: "AI"
+      summary: "初始版本，由 PRD 解析生成"
+      changes:
+        - "全量生成"
+  version: "1.0.0"
+  updated_at: "2026-06-12"
