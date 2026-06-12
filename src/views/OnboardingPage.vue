@@ -20,7 +20,7 @@ const testResult = ref<'idle' | 'success' | 'failed'>('idle')
 // 跳过向导
 function skipOnboarding() {
   appStore.completeOnboarding()
-  router.push('/ai-create')
+  router.push('/library')
 }
 
 // 测试 API Key
@@ -49,7 +49,7 @@ function goToQuickStart() {
 // 完成向导
 function finishOnboarding() {
   appStore.completeOnboarding()
-  router.push('/ai-create')
+  router.push('/library')
 }
 </script>
 
@@ -171,7 +171,12 @@ function finishOnboarding() {
   background:
     radial-gradient(ellipse 130% 110% at 15% 85%, oklch(88% 0.07 170 / 0.35) 0%, transparent 55%),
     radial-gradient(ellipse 110% 130% at 85% 8%, oklch(90% 0.05 150 / 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse 150% 90% at 50% 45%, oklch(89% 0.04 163 / 0.25) 0%, transparent 60%),
+    radial-gradient(ellipse 100% 110% at 78% 80%, oklch(92% 0.03 180 / 0.2) 0%, transparent 45%),
+    radial-gradient(ellipse 80% 90% at 60% 70%, oklch(91% 0.035 90 / 0.18) 0%, transparent 50%),
     oklch(99.5% 0.002 163);
+  background-size: 200% 200%, 180% 180%, 220% 220%, 160% 160%, 210% 210%, 100% 100%;
+  animation: wizard-hazy-flow 28s ease-in-out infinite;
 }
 .wizard-container { width: 560px; max-height: 90vh; display: flex; flex-direction: column; }
 .wizard-progress {
@@ -200,15 +205,41 @@ function finishOnboarding() {
   overflow: hidden;
   box-shadow: 0 8px 40px oklch(0% 0 0 / 0.06), 0 1px 0 oklch(100% 0 0 / 0.4) inset;
 }
+.wizard-card::before {
+  content: '';
+  position: absolute;
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, oklch(62% 0.12 178 / 0.15), transparent 70%);
+  pointer-events: none;
+}
 .wizard-visual {
   width: 80px;
   height: 80px;
   margin: 0 auto var(--spacing-5);
   border-radius: var(--radius-xl);
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 36px;
+}
+.wizard-visual::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, oklch(75% 0.16 90), oklch(70% 0.17 163), oklch(75% 0.12 200));
+  background-size: 300% 300%;
+  animation: aurora-shift 4s ease infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 .wizard-title {
   font-family: var(--font-display);

@@ -1,13 +1,14 @@
 <script setup lang="ts">
-// 灵境 App 壳 — 标题栏 + 侧边栏 + 内容区 + 状态栏
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useTray } from '@/composables/useTray'
 import { useWindow } from '@/composables/useWindow'
+import HazyBackground from '@/components/layout/HazyBackground.vue'
 import AppTitlebar from '@/components/layout/AppTitlebar.vue'
-import AppSidebar from '@/components/layout/AppSidebar.vue'
-import AppStatusbar from '@/components/layout/AppStatusbar.vue'
+import FabCreate from '@/components/layout/FabCreate.vue'
+import SearchOverlay from '@/components/layout/SearchOverlay.vue'
+import AiCreatePanel from '@/components/ai/AiCreatePanel.vue'
 import Toast from '@/components/common/Toast.vue'
 
 const appStore = useAppStore()
@@ -15,7 +16,12 @@ const router = useRouter()
 const route = useRoute()
 const toastRef = ref<InstanceType<typeof Toast>>()
 
-// 系统托盘事件监听 (ST-001)
+const searchOpen = ref(false)
+const aiPanelOpen = ref(false)
+
+const isOnboarding = computed(() => route.path === '/onboarding')
+const showChrome = computed(() => !isOnboarding.value)
+
 useTray((action) => {
   switch (action) {
     case 'pause':
@@ -27,13 +33,26 @@ useTray((action) => {
   }
 })
 
-// 窗口关闭时最小化到托盘
 useWindow()
+
+function toggleAiPanel() {
+  aiPanelOpen.value = !aiPanelOpen.value
+}
+
+watch(
+  () => route.query.ai,
+  (value) => {
+    if (value === 'open') {
+      aiPanelOpen.value = true
+      router.replace({ path: route.path, query: {} })
+    }
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   appStore.loadSavedLocale()
 
-  // 首次启动 → 跳转向导页 (OB-001)
   if (appStore.isFirstLaunch && route.path !== '/onboarding') {
     router.replace('/onboarding')
   }
@@ -41,44 +60,25 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
-    <AppTitlebar />
+  <HazyBackground v-if="showChrome" />
+
+  <template v-if="isOnboarding">
+    <router-view />
+  </template>
+
+  <div v-else class="app-shell">
+    <AppTitlebar @toggle-search="searchOpen = !searchOpen" />
     <div class="main-layout">
-      <AppSidebar />
       <div class="content-area">
         <div class="content-scroll">
           <router-view />
         </div>
-        <AppStatusbar />
       </div>
     </div>
+
+    <FabCreate :active="aiPanelOpen" @click="toggleAiPanel" />
+    <AiCreatePanel v-model:open="aiPanelOpen" />
+    <SearchOverlay v-model:open="searchOpen" />
     <Toast ref="toastRef" />
   </div>
 </template>
-
-<style scoped>
-.app-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  width: 100vw;
-  position: relative;
-}
-.main-layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-.content-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: transparent;
-}
-.content-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: calc(var(--titlebar-height) + var(--spacing-4)) var(--spacing-8) var(--spacing-6);
-}
-</style>

@@ -24,5 +24,6 @@ cache
 *.sw?
 
 dist
+dist-node
 release
 out/

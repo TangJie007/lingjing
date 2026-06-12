@@ -8,12 +8,7 @@ import type { RouteRecordRaw } from 'vue-router'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/ai-create',
-  },
-  {
-    path: '/ai-create',
-    name: 'AiCreate',
-    component: () => import('@/views/AiCreatePage.vue'),
+    redirect: '/library',
   },
   {
     path: '/library',
@@ -21,14 +16,17 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/LibraryPage.vue'),
   },
   {
-    path: '/api-keys',
-    name: 'ApiKeys',
-    component: () => import('@/views/ApiKeysPage.vue'),
-  },
-  {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/SettingsPage.vue'),
+  },
+  {
+    path: '/ai-create',
+    redirect: { path: '/library', query: { ai: 'open' } },
+  },
+  {
+    path: '/api-keys',
+    redirect: '/settings',
   },
   {
     path: '/onboarding',
