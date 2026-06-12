@@ -13,5 +13,9 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    watch: {
+      // 排除 Tauri Rust 编译目录，避免 .pdb 文件被 cargo 锁定时 Vite 报 EBUSY
+      ignored: ['**/src-tauri/**'],
+    },
   },
 })

@@ -1,9 +1,53 @@
 <script setup lang="ts">
+import { ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { useAppStore } from '@/stores/app'
+import { invoke } from '@tauri-apps/api/core'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const appStore = useAppStore()
+
+// 开机自启状态同步
+const autoStartLoading = ref(true)
+
+onMounted(async () => {
+  // 从 Tauri 读取开机自启实际状态
+  try {
+    settings.autoStart = await invoke<boolean>('plugin:autostart|is_enabled')
+  } catch {
+    // Tauri API 不可用时使用 localStorage 中持久化的值
+  } finally {
+    autoStartLoading.value = false
+  }
+})
+
+// 开机自启 toggle 变更 → 调用 Tauri IPC
+watch(
+  () => settings.autoStart,
+  async (enabled) => {
+    if (autoStartLoading.value) return // 跳过初始加载
+    try {
+      if (enabled) {
+        await invoke('plugin:autostart|enable')
+      } else {
+        await invoke('plugin:autostart|disable')
+      }
+    } catch {
+      // 回滚状态
+      settings.autoStart = !enabled
+    }
+  }
+)
+
+// 语言切换 → 联动 i18n 热切换 (SET-005)
+watch(
+  () => settings.locale,
+  (lang) => {
+    appStore.setLocale(lang)
+  }
+)
 </script>
 
 <template>

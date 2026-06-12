@@ -1,15 +1,42 @@
 <script setup lang="ts">
 // 灵境 App 壳 — 标题栏 + 侧边栏 + 内容区 + 状态栏
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useTray } from '@/composables/useTray'
+import { useWindow } from '@/composables/useWindow'
 import AppTitlebar from '@/components/layout/AppTitlebar.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppStatusbar from '@/components/layout/AppStatusbar.vue'
+import Toast from '@/components/common/Toast.vue'
 
 const appStore = useAppStore()
+const router = useRouter()
+const route = useRoute()
+const toastRef = ref<InstanceType<typeof Toast>>()
+
+// 系统托盘事件监听 (ST-001)
+useTray((action) => {
+  switch (action) {
+    case 'pause':
+      toastRef.value?.show('info', '壁纸播放控制将在下一阶段实现')
+      break
+    case 'next':
+      toastRef.value?.show('info', '壁纸切换将在下一阶段实现')
+      break
+  }
+})
+
+// 窗口关闭时最小化到托盘
+useWindow()
 
 onMounted(() => {
   appStore.loadSavedLocale()
+
+  // 首次启动 → 跳转向导页 (OB-001)
+  if (appStore.isFirstLaunch && route.path !== '/onboarding') {
+    router.replace('/onboarding')
+  }
 })
 </script>
 
@@ -25,6 +52,7 @@ onMounted(() => {
         <AppStatusbar />
       </div>
     </div>
+    <Toast ref="toastRef" />
   </div>
 </template>
 

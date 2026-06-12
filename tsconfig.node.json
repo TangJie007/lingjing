@@ -5,7 +5,10 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "noEmit": true
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist-node"
   },
   "include": ["vite.config.ts", "vitest.config.ts"]
 }

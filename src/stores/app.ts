@@ -5,10 +5,15 @@ import { useI18n } from 'vue-i18n'
 
 export const useAppStore = defineStore('app', () => {
   const sidebarCollapsed = ref(false)
-  const onboardingComplete = ref(false)
+  const onboardingComplete = ref(
+    localStorage.getItem('lingscape-onboarding-complete') === 'true'
+  )
   const { locale } = useI18n()
 
   const currentLocale = computed(() => locale.value)
+
+  // 是否首次启动
+  const isFirstLaunch = computed(() => !onboardingComplete.value)
 
   function setLocale(lang: string) {
     locale.value = lang
@@ -22,11 +27,19 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // 标记向导已完成
+  function completeOnboarding() {
+    onboardingComplete.value = true
+    localStorage.setItem('lingscape-onboarding-complete', 'true')
+  }
+
   return {
     sidebarCollapsed,
     onboardingComplete,
+    isFirstLaunch,
     currentLocale,
     setLocale,
     loadSavedLocale,
+    completeOnboarding,
   }
 })

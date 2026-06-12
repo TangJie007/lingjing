@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "dev": "vite",
+    "dev:tauri": "tauri dev",
     "build": "vue-tsc -b && vite build",
+    "build:tauri": "tauri build",
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:watch": "vitest",
@@ -26,6 +28,7 @@
   "packageManager": "pnpm@9.0.5",
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
+    "@tauri-apps/cli": "^2.11.2",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/test-utils": "^2.4.11",
     "@wetspace/wetspec-cli": "^1.2.2",
@@ -37,6 +40,7 @@
     "vue-tsc": "^3.3.4"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
     "@vueuse/core": "^14.3.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.38",

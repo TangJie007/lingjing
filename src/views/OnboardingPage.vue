@@ -19,7 +19,7 @@ const testResult = ref<'idle' | 'success' | 'failed'>('idle')
 
 // 跳过向导
 function skipOnboarding() {
-  appStore.onboardingComplete = true
+  appStore.completeOnboarding()
   router.push('/ai-create')
 }
 
@@ -48,7 +48,7 @@ function goToQuickStart() {
 
 // 完成向导
 function finishOnboarding() {
-  appStore.onboardingComplete = true
+  appStore.completeOnboarding()
   router.push('/ai-create')
 }
 </script>

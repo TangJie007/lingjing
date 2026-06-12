@@ -1,0 +1,28 @@
+[package]
+name = "lingscape"
+version = "1.0.0"
+description = "灵境 LingScape — AI 动态桌面创作工具"
+authors = ["灵构科技"]
+license = "ISC"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.2", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+tauri-plugin-autostart = "2"
+
+# Pin time ≤ 0.3.36 — Rust 1.96 的 time 0.3.37+ HourBase From impl
+# 与 cookie 0.18 / tauri-utils 的 blanket From<T> impl 冲突
+# cookie / tauri-utils 发版修复后可移除此 pin
+time = ">=0.3.35, <0.3.37"

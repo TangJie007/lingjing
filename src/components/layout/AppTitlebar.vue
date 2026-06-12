@@ -1,8 +1,22 @@
 <script setup lang="ts">
 // 自定义标题栏 — 品牌 Logo + 窗口控制按钮
 import { useI18n } from 'vue-i18n'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const { t } = useI18n()
+const win = getCurrentWindow()
+
+function minimize() {
+  win.minimize()
+}
+
+function toggleMaximize() {
+  win.toggleMaximize()
+}
+
+function closeWindow() {
+  win.close()
+}
 </script>
 
 <template>
@@ -29,13 +43,13 @@ const { t } = useI18n()
     </div>
 
     <div class="titlebar-controls">
-      <button class="tb-btn minimize" title="最小化">
+      <button class="tb-btn minimize" :title="t('titlebar.minimize')" @click="minimize">
         <svg viewBox="0 0 14 14"><path d="M2 11h10" stroke="currentColor" stroke-width="1.2" fill="none" /></svg>
       </button>
-      <button class="tb-btn maximize" title="最大化">
+      <button class="tb-btn maximize" :title="t('titlebar.maximize')" @click="toggleMaximize">
         <svg viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" stroke="currentColor" stroke-width="1.2" fill="none" /></svg>
       </button>
-      <button class="tb-btn close" title="关闭">
+      <button class="tb-btn close" :title="t('titlebar.close')" @click="closeWindow">
         <svg viewBox="0 0 14 14">
           <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.2" fill="none" />
         </svg>
