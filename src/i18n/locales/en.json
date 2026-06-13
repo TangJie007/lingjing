@@ -194,6 +194,7 @@
     "connectionSuccess": "Connection successful",
     "connectionFailed": "Connection failed",
     "wallpaperSet": "Wallpaper applied",
+    "desktopLayerConflict": "{names} is using the desktop layer. Close it for the live wallpaper to display correctly",
     "wallpaperDeleted": "Wallpaper deleted",
     "cacheCleared": "Cache cleared",
     "networkError": "Network error. Please check your connection and try again",

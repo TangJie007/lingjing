@@ -26,6 +26,15 @@ async function invokeWithTimeout<T>(
 }
 import { useSettingsStore } from './settings'
 
+export interface DesktopLayerConflict {
+  id: string
+  name: string
+}
+
+export interface SetWallpaperResult {
+  conflicts: DesktopLayerConflict[]
+}
+
 export interface WallpaperItem {
   id: string
   filename: string
@@ -122,14 +131,15 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
   }
 
   // 设置壁纸
-  async function setWallpaper(id: string) {
-    await invokeWithTimeout('set_wallpaper', { id })
+  async function setWallpaper(id: string): Promise<SetWallpaperResult> {
+    const result = await invokeWithTimeout<SetWallpaperResult>('set_wallpaper', { id })
     currentWallpaperId.value = id
 
     const wp = wallpapers.value.find((w) => w.id === id)
     if (wp && wp.mediaType === 'video') {
       isVideoPlaying.value = true
     }
+    return result
   }
 
   // 暂停/恢复视频

@@ -61,8 +61,12 @@ async function applyWallpaper(id: string) {
   if (operatingId.value) return
   operatingId.value = id
   try {
-    await wallpaperStore.setWallpaper(id)
+    const result = await wallpaperStore.setWallpaper(id)
     toastRef.value?.show('success', '✅ ' + t('toast.wallpaperSet'))
+    if (result.conflicts.length > 0) {
+      const names = result.conflicts.map((c) => c.name).join('、')
+      toastRef.value?.show('warning', t('toast.desktopLayerConflict', { names }))
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     console.error('应用壁纸失败:', e)

@@ -47,6 +47,7 @@ pub fn run() {
             wallpaper_engine::delete_wallpaper,
             wallpaper_engine::export_wallpaper,
             wallpaper_engine::set_wallpaper,
+            wallpaper_engine::check_desktop_layer_conflicts,
             wallpaper_engine::get_current_wallpaper,
             wallpaper_engine::get_library_size,
             wallpaper_engine::clear_library,

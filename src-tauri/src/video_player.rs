@@ -49,11 +49,10 @@ fn maintain_desktop_wallpaper(state: &VideoPlayerState) -> Result<(), String> {
     };
 
     let layer = desktop_core::detect_desktop_layer()?;
-    let _ = desktop_core::suppress_third_party_desktop_overlays(layer.shell_host);
 
     let mpv_missing = pids.iter().any(|&pid| !mpv_has_visible_window(pid));
     if desktop_core::desktop_wallpaper_needs_recovery(&layer) || mpv_missing {
-        log::info!("检测到桌面层被第三方工具改写（如腾讯桌面整理），正在恢复动态壁纸...");
+        log::info!("检测到桌面壁纸层异常，正在恢复动态壁纸...");
         reattach_if_running(state)?;
     } else {
         desktop_core::refresh_icon_zorder(&layer)?;
@@ -205,7 +204,6 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
         }
 
         desktop_core::ensure_desktop_zorder(&layer)?;
-        let _ = desktop_core::suppress_third_party_desktop_overlays(layer.shell_host);
         start_desktop_watchdog(state);
 
         let mut guard = state.0.lock().unwrap();
@@ -247,9 +245,6 @@ pub fn stop_video_wallpaper(state: &VideoPlayerState) {
     #[cfg(target_os = "windows")]
     {
         stop_desktop_watchdog();
-        if let Ok(layer) = desktop_core::detect_desktop_layer() {
-            let _ = desktop_core::restore_third_party_desktop_overlays(layer.shell_host);
-        }
     }
 
     let mut guard = state.0.lock().unwrap();
@@ -297,9 +292,6 @@ impl Drop for VideoPlayerState {
         #[cfg(target_os = "windows")]
         {
             stop_desktop_watchdog();
-            if let Ok(layer) = desktop_core::detect_desktop_layer() {
-                let _ = desktop_core::restore_third_party_desktop_overlays(layer.shell_host);
-            }
         }
         if let Ok(mut guard) = self.0.lock() {
             kill_all_processes(&mut guard);
@@ -350,7 +342,6 @@ pub fn reattach_if_running(state: &VideoPlayerState) -> Result<(), String> {
         }
 
         desktop_core::ensure_desktop_zorder(&layer)?;
-        let _ = desktop_core::suppress_third_party_desktop_overlays(layer.shell_host);
     }
     Ok(())
 }

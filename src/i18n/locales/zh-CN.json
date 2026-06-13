@@ -194,6 +194,7 @@
     "connectionSuccess": "连接成功",
     "connectionFailed": "连接失败",
     "wallpaperSet": "壁纸已应用",
+    "desktopLayerConflict": "检测到 {names} 占用桌面层级，请关闭该软件后再试，否则动态壁纸可能无法正常显示",
     "wallpaperDeleted": "壁纸已删除",
     "cacheCleared": "缓存已清除",
     "networkError": "网络连接失败，请检查网络后重试",
