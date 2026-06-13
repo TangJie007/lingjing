@@ -7,6 +7,7 @@ const { t } = useI18n()
 const router = useRouter()
 const win = getCurrentWindow()
 
+defineProps<{ scrolled?: boolean }>()
 defineEmits<{ toggleSearch: [] }>()
 
 function minimize() { win.minimize() }
@@ -19,8 +20,8 @@ function openSettings() {
 </script>
 
 <template>
-  <header class="titlebar">
-    <div class="titlebar-brand">
+  <header class="titlebar" :class="{ 'titlebar--scrolled': scrolled }" data-tauri-drag-region>
+    <div class="titlebar-brand" data-tauri-drag-region>
       <svg class="brand-icon-svg" viewBox="0 0 48 48" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <filter id="logo-glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -65,7 +66,7 @@ function openSettings() {
       <span class="brand-sub">LingScape</span>
     </div>
 
-    <div class="titlebar-spacer" />
+    <div class="titlebar-spacer" data-tauri-drag-region />
 
     <div class="titlebar-actions">
       <button class="tb-action-btn" :title="t('library.search')" @click="$emit('toggleSearch')">
@@ -75,9 +76,9 @@ function openSettings() {
         </svg>
       </button>
       <button class="tb-action-btn" :title="t('nav.settings')" @click="openSettings">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="2.5" />
-          <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+          <circle cx="12" cy="12" r="3" />
         </svg>
       </button>
     </div>
@@ -105,18 +106,23 @@ function openSettings() {
 
 <style scoped>
 .titlebar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
   height: var(--titlebar-height);
   display: flex;
   align-items: center;
-  background: transparent;
-  -webkit-app-region: drag;
   flex-shrink: 0;
   z-index: 100;
   padding: 0 var(--spacing-4);
+  background: transparent;
+  backdrop-filter: none;
+  border-bottom: 1px solid transparent;
+  transition: background 0.25s ease, border-color 0.25s ease, backdrop-filter 0.25s ease;
+  -webkit-app-region: drag;
+}
+
+.titlebar--scrolled {
+  background: rgba(249, 252, 250, 0.72);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom-color: rgba(203, 236, 218, 0.35);
 }
 
 .titlebar-brand {
@@ -125,6 +131,7 @@ function openSettings() {
   gap: var(--spacing-2);
   padding: var(--spacing-1) var(--spacing-3) var(--spacing-1) var(--spacing-2);
   flex-shrink: 0;
+  cursor: default;
   background: oklch(99% 0.004 163 / 0.6);
   backdrop-filter: blur(20px) saturate(1.3);
   border-radius: var(--radius-full);
@@ -163,12 +170,24 @@ function openSettings() {
   border-radius: var(--radius-full);
   border: 1px solid oklch(95% 0.005 163 / 0.4);
   -webkit-app-region: no-drag;
+  app-region: no-drag;
   transition: all 0.25s ease;
 }
 .titlebar-controls:hover {
   background: oklch(99% 0.004 163 / 0.75);
   border-color: oklch(90% 0.008 163 / 0.5);
   box-shadow: var(--shadow-sm);
+}
+
+.titlebar-actions {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.tb-action-btn,
+.tb-btn {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .tb-btn {

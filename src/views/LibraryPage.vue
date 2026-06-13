@@ -9,21 +9,7 @@ const liveOnly = ref(false)
 
 const categories = [
   { key: 'all', label: t('library.all') },
-  { key: 'newest', label: t('library.sortNewest') },
-  { key: 'hot', label: t('library.hot') },
-  { key: 'divider1', divider: true },
-  { key: 'cyberpunk', label: '赛博朋克' },
-  { key: 'nature', label: '自然风景' },
-  { key: 'abstract', label: '抽象艺术' },
-  { key: 'minimal', label: '极简' },
-  { key: 'healing', label: '治愈系' },
-  { key: 'game', label: '游戏' },
-  { key: 'anime', label: '二次元' },
-  { key: 'city', label: '城市' },
-  { key: 'space', label: '宇宙星空' },
-  { key: 'divider2', divider: true },
-  { key: 'featured', label: t('library.featured'), accent: true },
-  { key: 'live', label: t('library.liveWallpaper'), accent: true },
+  { key: 'recent', label: t('library.sortRecent') },
 ]
 
 // 暂无壁纸数据 — 展示空状态
@@ -32,6 +18,42 @@ const wallpapers: never[] = []
 
 <template>
   <div class="page-library">
+    <div class="lib-categories">
+      <template v-for="cat in categories" :key="cat.key">
+        <div v-if="cat.divider" class="lib-cat-divider" />
+        <button
+          v-else
+          type="button"
+          class="lib-cat-pill"
+          :class="{ active: activeCategory === cat.key, accent: cat.accent }"
+          @click="activeCategory = cat.key"
+        >
+          {{ cat.label }}
+        </button>
+      </template>
+    </div>
+
+    <div class="lib-meta-bar">
+      <div class="lib-stats">
+        <span>{{ t('library.totalCount', { count: wallpapers.length }) }}</span>
+      </div>
+      <div class="lib-controls">
+        <button type="button" class="lib-control-btn">
+          <span>{{ t('library.sortDefault') }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+        <button type="button" class="lib-control-btn">
+          <span>{{ t('library.gridView') }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+        <label class="lib-control-check">
+          <input v-model="liveOnly" type="checkbox" />
+          <span class="check-dot" />
+          <span>{{ t('library.liveWallpaper') }}</span>
+        </label>
+      </div>
+    </div>
+
     <div v-if="wallpapers.length === 0" class="empty-state">
       <div class="empty-state-visual">
         <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -73,44 +95,6 @@ const wallpapers: never[] = []
       </div>
     </div>
 
-    <template v-else>
-      <div class="lib-categories">
-        <template v-for="cat in categories" :key="cat.key">
-          <div v-if="cat.divider" class="lib-cat-divider" />
-          <button
-            v-else
-            type="button"
-            class="lib-cat-pill"
-            :class="{ active: activeCategory === cat.key, accent: cat.accent }"
-            @click="activeCategory = cat.key"
-          >
-            {{ cat.label }}
-          </button>
-        </template>
-      </div>
-
-      <div class="lib-meta-bar">
-        <div class="lib-stats">
-          <span>{{ t('library.totalCount', { count: wallpapers.length }) }}</span>
-        </div>
-        <div class="lib-controls">
-          <button type="button" class="lib-control-btn">
-            <span>{{ t('library.sortDefault') }}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-          </button>
-          <button type="button" class="lib-control-btn">
-            <span>{{ t('library.gridView') }}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-          </button>
-          <label class="lib-control-check">
-            <input v-model="liveOnly" type="checkbox" />
-            <span class="check-dot" />
-            <span>{{ t('library.liveWallpaper') }}</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="lib-grid" />
-    </template>
+    <div v-else class="lib-grid" />
   </div>
 </template>

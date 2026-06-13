@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useAppStore } from '@/stores/app'
 import { useApiKeysStore } from '@/stores/api-keys'
 import { invoke } from '@tauri-apps/api/core'
+import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -182,14 +183,7 @@ function statusBadgeText(status: string) {
           <span class="setting-label">{{ t('settings.autoStart') }}</span>
           <span class="setting-desc">{{ t('settings.autoStartDesc') }}</span>
         </div>
-        <button
-          type="button"
-          class="toggle"
-          :class="{ active: settings.autoStart }"
-          @click="settings.autoStart = !settings.autoStart"
-        >
-          <span class="toggle-knob" />
-        </button>
+        <ToggleSwitch v-model="settings.autoStart" :disabled="autoStartLoading" />
       </div>
       <div class="setting-row">
         <div class="setting-info">
@@ -206,9 +200,7 @@ function statusBadgeText(status: string) {
           <span class="setting-label">{{ t('settings.minimizeToTray') }}</span>
           <span class="setting-desc">{{ t('settings.minimizeToTrayDesc') }}</span>
         </div>
-        <button type="button" class="toggle active">
-          <span class="toggle-knob" />
-        </button>
+        <ToggleSwitch :model-value="true" disabled />
       </div>
     </section>
 
@@ -247,14 +239,7 @@ function statusBadgeText(status: string) {
           <span class="setting-label">{{ t('settings.pauseOnFullscreen') }}</span>
           <span class="setting-desc">{{ t('settings.pauseOnFullscreenDesc') }}</span>
         </div>
-        <button
-          type="button"
-          class="toggle"
-          :class="{ active: settings.pauseOnFullscreen }"
-          @click="settings.pauseOnFullscreen = !settings.pauseOnFullscreen"
-        >
-          <span class="toggle-knob" />
-        </button>
+        <ToggleSwitch v-model="settings.pauseOnFullscreen" />
       </div>
     </section>
 

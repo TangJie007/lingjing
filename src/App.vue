@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useTray } from '@/composables/useTray'
@@ -18,6 +18,12 @@ const toastRef = ref<InstanceType<typeof Toast>>()
 
 const searchOpen = ref(false)
 const aiPanelOpen = ref(false)
+const contentScrollRef = ref<HTMLElement | null>(null)
+const contentScrolled = ref(false)
+
+function onContentScroll() {
+  contentScrolled.value = (contentScrollRef.value?.scrollTop ?? 0) > 2
+}
 
 const isOnboarding = computed(() => route.path === '/onboarding')
 const showChrome = computed(() => !isOnboarding.value)
@@ -38,6 +44,11 @@ useWindow()
 function toggleAiPanel() {
   aiPanelOpen.value = !aiPanelOpen.value
 }
+
+watch(
+  () => route.path,
+  () => nextTick(onContentScroll)
+)
 
 watch(
   () => route.query.ai,
@@ -67,10 +78,11 @@ onMounted(() => {
   </template>
 
   <div v-else class="app-shell">
-    <AppTitlebar @toggle-search="searchOpen = !searchOpen" />
+    <AppTitlebar :scrolled="contentScrolled" @toggle-search="searchOpen = !searchOpen" />
+    <SearchOverlay v-model:open="searchOpen" />
     <div class="main-layout">
       <div class="content-area">
-        <div class="content-scroll">
+        <div ref="contentScrollRef" class="content-scroll" @scroll="onContentScroll">
           <router-view />
         </div>
       </div>
@@ -78,7 +90,6 @@ onMounted(() => {
 
     <FabCreate :active="aiPanelOpen" @click="toggleAiPanel" />
     <AiCreatePanel v-model:open="aiPanelOpen" />
-    <SearchOverlay v-model:open="searchOpen" />
     <Toast ref="toastRef" />
   </div>
 </template>
