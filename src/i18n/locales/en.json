@@ -192,6 +192,10 @@
     "version": "Version",
     "copyright": "LingGou Tech © 2026"
   },
+  "banner": {
+    "apiNotConfigured": "API Key not configured, AI creation is unavailable",
+    "configureNow": "Configure Now"
+  },
   "toast": {
     "apiKeySaved": "API Key saved",
     "apiKeyInvalid": "Invalid API Key",

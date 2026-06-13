@@ -16,6 +16,7 @@ const apiKeysStore = useApiKeysStore()
 
 const autoStartLoading = ref(true)
 const testing = ref<Record<string, boolean>>({})
+const testError = ref<Record<string, string>>({})
 
 onMounted(async () => {
   try {
@@ -25,6 +26,9 @@ onMounted(async () => {
   } finally {
     autoStartLoading.value = false
   }
+
+  // 加载已持久化的 API Key
+  await apiKeysStore.loadSavedKeys()
 })
 
 watch(
@@ -54,16 +58,40 @@ function goBack() {
   router.push('/library')
 }
 
+// 真实测试连接（API-002）
 async function testConnection(platform: string) {
   testing.value[platform] = true
-  await new Promise((r) => setTimeout(r, 1500))
-  apiKeysStore.setStatus(platform, 'connected')
+  testError.value[platform] = ''
+
+  try {
+    const result = await apiKeysStore.testConnection(platform)
+    if (!result.success) {
+      testError.value[platform] = result.error || t('toast.connectionFailed')
+    }
+  } catch {
+    testError.value[platform] = t('toast.networkError')
+  }
+
   testing.value[platform] = false
 }
 
-function onKeyInput(platform: string, rawKey: string) {
+// 输入 Key 时自动加密持久化
+async function onKeyInput(platform: string, rawKey: string) {
   const clean = apiKeysStore.sanitizeKey(rawKey)
-  apiKeysStore.saveKey(platform, clean)
+  if (clean) {
+    await apiKeysStore.persistKey(platform, clean)
+  } else {
+    apiKeysStore.saveKey(platform, '')
+  }
+}
+
+// 打开外部链接
+async function openUrl(url: string) {
+  try {
+    await invoke('open_url', { url })
+  } catch {
+    window.open(url, '_blank')
+  }
 }
 
 function statusBadgeClass(status: string) {
@@ -167,9 +195,9 @@ function statusBadgeText(status: string) {
           </div>
 
           <div class="api-help-links">
-            <a class="api-help-link" href="#" @click.prevent>⟶ {{ t('apiKeys.helpRegister') }}</a>
-            <a class="api-help-link" href="#" @click.prevent>⟶ {{ t('apiKeys.helpDocs') }}</a>
-            <a class="api-help-link" href="#" @click.prevent>⟶ {{ t('apiKeys.helpPricing') }}</a>
+            <a class="api-help-link" href="#" @click.prevent="openUrl('https://console.volcengine.com/ark/region:ark+cn-beijing/overview')">⟶ {{ t('apiKeys.helpRegister') }}</a>
+            <a class="api-help-link" href="#" @click.prevent="openUrl('https://www.volcengine.com/docs/82379')">⟶ {{ t('apiKeys.helpDocs') }}</a>
+            <a class="api-help-link" href="#" @click.prevent="openUrl('https://www.volcengine.com/docs/82379/1099463')">⟶ {{ t('apiKeys.helpPricing') }}</a>
           </div>
         </template>
       </div>

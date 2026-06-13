@@ -1,7 +1,9 @@
 //! 灵境 LingScape — Tauri 应用入口
-//! 负责窗口管理、系统托盘、开机自启、壁纸引擎
+//! 负责窗口管理、系统托盘、开机自启、壁纸引擎、API Key 管理
 
+mod api;
 mod autostart;
+mod crypto;
 mod desktop_core;
 mod tray;
 mod video_player;
@@ -53,6 +55,11 @@ pub fn run() {
             wallpaper_engine::clear_library,
             wallpaper_engine::is_fullscreen_app_running,
             wallpaper_engine::attach_desktop_player,
+            crypto::crypto_encrypt,
+            crypto::crypto_decrypt,
+            crypto::crypto_list_platforms,
+            api::test_connection,
+            api::open_url,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

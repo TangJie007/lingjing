@@ -31,6 +31,10 @@ windows = { version = "0.61", features = [
 windows-core = "0.61"
 dirs = "5"
 
+ring = "0.17"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+open = "5"
+
 # Pin time ≤ 0.3.36 — Rust 1.96 的 time 0.3.37+ HourBase From impl
 # 与 cookie 0.18 / tauri-utils 的 blanket From<T> impl 冲突
 # cookie / tauri-utils 发版修复后可移除此 pin

@@ -192,6 +192,10 @@
     "version": "版本",
     "copyright": "灵构科技 © 2026"
   },
+  "banner": {
+    "apiNotConfigured": "尚未配置 API Key，AI 创作功能不可用",
+    "configureNow": "立即配置"
+  },
   "toast": {
     "apiKeySaved": "API Key 已保存",
     "apiKeyInvalid": "API Key 无效",

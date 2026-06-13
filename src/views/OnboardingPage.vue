@@ -16,29 +16,52 @@ const currentStep = ref(0) // 0=欢迎, 1=API配置, 2=快速上手
 const apiKeyInput = ref('')
 const testing = ref(false)
 const testResult = ref<'idle' | 'success' | 'failed'>('idle')
+const testError = ref('')
 
-// 跳过向导
+// 跳过向导（OB-004：本地模式）
 function skipOnboarding() {
   appStore.completeOnboarding()
   router.push('/library')
 }
 
-// 测试 API Key
+// 测试 API Key（API-002：真实 IPC 调用）
 async function testConnection() {
   if (!apiKeyInput.value.trim()) return
   testing.value = true
   testResult.value = 'idle'
-  // 模拟测试连接（实际由 Tauri IPC 调用）
-  await new Promise((r) => setTimeout(r, 1500))
-  const clean = apiKeysStore.sanitizeKey(apiKeyInput.value)
-  if (clean.length > 10) {
-    apiKeysStore.saveKey('volcano', clean)
-    apiKeysStore.setStatus('volcano', 'connected')
-    testResult.value = 'success'
-  } else {
+  testError.value = ''
+
+  try {
+    const clean = apiKeysStore.sanitizeKey(apiKeyInput.value)
+    // 先加密并持久化 Key
+    await apiKeysStore.persistKey('volcano', clean)
+
+    // 发送真实测试请求
+    const result = await apiKeysStore.testConnection('volcano')
+
+    if (result.success) {
+      testResult.value = 'success'
+    } else {
+      testResult.value = 'failed'
+      testError.value = result.error || t('toast.connectionFailed')
+    }
+  } catch (e) {
     testResult.value = 'failed'
+    testError.value = t('toast.networkError')
   }
+
   testing.value = false
+}
+
+// 打开火山引擎注册页面（OB-002）
+async function openRegisterPage() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('open_url', { url: 'https://console.volcengine.com/ark/region:ark+cn-beijing/overview' })
+  } catch {
+    // 降级：通过 window.open 打开
+    window.open('https://console.volcengine.com/ark/region:ark+cn-beijing/overview', '_blank')
+  }
 }
 
 // 进入快速上手
@@ -91,6 +114,9 @@ function finishOnboarding() {
               <div class="step-item">
                 <span class="step-num">1</span>
                 <span>{{ t('wizard.apiSetup.step1') }}</span>
+                <button class="step-link" @click="openRegisterPage">
+                  {{ t('wizard.apiSetup.registerLink') }}
+                </button>
               </div>
               <div class="step-item">
                 <span class="step-num">2</span>
@@ -116,7 +142,7 @@ function finishOnboarding() {
               🟢 {{ t('wizard.apiSetup.connected') }}
             </p>
             <p v-if="testResult === 'failed'" class="test-msg failed">
-              🔴 {{ t('wizard.apiSetup.disconnected') }}
+              🔴 {{ testError || t('wizard.apiSetup.disconnected') }}
             </p>
             <p class="register-hint">💡 {{ t('wizard.apiSetup.registerHint') }}</p>
           </div>
@@ -305,6 +331,17 @@ function finishOnboarding() {
   display: flex; align-items: center; justify-content: center;
   font-size: var(--text-xs); font-weight: 600; flex-shrink: 0;
 }
+.step-link {
+  font-size: var(--text-xs);
+  color: var(--color-primary-light);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: var(--spacing-1);
+}
+.step-link:hover { color: var(--color-primary-dark); }
 .api-key-row { display: flex; gap: var(--spacing-2); margin-top: var(--spacing-3); }
 .api-key-input {
   flex: 1; padding: var(--spacing-2) var(--spacing-3);

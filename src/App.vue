@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useWallpaperStore } from '@/stores/wallpaper'
+import { useApiKeysStore } from '@/stores/api-keys'
 import { useTray } from '@/composables/useTray'
 import { useWindow } from '@/composables/useWindow'
 import HazyBackground from '@/components/layout/HazyBackground.vue'
@@ -10,10 +11,12 @@ import AppTitlebar from '@/components/layout/AppTitlebar.vue'
 import FabCreate from '@/components/layout/FabCreate.vue'
 import SearchOverlay from '@/components/layout/SearchOverlay.vue'
 import AiCreatePanel from '@/components/ai/AiCreatePanel.vue'
+import ApiConfigBanner from '@/components/layout/ApiConfigBanner.vue'
 import Toast from '@/components/common/Toast.vue'
 
 const appStore = useAppStore()
 const wallpaperStore = useWallpaperStore()
+const apiKeysStore = useApiKeysStore()
 const router = useRouter()
 const route = useRoute()
 const toastRef = ref<InstanceType<typeof Toast>>()
@@ -122,6 +125,9 @@ onMounted(() => {
     <div v-else class="app-shell">
       <AppTitlebar :scrolled="contentScrolled" @toggle-search="searchOpen = !searchOpen" />
       <SearchOverlay v-model:open="searchOpen" />
+      <ApiConfigBanner
+        v-if="showChrome && !appStore.isFirstLaunch && !apiKeysStore.hasConfiguredKey"
+      />
       <div class="main-layout">
         <div class="content-area">
           <div ref="contentScrollRef" class="content-scroll" @scroll="onContentScroll">
