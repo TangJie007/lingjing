@@ -101,7 +101,7 @@ function isActive(path: string) {
   width: 3px;
   height: 18px;
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
-  background: var(--color-primary);
+  background: var(--gradient-primary);
 }
 .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
 .nav-spacer { flex: 1; }

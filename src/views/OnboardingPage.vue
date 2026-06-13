@@ -192,7 +192,7 @@ function finishOnboarding() {
   background: var(--color-border-subtle);
   transition: background 0.25s ease;
 }
-.wizard-progress-dot.active { background: var(--color-primary); }
+.wizard-progress-dot.active { background: var(--gradient-primary); }
 .wizard-progress-dot.done { background: var(--color-primary-dark); }
 .wizard-card {
   background: oklch(99% 0.004 163 / 0.72);
@@ -262,7 +262,7 @@ function finishOnboarding() {
 .btn-wizard-primary {
   padding: var(--spacing-2) var(--spacing-6);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, oklch(75% 0.16 90), oklch(70% 0.17 163));
+  background: var(--gradient-primary);
   color: white;
   border: none;
   font-family: var(--font-display);
@@ -272,8 +272,9 @@ function finishOnboarding() {
   transition: all 0.25s ease;
 }
 .btn-wizard-primary:hover:not(:disabled) {
+  background: var(--gradient-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px oklch(70% 0.17 163 / 0.3);
+  box-shadow: 0 4px 16px rgba(0, 131, 54, 0.3);
 }
 .btn-wizard-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-wizard-secondary {
