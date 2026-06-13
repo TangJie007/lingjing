@@ -138,6 +138,14 @@ function finishOnboarding() {
         <template v-if="currentStep === 2">
           <h1 class="wizard-title">{{ t('wizard.quickStart.title') }}</h1>
           <p class="wizard-subtitle">{{ t('wizard.quickStart.subtitle') }}</p>
+          <div class="wizard-compat-tip">
+            <p class="wizard-compat-title">{{ t('wizard.quickStart.compatTitle') }}</p>
+            <ul class="wizard-compat-list">
+              <li>{{ t('wizard.quickStart.compat1') }}</li>
+              <li>{{ t('wizard.quickStart.compat2') }}</li>
+              <li>{{ t('wizard.quickStart.compat3') }}</li>
+            </ul>
+          </div>
           <div class="preset-cards">
             <button class="preset-card" @click="finishOnboarding">
               {{ t('wizard.quickStart.preset1') }}
@@ -316,6 +324,27 @@ function finishOnboarding() {
 .test-msg.success { color: var(--color-success); }
 .test-msg.failed { color: var(--color-error); }
 .register-hint { margin-top: var(--spacing-3); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+.wizard-compat-tip {
+  margin-bottom: var(--spacing-5);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-md);
+  background: oklch(97% 0.01 163 / 0.8);
+  border: 1px solid var(--color-border-subtle);
+  text-align: left;
+}
+.wizard-compat-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-2);
+}
+.wizard-compat-list {
+  margin: 0;
+  padding-left: var(--spacing-5);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
 .preset-cards { display: flex; flex-direction: column; gap: var(--spacing-3); margin-bottom: var(--spacing-4); }
 .preset-card {
   padding: var(--spacing-3) var(--spacing-4);

@@ -64,6 +64,10 @@
     "quickStart": {
       "title": "Quick Start",
       "subtitle": "Choose a preset to generate your first AI wallpaper",
+      "compatTitle": "Live wallpaper tips",
+      "compat1": "Tools like Tencent Desktop Organizer or Firefly Wallpaper may occupy the desktop layer",
+      "compat2": "When you apply a video wallpaper, LingScape temporarily hides conflicting overlays and restores them when you stop",
+      "compat3": "Avoid running multiple live wallpaper apps at once; desktop icons and organizer fences are unaffected",
       "preset1": "Cyberpunk rainy night alley, neon lights reflecting on wet pavement",
       "preset2": "Ghibli-style summer countryside, blue sky white clouds green meadows",
       "preset3": "Minimalist abstract gradient flow, soft pink purple blue blending",
@@ -194,7 +198,6 @@
     "connectionSuccess": "Connection successful",
     "connectionFailed": "Connection failed",
     "wallpaperSet": "Wallpaper applied",
-    "desktopLayerConflict": "{names} is using the desktop layer. Close it for the live wallpaper to display correctly",
     "wallpaperDeleted": "Wallpaper deleted",
     "cacheCleared": "Cache cleared",
     "networkError": "Network error. Please check your connection and try again",

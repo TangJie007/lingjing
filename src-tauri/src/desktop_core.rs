@@ -1,18 +1,37 @@
-//! Windows 桌面层嵌入（参考 Lively Wallpaper WinDesktopCore）
-//! 经典路径：SetParent → 顶层 WorkerW
-//! Raised / ShellHost：SetParent → 宿主 + WS_EX_LAYERED + Z-order 在 DefView 之下
+//! Windows 桌面层嵌入（参考 Lively Wallpaper / 飞火动态壁纸）
+//! 默认：ClassicWorkerW（MPV 在壁纸 WorkerW 内，不挡图标）
+//! 共存：启动时临时隐藏竞争动态壁纸 + 腾讯整理全屏皮肤，退出时恢复
+//! 回退：ShellHostLayered / RaisedProgman
 
 #![cfg(target_os = "windows")]
+
+use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetParent, GetWindowLongPtrW,
-    GetWindowRect, IsWindowVisible, MoveWindow, SetParent, SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, SendMessageW, GWL_EXSTYLE, GWL_STYLE, HWND_BOTTOM, HWND_TOP, SW_HIDE, SW_SHOW,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_CHILD, WS_EX_NOREDIRECTIONBITMAP,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_VISIBLE,
+    EnumChildWindows, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetParent,
+    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible, MoveWindow,
+    SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, SendMessageW, GWL_EXSTYLE, GWL_STYLE,
+    HWND_BOTTOM, HWND_TOP, SW_HIDE, SW_SHOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_SHOWWINDOW, WS_CHILD, WS_EX_NOREDIRECTIONBITMAP, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_VISIBLE,
 };
+
+/// 已隐藏的竞争动态壁纸窗口（退出时恢复；存 isize 以满足 Sync）
+static HIDDEN_COMPETING_PLAYERS: OnceLock<Mutex<Vec<isize>>> = OnceLock::new();
+
+fn hidden_competing_players() -> &'static Mutex<Vec<isize>> {
+    HIDDEN_COMPETING_PLAYERS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn hwnd_to_isize(hwnd: HWND) -> isize {
+    hwnd.0 as isize
+}
+
+fn isize_to_hwnd(v: isize) -> HWND {
+    HWND(v as *mut _)
+}
 
 /// 桌面 shell 层信息（SetupDesktopLayer 结果）
 #[derive(Debug, Clone, Copy)]
@@ -29,9 +48,9 @@ pub struct DesktopLayer {
 pub enum AttachMode {
     /// Win11 24H2+：Progman + layered child
     RaisedProgman,
-    /// Win10/Win11：顶层 WorkerW（与图标 WorkerW 为兄弟窗口）
+    /// Win10/Win11 回退：壁纸 WorkerW（层级低于 shell_host 子窗口方案）
     ClassicWorkerW,
-    /// 无 Progman：DefView 在 WorkerW 内，挂到 shell_host + Z-order
+    /// 飞火策略：MPV 挂 shell_host，Z-order 紧贴 DefView 下方（壁纸层最高位置，仍在图标之下）
     ShellHostLayered,
 }
 
@@ -171,12 +190,35 @@ pub fn position_player_in_wallpaper_worker(
     Ok(())
 }
 
-/// 维持壁纸层在图标层下方（勿将 shell_host 设为全局 TOP，否则会闪屏）
+/// 维持壁纸层在图标层下方
 pub fn ensure_desktop_zorder(layer: &DesktopLayer) -> Result<(), String> {
-    ensure_desktop_zorder_inner(layer, true)
+    ensure_desktop_zorder_for_mode(layer, resolve_attach_mode(layer))
 }
 
-/// 仅刷新图标层 Z-order（不移动壁纸 WorkerW，避免闪屏）
+/// 看门狗空闲时刷新 Z-order（不触发完整 reattach）
+pub fn refresh_desktop_zorder(layer: &DesktopLayer) -> Result<(), String> {
+    match resolve_attach_mode(layer) {
+        AttachMode::ClassicWorkerW => refresh_icon_zorder(layer),
+        AttachMode::ShellHostLayered | AttachMode::RaisedProgman => {
+            raise_icon_children(layer)?;
+            lower_shell_host_video_below_icons(layer)?;
+            Ok(())
+        }
+    }
+}
+
+fn ensure_desktop_zorder_for_mode(layer: &DesktopLayer, mode: AttachMode) -> Result<(), String> {
+    match mode {
+        AttachMode::ClassicWorkerW => ensure_desktop_zorder_inner(layer, true),
+        AttachMode::ShellHostLayered | AttachMode::RaisedProgman => {
+            raise_icon_children(layer)?;
+            lower_shell_host_video_below_icons(layer)?;
+            Ok(())
+        }
+    }
+}
+
+/// 仅刷新图标层 Z-order（ClassicWorkerW 专用，不移动壁纸 WorkerW）
 pub fn refresh_icon_zorder(layer: &DesktopLayer) -> Result<(), String> {
     ensure_desktop_zorder_inner(layer, false)
 }
@@ -413,12 +455,228 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
     unsafe { IsWindowVisible(hwnd).as_bool() }
 }
 
-/// 壁纸 WorkerW 丢失或隐藏时需要恢复嵌入
+/// 其他动态壁纸播放窗口类名（飞火 / Lively / MPV 系）
+const COMPETING_WALLPAPER_PLAYER_CLASSES: &[&str] =
+    &["mpv", "glfw", "QWidget", "Chrome_WidgetWin_1", "CefBrowserWindow"];
+
+/// 启动壁纸前隐藏占用桌面层的竞争窗口（动态壁纸 + 腾讯整理全屏皮肤等）；退出时恢复
+pub fn suppress_competing_wallpaper_players(our_pids: &[u32]) -> Result<(), String> {
+    suppress_desktop_layer_interference(our_pids)
+}
+
+/// 停止壁纸时恢复此前隐藏的窗口
+pub fn restore_competing_wallpaper_players() -> Result<(), String> {
+    restore_desktop_layer_interference()
+}
+
+pub fn suppress_desktop_layer_interference(our_pids: &[u32]) -> Result<(), String> {
+    let layer = detect_desktop_layer()?;
+    let screen = get_virtual_screen_rect();
+    let screen_area = screen.w as i64 * screen.h as i64;
+    let min_player_area = screen_area / 4;
+    // 仅隐藏全屏桌面整理皮肤（≥70% 虚拟桌面），保留小栅栏/格子
+    let min_overlay_area = screen_area * 70 / 100;
+    let mut newly_hidden = Vec::new();
+    let hosts = collect_wallpaper_search_roots(&layer);
+    for host in hosts {
+        collect_interference_windows_under(
+            host,
+            our_pids,
+            min_player_area,
+            min_overlay_area,
+            &mut newly_hidden,
+        );
+    }
+    if newly_hidden.is_empty() {
+        return Ok(());
+    }
+    unsafe {
+        for hwnd in &newly_hidden {
+            let _ = ShowWindow(*hwnd, SW_HIDE);
+            log::info!(
+                "已临时隐藏桌面层干扰窗口: {:?} class={} pid={}",
+                hwnd,
+                window_class_name(*hwnd),
+                window_process_id(*hwnd)
+            );
+        }
+    }
+    let mut guard = hidden_competing_players()
+        .lock()
+        .map_err(|e| format!("锁定竞争窗口列表失败: {}", e))?;
+    for hwnd in newly_hidden {
+        let id = hwnd_to_isize(hwnd);
+        if !guard.contains(&id) {
+            guard.push(id);
+        }
+    }
+    Ok(())
+}
+
+pub fn restore_desktop_layer_interference() -> Result<(), String> {
+    let mut guard = hidden_competing_players()
+        .lock()
+        .map_err(|e| format!("锁定竞争窗口列表失败: {}", e))?;
+    unsafe {
+        for id in guard.drain(..) {
+            let hwnd = isize_to_hwnd(id);
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            log::info!(
+                "已恢复桌面层干扰窗口: {:?} class={}",
+                hwnd,
+                window_class_name(hwnd)
+            );
+        }
+    }
+    Ok(())
+}
+
+fn collect_interference_windows_under(
+    root: HWND,
+    our_pids: &[u32],
+    min_player_area: i64,
+    min_overlay_area: i64,
+    hidden: &mut Vec<HWND>,
+) {
+    unsafe {
+        struct Ctx {
+            our_pids: Vec<u32>,
+            min_player_area: i64,
+            min_overlay_area: i64,
+            hidden: *mut Vec<HWND>,
+        }
+        unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows_core::BOOL {
+            let ctx = &mut *(lparam.0 as *mut Ctx);
+            let hidden = unsafe { &mut *ctx.hidden };
+            if is_shell_ui_window(hwnd) {
+                return windows_core::BOOL(1);
+            }
+            if hidden.contains(&hwnd) {
+                return windows_core::BOOL(1);
+            }
+            if should_suppress_desktop_window(
+                hwnd,
+                &ctx.our_pids,
+                ctx.min_player_area,
+                ctx.min_overlay_area,
+            ) {
+                hidden.push(hwnd);
+            }
+            let sub = Ctx {
+                our_pids: ctx.our_pids.clone(),
+                min_player_area: ctx.min_player_area,
+                min_overlay_area: ctx.min_overlay_area,
+                hidden: ctx.hidden,
+            };
+            let _ = EnumChildWindows(Some(hwnd), Some(cb), LPARAM(&sub as *const _ as isize));
+            windows_core::BOOL(1)
+        }
+        let mut ctx = Ctx {
+            our_pids: our_pids.to_vec(),
+            min_player_area,
+            min_overlay_area,
+            hidden,
+        };
+        let _ = EnumChildWindows(Some(root), Some(cb), LPARAM(&mut ctx as *mut _ as isize));
+    }
+}
+
+fn should_suppress_desktop_window(
+    hwnd: HWND,
+    our_pids: &[u32],
+    min_player_area: i64,
+    min_overlay_area: i64,
+) -> bool {
+    if !is_window_visible(hwnd) {
+        return false;
+    }
+    let pid = window_process_id(hwnd);
+    if pid == 0 || our_pids.contains(&pid) {
+        return false;
+    }
+    let class = window_class_name(hwnd);
+    let area = get_window_rect(hwnd)
+        .map(|r| (r.right - r.left) as i64 * (r.bottom - r.top) as i64)
+        .unwrap_or(0);
+    if THIRD_PARTY_DESKTOP_OVERLAY_CLASSES.contains(&class.as_str()) {
+        return area >= min_overlay_area;
+    }
+    if area < min_player_area {
+        return false;
+    }
+    COMPETING_WALLPAPER_PLAYER_CLASSES.contains(&class.as_str())
+}
+
+fn collect_wallpaper_search_roots(layer: &DesktopLayer) -> Vec<HWND> {
+    let mut roots = vec![layer.shell_host];
+    if let Some(ww) = layer.worker_w {
+        roots.push(ww);
+    }
+    if let Some(progman) = layer.progman {
+        roots.push(progman);
+        unsafe {
+            struct Ctx {
+                workers: Vec<HWND>,
+            }
+            unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows_core::BOOL {
+                let ctx = &mut *(lparam.0 as *mut Ctx);
+                let mut buf = [0u16; 64];
+                if GetClassNameW(hwnd, &mut buf) == 0 {
+                    return windows_core::BOOL(1);
+                }
+                let class = String::from_utf16_lossy(
+                    &buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())],
+                );
+                if class == "WorkerW" && find_child_defview(hwnd).is_none() {
+                    ctx.workers.push(hwnd);
+                }
+                windows_core::BOOL(1)
+            }
+            let mut ctx = Ctx {
+                workers: Vec::new(),
+            };
+            let _ = EnumChildWindows(Some(progman), Some(cb), LPARAM(&mut ctx as *mut _ as isize));
+            roots.extend(ctx.workers);
+        }
+    }
+    roots
+}
+
+fn is_shell_ui_window(hwnd: HWND) -> bool {
+    let class = window_class_name(hwnd);
+    matches!(
+        class.as_str(),
+        "SHELLDLL_DefView" | "SysListView32" | "WorkerW" | "Progman"
+    )
+}
+
+fn window_class_name(hwnd: HWND) -> String {
+    unsafe {
+        let mut buf = [0u16; 256];
+        if GetClassNameW(hwnd, &mut buf) == 0 {
+            return String::new();
+        }
+        String::from_utf16_lossy(&buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())])
+    }
+}
+
+fn window_process_id(hwnd: HWND) -> u32 {
+    unsafe {
+        let mut pid: u32 = 0;
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid
+    }
+}
+
+/// 壁纸层异常需恢复
 pub fn desktop_wallpaper_needs_recovery(layer: &DesktopLayer) -> bool {
-    layer.worker_w.is_none()
-        || layer
-            .worker_w
-            .is_some_and(|ww| !is_window_visible(ww))
+    match resolve_attach_mode(layer) {
+        AttachMode::ShellHostLayered | AttachMode::RaisedProgman => false,
+        AttachMode::ClassicWorkerW => layer.worker_w.is_none()
+            || layer
+                .worker_w
+                .is_some_and(|ww| !is_window_visible(ww)),
+    }
 }
 
 fn has_visible_third_party_overlay(shell_host: HWND) -> bool {
@@ -548,8 +806,43 @@ pub fn resolve_attach_mode(layer: &DesktopLayer) -> AttachMode {
             return AttachMode::ClassicWorkerW;
         }
     }
-    // 双屏/图标 WorkerW 铺满虚拟桌面时，挂到 shell_host 在 DefView 下方
     AttachMode::ShellHostLayered
+}
+
+/// 飞火策略启动前：隐藏静态壁纸 WorkerW，避免与 MPV 叠层干扰
+pub fn prepare_shell_host_wallpaper(layer: &DesktopLayer) -> Result<(), String> {
+    hide_static_wallpaper_workers(layer)
+}
+
+fn hide_static_wallpaper_workers(layer: &DesktopLayer) -> Result<(), String> {
+    unsafe {
+        if let Some(ww) = layer.worker_w {
+            if is_valid_wallpaper_workerw(ww, layer.shell_host) {
+                let _ = ShowWindow(ww, SW_HIDE);
+            }
+        }
+        if let Some(ww) = find_sibling_workerw() {
+            if Some(ww) != layer.worker_w {
+                let _ = ShowWindow(ww, SW_HIDE);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 将 MPV 定位到指定显示器（按当前嵌入模式）
+pub fn position_wallpaper_player(
+    hwnd: HWND,
+    layer: &DesktopLayer,
+    mode: AttachMode,
+    monitor: MonitorRect,
+) -> Result<(), String> {
+    match mode {
+        AttachMode::ClassicWorkerW => position_player_in_wallpaper_worker(hwnd, monitor),
+        AttachMode::ShellHostLayered | AttachMode::RaisedProgman => {
+            position_player_on_monitor(hwnd, layer, monitor)
+        }
+    }
 }
 
 fn spawn_workerw() {

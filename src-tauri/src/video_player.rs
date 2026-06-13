@@ -50,12 +50,14 @@ fn maintain_desktop_wallpaper(state: &VideoPlayerState) -> Result<(), String> {
 
     let layer = desktop_core::detect_desktop_layer()?;
 
+    let _ = desktop_core::suppress_competing_wallpaper_players(&pids);
+
     let mpv_missing = pids.iter().any(|&pid| !mpv_has_visible_window(pid));
     if desktop_core::desktop_wallpaper_needs_recovery(&layer) || mpv_missing {
         log::info!("检测到桌面壁纸层异常，正在恢复动态壁纸...");
         reattach_if_running(state)?;
     } else {
-        desktop_core::refresh_icon_zorder(&layer)?;
+        desktop_core::refresh_desktop_zorder(&layer)?;
     }
     Ok(())
 }
@@ -120,11 +122,15 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
             return Err("未检测到显示器".into());
         }
 
+        let _ = desktop_core::suppress_competing_wallpaper_players(&[]);
+
         let wid_target = if use_wid {
             let target = desktop_core::wid_target(&layer, mode)
                 .ok_or("找不到 MPV --wid 目标窗口")?;
             if mode == AttachMode::ClassicWorkerW {
                 desktop_core::prepare_wallpaper_host(target, layer.shell_host)?;
+            } else if mode == AttachMode::ShellHostLayered {
+                desktop_core::prepare_shell_host_wallpaper(&layer)?;
             }
             log::info!("MPV --wid 模式: {:?} → {:?}", mode, target);
             Some(target)
@@ -166,24 +172,9 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
             std::thread::sleep(Duration::from_millis(350));
 
             if use_wid {
-                if mode == AttachMode::ClassicWorkerW {
-                    if let Some(parent) = wid_target {
-                        let hwnd =
-                            wait_for_mpv_window(pid, Some(parent), &spawned_pids[..index])?;
-                        desktop_core::position_player_in_wallpaper_worker(hwnd, *monitor)?;
-                        log::info!(
-                            "MPV[{}] 窗口 {:?} 已铺满显示器 {}x{}@({},{})",
-                            index,
-                            hwnd,
-                            monitor.w,
-                            monitor.h,
-                            monitor.x,
-                            monitor.y
-                        );
-                    }
-                } else if let Some(parent) = wid_target {
+                if let Some(parent) = wid_target {
                     let hwnd = wait_for_mpv_window(pid, Some(parent), &spawned_pids[..index])?;
-                    desktop_core::position_player_on_monitor(hwnd, &layer, *monitor)?;
+                    desktop_core::position_wallpaper_player(hwnd, &layer, mode, *monitor)?;
                     log::info!(
                         "MPV[{}] 窗口 {:?} 已铺满显示器 {}x{}@({},{})",
                         index,
@@ -204,6 +195,7 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
         }
 
         desktop_core::ensure_desktop_zorder(&layer)?;
+        let _ = desktop_core::suppress_competing_wallpaper_players(&spawned_pids);
         start_desktop_watchdog(state);
 
         let mut guard = state.0.lock().unwrap();
@@ -245,6 +237,7 @@ pub fn stop_video_wallpaper(state: &VideoPlayerState) {
     #[cfg(target_os = "windows")]
     {
         stop_desktop_watchdog();
+        let _ = desktop_core::restore_competing_wallpaper_players();
     }
 
     let mut guard = state.0.lock().unwrap();
@@ -321,16 +314,10 @@ pub fn reattach_if_running(state: &VideoPlayerState) -> Result<(), String> {
             });
 
             if use_wid {
-                if mode == AttachMode::ClassicWorkerW {
-                    if let Some(parent) = wid_parent {
-                        let skip: Vec<u32> = pids.iter().copied().filter(|&p| p != pid).collect();
-                        let hwnd = wait_for_mpv_window(pid, Some(parent), &skip)?;
-                        desktop_core::position_player_in_wallpaper_worker(hwnd, monitor)?;
-                    }
-                } else if let Some(parent) = wid_parent {
+                if let Some(parent) = wid_parent {
                     let skip: Vec<u32> = pids.iter().copied().filter(|&p| p != pid).collect();
                     let hwnd = wait_for_mpv_window(pid, Some(parent), &skip)?;
-                    desktop_core::position_player_on_monitor(hwnd, &layer, monitor)?;
+                    desktop_core::position_wallpaper_player(hwnd, &layer, mode, monitor)?;
                 }
             } else if index == 0 {
                 let hwnd = wait_for_mpv_window(pid, None, &[])?;
