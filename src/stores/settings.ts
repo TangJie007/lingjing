@@ -22,9 +22,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const pauseOnFullscreen = ref(true)
   const cacheLimitGB = ref(5)
 
-  // 持久化
+  // 持久化 — 监听所有设置变化
   watch(
-    [locale, autoStart, videoFps, scalingMode, pauseOnFullscreen],
+    [locale, autoStart, videoFps, scalingMode, pauseOnFullscreen, cacheLimitGB,
+     defaultStep1Model, defaultStep2Model, defaultGenerationCount, defaultResolution],
     () => {
       localStorage.setItem(
         'lingscape-settings',
@@ -34,6 +35,11 @@ export const useSettingsStore = defineStore('settings', () => {
           videoFps: videoFps.value,
           scalingMode: scalingMode.value,
           pauseOnFullscreen: pauseOnFullscreen.value,
+          cacheLimitGB: cacheLimitGB.value,
+          defaultStep1Model: defaultStep1Model.value,
+          defaultStep2Model: defaultStep2Model.value,
+          defaultGenerationCount: defaultGenerationCount.value,
+          defaultResolution: defaultResolution.value,
         })
       )
     },
@@ -50,6 +56,11 @@ export const useSettingsStore = defineStore('settings', () => {
       if (data.videoFps) videoFps.value = data.videoFps
       if (data.scalingMode) scalingMode.value = data.scalingMode
       if (data.pauseOnFullscreen !== undefined) pauseOnFullscreen.value = data.pauseOnFullscreen
+      if (data.cacheLimitGB !== undefined) cacheLimitGB.value = data.cacheLimitGB
+      if (data.defaultStep1Model) defaultStep1Model.value = data.defaultStep1Model
+      if (data.defaultStep2Model) defaultStep2Model.value = data.defaultStep2Model
+      if (data.defaultGenerationCount) defaultGenerationCount.value = data.defaultGenerationCount
+      if (data.defaultResolution) defaultResolution.value = data.defaultResolution
     } catch {
       // ignore corrupted data
     }

@@ -43,6 +43,8 @@ pub fn create<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                     }
                 }
                 "quit" => {
+                    let vp = app.state::<crate::video_player::VideoPlayerState>();
+                    crate::video_player::stop_video_wallpaper(&vp);
                     app.exit(0);
                 }
                 _ => {}

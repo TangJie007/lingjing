@@ -19,16 +19,27 @@
         "minHeight": 600,
         "decorations": false,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "label": "main"
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**"],
+          "requireLiteralLeadingDot": false
+        }
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "bin/mpv/": "bin/mpv/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -27,3 +27,5 @@ dist
 dist-node
 release
 out/
+.cache/
+src-tauri/bin/mpv/

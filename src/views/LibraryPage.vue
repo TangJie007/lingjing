@@ -1,60 +1,202 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+// 壁纸库页面 (WL-001, WL-002)
+// 网格展示、浏览、应用、删除、导出、AI 生成历史
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useWallpaperStore } from '@/stores/wallpaper'
+import type { WallpaperItem } from '@/stores/wallpaper'
+import WallpaperCard from '@/components/wallpaper/WallpaperCard.vue'
+import Toast from '@/components/common/Toast.vue'
 
 const { t } = useI18n()
+const wallpaperStore = useWallpaperStore()
+const toastRef = ref<InstanceType<typeof Toast>>()
 
 const activeCategory = ref('all')
+const sortBy = ref<'newest' | 'oldest' | 'name'>('newest')
 const liveOnly = ref(false)
+const importing = ref(false)
 
-const categories = [
+const categories = computed(() => [
   { key: 'all', label: t('library.all') },
-  { key: 'recent', label: t('library.sortRecent') },
-]
+  { key: 'ai', label: t('library.aiGenerated') },
+  { key: 'local', label: t('library.localImport') },
+  { key: 'video', label: t('library.liveWallpaper') },
+])
 
-// 暂无壁纸数据 — 展示空状态
-const wallpapers: never[] = []
+// 过滤和排序
+const filteredWallpapers = computed(() => {
+  let list = [...wallpaperStore.wallpapers]
+
+  // 分类过滤
+  if (activeCategory.value === 'ai') {
+    list = list.filter((w) => w.source === 'ai')
+  } else if (activeCategory.value === 'local') {
+    list = list.filter((w) => w.source === 'local')
+  } else if (activeCategory.value === 'video') {
+    list = list.filter((w) => w.mediaType === 'video')
+  }
+
+  // 动态壁纸筛选
+  if (liveOnly.value) {
+    list = list.filter((w) => w.mediaType === 'video')
+  }
+
+  // 排序
+  if (sortBy.value === 'newest') {
+    list.sort((a, b) => parseInt(b.createdAt) - parseInt(a.createdAt))
+  } else if (sortBy.value === 'oldest') {
+    list.sort((a, b) => parseInt(a.createdAt) - parseInt(b.createdAt))
+  } else if (sortBy.value === 'name') {
+    list.sort((a, b) => a.filename.localeCompare(b.filename))
+  }
+
+  return list
+})
+
+const operatingId = ref<string | null>(null)
+
+// 应用壁纸
+async function applyWallpaper(id: string) {
+  if (operatingId.value) return
+  operatingId.value = id
+  try {
+    await wallpaperStore.setWallpaper(id)
+    toastRef.value?.show('success', '✅ ' + t('toast.wallpaperSet'))
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('应用壁纸失败:', e)
+    toastRef.value?.show('error', '❌ ' + (message || t('toast.generateFailed')))
+  } finally {
+    operatingId.value = null
+  }
+}
+
+// 删除壁纸（Tauri 原生对话框，window.confirm 在 WebView 中不可靠）
+async function deleteWallpaper(id: string) {
+  if (operatingId.value) return
+  try {
+    const { ask } = await import('@tauri-apps/plugin-dialog')
+    const confirmed = await ask(t('library.deleteBtn') + '?', {
+      title: '灵境 LingScape',
+      kind: 'warning',
+    })
+    if (!confirmed) return
+
+    operatingId.value = id
+    await wallpaperStore.deleteWallpaper(id)
+    toastRef.value?.show('info', t('toast.wallpaperDeleted'))
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('删除壁纸失败:', e)
+    toastRef.value?.show('error', '❌ ' + (message || t('toast.generateFailed')))
+  } finally {
+    operatingId.value = null
+  }
+}
+
+// 导出壁纸
+async function exportWallpaper(id: string) {
+  const wp = wallpaperStore.wallpapers.find((w) => w.id === id)
+  if (!wp) return
+  try {
+    await wallpaperStore.exportWallpaper(id, wp.filename)
+  } catch {
+    // 降级
+  }
+}
+
+// 导入本地壁纸（使用 Tauri dialog 插件获取真实文件路径）
+async function importWallpaper() {
+  importing.value = true
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const result = await open({
+      multiple: true,
+      filters: [{
+        name: '图片/视频',
+        extensions: ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'gif'],
+      }],
+    })
+    if (result) {
+      const files = Array.isArray(result) ? result : [result]
+      for (const filePath of files) {
+        if (filePath) {
+          await wallpaperStore.importWallpaper(filePath as string)
+        }
+      }
+    }
+  } catch (e) {
+    console.error('导入失败:', e)
+  } finally {
+    importing.value = false
+  }
+}
+
+onMounted(() => {
+  wallpaperStore.loadWallpapers()
+})
 </script>
 
 <template>
   <div class="page-library">
+    <!-- 分类筛选 -->
     <div class="lib-categories">
-      <template v-for="cat in categories" :key="cat.key">
-        <div v-if="cat.divider" class="lib-cat-divider" />
-        <button
-          v-else
-          type="button"
-          class="lib-cat-pill"
-          :class="{ active: activeCategory === cat.key, accent: cat.accent }"
-          @click="activeCategory = cat.key"
-        >
-          {{ cat.label }}
-        </button>
-      </template>
+      <button
+        v-for="cat in categories"
+        :key="cat.key"
+        type="button"
+        class="lib-cat-pill"
+        :class="{ active: activeCategory === cat.key }"
+        @click="activeCategory = cat.key"
+      >
+        {{ cat.label }}
+      </button>
     </div>
 
+    <!-- 操作栏 -->
     <div class="lib-meta-bar">
       <div class="lib-stats">
-        <span>{{ t('library.totalCount', { count: wallpapers.length }) }}</span>
+        <span>{{ t('library.totalCount', { count: filteredWallpapers.length }) }}</span>
       </div>
       <div class="lib-controls">
-        <button type="button" class="lib-control-btn">
-          <span>{{ t('library.sortDefault') }}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+        <!-- 排序 -->
+        <button type="button" class="lib-control-btn" @click="sortBy = sortBy === 'newest' ? 'oldest' : sortBy === 'oldest' ? 'name' : 'newest'">
+          <span>{{
+            sortBy === 'newest' ? t('library.sortNewest') :
+            sortBy === 'oldest' ? t('library.sortOldest') :
+            t('library.sortDefault')
+          }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </button>
-        <button type="button" class="lib-control-btn">
-          <span>{{ t('library.gridView') }}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-        </button>
+        <!-- 动态壁纸筛选 -->
         <label class="lib-control-check">
           <input v-model="liveOnly" type="checkbox" />
           <span class="check-dot" />
           <span>{{ t('library.liveWallpaper') }}</span>
         </label>
+        <!-- 导入按钮 -->
+        <button type="button" class="lib-control-btn lib-import-btn" :disabled="importing" @click="importWallpaper">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7,10 12,15 17,10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>{{ importing ? t('common.loading') : t('library.localImport') }}</span>
+        </button>
       </div>
     </div>
 
-    <div v-if="wallpapers.length === 0" class="empty-state">
+    <!-- 加载中 -->
+    <div v-if="wallpaperStore.loading" class="empty-state">
+      <div class="gen-spinner" style="margin-bottom: var(--spacing-4)" />
+      <div class="empty-state-desc">{{ t('common.loading') }}</div>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-else-if="filteredWallpapers.length === 0" class="empty-state">
       <div class="empty-state-visual">
         <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -88,13 +230,44 @@ const wallpapers: never[] = []
       </div>
       <div class="empty-state-title">{{ t('library.emptyTitle') }}</div>
       <div class="empty-state-desc">{{ t('library.emptyDesc') }}</div>
-      <div class="empty-state-hint">
-        <span class="hint-key">{{ t('library.emptyHintFlow') }}</span>
-        <span class="hint-sep">·</span>
-        <span class="hint-key">{{ t('library.emptyHintSteps') }}</span>
-      </div>
+      <button type="button" class="btn-generate" @click="importWallpaper">
+        <span class="gen-icon">📁</span>
+        {{ t('library.localImport') }}
+      </button>
     </div>
 
-    <div v-else class="lib-grid" />
+    <!-- 壁纸网格 -->
+    <div v-else class="lib-grid">
+      <WallpaperCard
+        v-for="wp in filteredWallpapers"
+        :key="wp.id"
+        :wallpaper="wp"
+        :is-active="wp.id === wallpaperStore.currentWallpaperId"
+        :busy="operatingId === wp.id"
+        @apply="applyWallpaper"
+        @delete="deleteWallpaper"
+        @export="exportWallpaper"
+      />
+    </div>
+    <Toast ref="toastRef" />
   </div>
 </template>
+
+<style scoped>
+.lib-import-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-primary);
+  border-color: var(--color-primary-surface);
+  font-weight: 500;
+}
+.lib-import-btn:hover {
+  background: var(--color-primary-surface);
+  border-color: var(--color-primary);
+}
+.lib-import-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+</style>

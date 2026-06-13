@@ -33,6 +33,11 @@ const routes: RouteRecordRaw[] = [
     name: 'Onboarding',
     component: () => import('@/views/OnboardingPage.vue'),
   },
+  {
+    path: '/desktop-player',
+    name: 'DesktopPlayer',
+    component: () => import('@/views/DesktopPlayer.vue'),
+  },
 ]
 
 const router = createRouter({
