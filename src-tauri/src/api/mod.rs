@@ -1,8 +1,13 @@
-//! 火山引擎 API 通信模块 (API-002)
+//! 火山引擎 API 通信模块
 //!
 //! 负责：
-//! - API Key 有效性检测：发送最小请求到火山引擎 `/models` 端点
+//! - API Key 有效性检测 (API-002)：发送最小请求到火山引擎 `/models` 端点
+//! - AI 意图分析 (AI-001)：doubao VL-LLM 结构化方案构建
+//! - AI 壁纸生成 (AI-002)：Seedream 图片生成 + 本地下载
 //! - `open_url` 命令：使用系统默认浏览器打开链接
+
+pub mod doubao;
+pub mod seedream;
 
 use serde::{Deserialize, Serialize};
 

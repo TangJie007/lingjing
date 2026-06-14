@@ -60,6 +60,8 @@ pub fn run() {
             crypto::crypto_list_platforms,
             api::test_connection,
             api::open_url,
+            api::doubao::ai_analyze,
+            api::seedream::ai_generate,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

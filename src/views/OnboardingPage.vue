@@ -74,6 +74,13 @@ function finishOnboarding() {
   appStore.completeOnboarding()
   router.push('/library')
 }
+
+// 一键生成：用预设 prompt 触发 AI 管线 (OB-003)
+function startWithPreset(presetKey: string) {
+  appStore.completeOnboarding()
+  // 将预设 prompt 传递给 AI 面板，通过 query 参数携带
+  router.push({ path: '/library', query: { ai: 'open', preset: presetKey } })
+}
 </script>
 
 <template>
@@ -173,13 +180,13 @@ function finishOnboarding() {
             </ul>
           </div>
           <div class="preset-cards">
-            <button class="preset-card" @click="finishOnboarding">
+            <button class="preset-card" @click="startWithPreset('preset1')">
               {{ t('wizard.quickStart.preset1') }}
             </button>
-            <button class="preset-card" @click="finishOnboarding">
+            <button class="preset-card" @click="startWithPreset('preset2')">
               {{ t('wizard.quickStart.preset2') }}
             </button>
-            <button class="preset-card" @click="finishOnboarding">
+            <button class="preset-card" @click="startWithPreset('preset3')">
               {{ t('wizard.quickStart.preset3') }}
             </button>
           </div>

@@ -93,11 +93,26 @@ watch(
   (value) => {
     if (value === 'open') {
       aiPanelOpen.value = true
+      // 保留 preset 参数给 AiCreatePanel 使用
+      const preset = route.query.preset as string | undefined
+      if (preset) {
+        // 通过 store 或组件通信传递预设 prompt
+        aiPreset.value = preset
+      }
       router.replace({ path: route.path, query: {} })
     }
   },
   { immediate: true }
 )
+
+const aiPreset = ref<string | null>(null)
+
+// 预设 prompt 映射
+const presetPrompts: Record<string, string> = {
+  preset1: '赛博朋克城市夜景，霓虹灯流光溢彩，雨后的街道倒映着光芒',
+  preset2: '宫崎骏风格夏日田园，蓝天白云绿草地，温暖的阳光洒落',
+  preset3: '极简抽象渐变，柔和的几何形态，静谧氛围',
+}
 
 onMounted(() => {
   appStore.loadSavedLocale()
@@ -137,7 +152,7 @@ onMounted(() => {
       </div>
 
       <FabCreate :active="aiPanelOpen" @click="toggleAiPanel" />
-      <AiCreatePanel v-model:open="aiPanelOpen" />
+      <AiCreatePanel v-model:open="aiPanelOpen" :preset-prompt="presetPrompts[aiPreset ?? ''] ?? ''" />
       <Toast ref="toastRef" />
     </div>
   </template>
