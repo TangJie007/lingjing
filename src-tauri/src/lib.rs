@@ -39,6 +39,12 @@ pub fn run() {
             let init_handle = handle.clone();
             let _ = handle.run_on_main_thread(move || {
                 wallpaper_engine::init_desktop_player(&init_handle);
+                #[cfg(target_os = "windows")]
+                {
+                    if let Err(e) = crate::desktop_core::setup_desktop_layer() {
+                        log::warn!("预初始化桌面层失败: {}", e);
+                    }
+                }
             });
 
             Ok(())

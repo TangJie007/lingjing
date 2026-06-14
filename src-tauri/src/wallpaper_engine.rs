@@ -243,13 +243,6 @@ pub fn set_wallpaper(
     id: String,
     state: tauri::State<'_, CurrentWallpaperState>,
 ) -> Result<SetWallpaperResult, String> {
-    let conflicts = crate::desktop_core::detect_desktop_layer_conflicts();
-    if !conflicts.is_empty() {
-        for c in &conflicts {
-            log::warn!("检测到桌面层级冲突: {} ({})", c.name, c.id);
-        }
-    }
-
     let meta = load_meta(&app);
     let entry = meta
         .wallpapers
@@ -270,17 +263,17 @@ pub fn set_wallpaper(
 
         hide_desktop_player_window(&app);
 
-        // 桌面嵌入须在 UI 主线程（SetParent / WorkerW）
         let path_for_thread = path.clone();
         let app_for_thread = app.clone();
         let (tx, rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
         app.clone()
             .run_on_main_thread(move || {
                 let vp = app_for_thread.state::<crate::video_player::VideoPlayerState>();
-                let result = crate::video_player::start_video_wallpaper(&vp, &path_for_thread);
+                let result =
+                    crate::video_player::switch_or_start_video_wallpaper(&vp, &path_for_thread);
                 let _ = tx.send(result);
             })
-        .map_err(|e| format!("调度主线程失败: {}", e))?;
+            .map_err(|e| format!("调度主线程失败: {}", e))?;
         rx.recv()
             .map_err(|e| format!("主线程无响应: {}", e))??;
 
@@ -294,13 +287,26 @@ pub fn set_wallpaper(
             }),
         );
     } else {
+        let was_video = {
+            let guard = state.0.lock().unwrap();
+            guard
+                .as_ref()
+                .map(|(t, _, _)| t == "video")
+                .unwrap_or(false)
+        };
+
         {
             let mut guard = state.0.lock().unwrap();
             *guard = Some(("image".into(), path.to_string_lossy().to_string(), id.clone()));
         }
-        let vp = app.state::<crate::video_player::VideoPlayerState>();
-        crate::video_player::stop_video_wallpaper(&vp);
-        hide_desktop_player_window(&app);
+
+        if was_video {
+            let vp = app.state::<crate::video_player::VideoPlayerState>();
+            crate::video_player::stop_video_wallpaper(&vp);
+            hide_desktop_player_window(&app);
+        } else {
+            hide_desktop_player_window(&app);
+        }
         set_windows_wallpaper(&path)?;
         let _ = app.emit_to(
             DESKTOP_PLAYER_LABEL,
@@ -309,15 +315,30 @@ pub fn set_wallpaper(
         );
     }
 
-    let mut meta = load_meta(&app);
-    for w in &mut meta.wallpapers {
-        if w.id == id {
-            w.created_at = chrono_now();
+    let app_meta = app.clone();
+    let meta_id = id.clone();
+    std::thread::spawn(move || {
+        let mut meta = load_meta(&app_meta);
+        for w in &mut meta.wallpapers {
+            if w.id == meta_id {
+                w.created_at = chrono_now();
+            }
         }
-    }
-    save_meta(&app, &meta);
+        save_meta(&app_meta, &meta);
+    });
 
-    Ok(SetWallpaperResult { conflicts })
+    let app_conflicts = app.clone();
+    std::thread::spawn(move || {
+        let conflicts = crate::desktop_core::detect_desktop_layer_conflicts();
+        if !conflicts.is_empty() {
+            for c in &conflicts {
+                log::warn!("检测到桌面层级冲突: {} ({})", c.name, c.id);
+            }
+            let _ = app_conflicts.emit("wallpaper-conflicts", &conflicts);
+        }
+    });
+
+    Ok(SetWallpaperResult { conflicts: vec![] })
 }
 
 #[tauri::command]
@@ -415,13 +436,24 @@ fn set_windows_wallpaper(path: &PathBuf) -> Result<(), String> {
             SystemParametersInfoW, SPI_SETDESKWALLPAPER, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE,
         };
 
+        // 先即时生效，再异步持久化，减少桌面卡顿感
         SystemParametersInfoW(
             SPI_SETDESKWALLPAPER,
             0,
             Some(wide.as_ptr() as *mut _),
-            SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
+            SPIF_SENDCHANGE,
         )
         .map_err(|e| format!("设置桌面壁纸失败: {:?}", e))?;
+
+        let wide_persist = wide.clone();
+        std::thread::spawn(move || {
+            let _ = SystemParametersInfoW(
+                SPI_SETDESKWALLPAPER,
+                0,
+                Some(wide_persist.as_ptr() as *mut _),
+                SPIF_UPDATEINIFILE,
+            );
+        });
     }
     Ok(())
 }

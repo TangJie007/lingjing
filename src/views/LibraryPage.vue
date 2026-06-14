@@ -56,20 +56,15 @@ const filteredWallpapers = computed(() => {
 
 const operatingId = ref<string | null>(null)
 
-// 应用壁纸
-async function applyWallpaper(id: string) {
-  if (operatingId.value) return
-  operatingId.value = id
-  try {
-    await wallpaperStore.setWallpaper(id)
+// 应用壁纸（乐观更新，后台完成切换，不阻塞 UI）
+function applyWallpaper(id: string) {
+  wallpaperStore.setWallpaper(id).then(() => {
     toastRef.value?.show('success', '✅ ' + t('toast.wallpaperSet'))
-  } catch (e) {
+  }).catch((e) => {
     const message = e instanceof Error ? e.message : String(e)
     console.error('应用壁纸失败:', e)
     toastRef.value?.show('error', '❌ ' + (message || t('toast.generateFailed')))
-  } finally {
-    operatingId.value = null
-  }
+  })
 }
 
 // 删除壁纸（Tauri 原生对话框，window.confirm 在 WebView 中不可靠）

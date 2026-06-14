@@ -111,11 +111,11 @@ const dateText = computed(() => {
     <div class="lib-card-actions">
       <button
         class="card-action-btn primary"
-        :class="{ disabled: isActive || busy }"
-        :disabled="isActive || busy"
+        :class="{ disabled: isActive }"
+        :disabled="isActive"
         @click.stop="emit('apply', wallpaper.id)"
       >
-        {{ busy ? t('common.loading') : isActive ? t('library.inUse') : t('library.applyBtn') }}
+        {{ isActive ? t('library.inUse') : t('library.applyBtn') }}
       </button>
       <button
         class="card-action-btn"

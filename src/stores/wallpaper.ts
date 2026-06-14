@@ -130,16 +130,28 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
     }
   }
 
-  // 设置壁纸
+  // 设置壁纸（乐观更新 UI，后台完成实际切换）
   async function setWallpaper(id: string): Promise<SetWallpaperResult> {
-    const result = await invokeWithTimeout<SetWallpaperResult>('set_wallpaper', { id })
-    currentWallpaperId.value = id
-
+    const prevId = currentWallpaperId.value
     const wp = wallpapers.value.find((w) => w.id === id)
+
+    currentWallpaperId.value = id
     if (wp && wp.mediaType === 'video') {
       isVideoPlaying.value = true
     }
-    return result
+
+    try {
+      const result = await invokeWithTimeout<SetWallpaperResult>('set_wallpaper', { id })
+      return result
+    } catch (e) {
+      currentWallpaperId.value = prevId
+      if (wp && wp.mediaType === 'video') {
+        isVideoPlaying.value = prevId
+          ? wallpapers.value.find((w) => w.id === prevId)?.mediaType === 'video'
+          : false
+      }
+      throw e
+    }
   }
 
   // 暂停/恢复视频

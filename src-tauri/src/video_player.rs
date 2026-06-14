@@ -48,7 +48,7 @@ fn maintain_desktop_wallpaper(state: &VideoPlayerState) -> Result<(), String> {
         guard.pids.clone()
     };
 
-    let layer = desktop_core::detect_desktop_layer()?;
+    let layer = desktop_core::get_cached_desktop_layer()?;
 
     let _ = desktop_core::suppress_competing_wallpaper_players(&pids);
 
@@ -84,6 +84,8 @@ pub struct VideoPlayerState(pub Mutex<VideoPlayerInner>);
 pub struct VideoPlayerInner {
     pub children: Vec<Child>,
     pub pids: Vec<u32>,
+    pub ipc_pipes: Vec<String>,
+    pub current_path: Option<String>,
 }
 
 impl Default for VideoPlayerInner {
@@ -91,6 +93,8 @@ impl Default for VideoPlayerInner {
         Self {
             children: Vec::new(),
             pids: Vec::new(),
+            ipc_pipes: Vec::new(),
+            current_path: None,
         }
     }
 }
@@ -101,9 +105,114 @@ impl Default for VideoPlayerState {
     }
 }
 
+/// 切换或启动 MPV 视频壁纸（须在 Windows UI 主线程调用）
+pub fn switch_or_start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<(), String> {
+    if try_switch_video_in_place(state, path)? {
+        return Ok(());
+    }
+    start_video_wallpaper(state, path)
+}
+
+/// 通过 MPV IPC 就地换片，避免杀进程重启（飞火/Lively 同类策略）
+fn try_switch_video_in_place(state: &VideoPlayerState, path: &Path) -> Result<bool, String> {
+    let pipes = {
+        let guard = state.0.lock().unwrap();
+        if guard.pids.is_empty() || guard.ipc_pipes.is_empty() {
+            return Ok(false);
+        }
+        let path_str = path.to_string_lossy().replace('\\', "/");
+        if guard.current_path.as_deref() == Some(path_str.as_str()) {
+            return Ok(true);
+        }
+        guard.ipc_pipes.clone()
+    };
+
+    let path_str = path.to_string_lossy().replace('\\', "/");
+    let mut switched = 0usize;
+    for pipe in &pipes {
+        match mpv_ipc_loadfile(pipe, &path_str) {
+            Ok(()) => switched += 1,
+            Err(e) => log::warn!("MPV IPC 换片失败 ({}): {}", pipe, e),
+        }
+    }
+    // 所有实例都成功才视为就地切换成功，否则回退完整重启
+    if switched != pipes.len() {
+        return Ok(false);
+    }
+
+    {
+        let mut guard = state.0.lock().unwrap();
+        guard.current_path = Some(path_str);
+    }
+    log::info!("MPV IPC 就地切换 {} 路播放: {}", switched, path.display());
+    Ok(true)
+}
+
+#[cfg(target_os = "windows")]
+fn mpv_ipc_loadfile(pipe: &str, path: &str) -> Result<(), String> {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+
+    let cmd = serde_json::json!({
+        "command": ["loadfile", path, "replace"]
+    });
+    let mut payload =
+        serde_json::to_string(&cmd).map_err(|e| format!("MPV IPC 序列化失败: {}", e))?;
+    payload.push('\n');
+
+    for attempt in 0..8 {
+        match std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(pipe)
+        {
+            Ok(mut file) => {
+                file.write_all(payload.as_bytes())
+                    .map_err(|e| format!("MPV IPC 写入失败: {}", e))?;
+                file.flush()
+                    .map_err(|e| format!("MPV IPC flush 失败: {}", e))?;
+
+                let mut response = String::new();
+                let mut buf = [0u8; 1024];
+                for _ in 0..8 {
+                    match file.read(&mut buf) {
+                        Ok(0) => std::thread::sleep(Duration::from_millis(15)),
+                        Ok(n) => {
+                            response.push_str(&String::from_utf8_lossy(&buf[..n]));
+                            if response.contains('\n') {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            return Err(format!("MPV IPC 读取响应失败: {}", e));
+                        }
+                    }
+                }
+
+                if response.contains("\"error\":\"success\"")
+                    || response.contains("\"error\": \"success\"")
+                {
+                    return Ok(());
+                }
+                return Err(format!("MPV IPC 响应异常: {}", response.trim()));
+            }
+            Err(_) if attempt < 7 => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(e) => return Err(format!("无法连接 MPV IPC {}: {}", pipe, e)),
+        }
+    }
+    Err(format!("MPV IPC 连接超时: {}", pipe))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn mpv_ipc_loadfile(_pipe: &str, _path: &str) -> Result<(), String> {
+    Err("MPV IPC 仅支持 Windows".into())
+}
+
 /// 启动 MPV 视频壁纸（须在 Windows UI 主线程调用）
 pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<(), String> {
-    stop_video_wallpaper(state);
+    stop_video_wallpaper_quiet(state);
 
     let mpv = resolve_mpv_executable().ok_or(
         "未找到 mpv.exe。请安装 MPV 或将 mpv.exe 放到应用目录 bin/mpv/ 下（https://mpv.io/installation/）",
@@ -142,9 +251,12 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
         let mpv_dir = mpv.parent().map(PathBuf::from);
         let mut spawned_children = Vec::new();
         let mut spawned_pids = Vec::new();
+        let mut spawned_pipes = Vec::new();
 
         for (index, monitor) in monitors.iter().enumerate() {
+            let pipe_name = format!(r"\\.\pipe\lingscape-mpv-{}", index);
             let mut args = mpv_base_args(*monitor);
+            args.push(format!("--input-ipc-server={}", pipe_name));
             if let Some(target) = wid_target {
                 args.push(format!("--wid={}", target.0 as usize));
             } else {
@@ -168,8 +280,9 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
             let pid = child.id();
             spawned_pids.push(pid);
             spawned_children.push(child);
+            spawned_pipes.push(pipe_name);
 
-            std::thread::sleep(Duration::from_millis(350));
+            std::thread::sleep(Duration::from_millis(80));
 
             if use_wid {
                 if let Some(parent) = wid_target {
@@ -201,6 +314,8 @@ pub fn start_video_wallpaper(state: &VideoPlayerState, path: &Path) -> Result<()
         let mut guard = state.0.lock().unwrap();
         guard.children = spawned_children;
         guard.pids = spawned_pids;
+        guard.ipc_pipes = spawned_pipes;
+        guard.current_path = Some(path_str);
         return Ok(());
     }
 
@@ -234,14 +349,27 @@ fn mpv_base_args(monitor: MonitorRect) -> Vec<String> {
 }
 
 pub fn stop_video_wallpaper(state: &VideoPlayerState) {
+    stop_video_wallpaper_inner(state, true);
+}
+
+/// 停止 MPV 但不恢复竞争窗口（壁纸切换时使用，避免桌面闪烁）
+pub fn stop_video_wallpaper_quiet(state: &VideoPlayerState) {
+    stop_video_wallpaper_inner(state, false);
+}
+
+fn stop_video_wallpaper_inner(state: &VideoPlayerState, restore_competing: bool) {
     #[cfg(target_os = "windows")]
     {
         stop_desktop_watchdog();
-        let _ = desktop_core::restore_competing_wallpaper_players();
+        if restore_competing {
+            let _ = desktop_core::restore_competing_wallpaper_players();
+        }
     }
 
     let mut guard = state.0.lock().unwrap();
     kill_all_processes(&mut guard);
+    guard.ipc_pipes.clear();
+    guard.current_path = None;
 }
 
 fn kill_all_processes(inner: &mut VideoPlayerInner) {
@@ -251,6 +379,7 @@ fn kill_all_processes(inner: &mut VideoPlayerInner) {
         let _ = child.wait();
     }
     inner.pids.clear();
+    inner.ipc_pipes.clear();
 
     #[cfg(target_os = "windows")]
     force_kill_pids(&pids);
@@ -303,7 +432,7 @@ pub fn reattach_if_running(state: &VideoPlayerState) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        let layer = desktop_core::detect_desktop_layer()?;
+        let layer = desktop_core::get_cached_desktop_layer()?;
         let mode = desktop_core::resolve_attach_mode(&layer);
         let use_wid = desktop_core::should_use_wid(&layer, mode);
         let wid_parent = desktop_core::wid_target(&layer, mode);
@@ -371,7 +500,7 @@ fn wait_for_mpv_window(
     parent_hint: Option<HWND>,
     skip_pids: &[u32],
 ) -> Result<HWND, String> {
-    for _ in 0..100 {
+    for _ in 0..60 {
         if let Some(parent) = parent_hint {
             if let Some(hwnd) = find_mpv_under_parent(parent, pid) {
                 return Ok(hwnd);
@@ -384,7 +513,7 @@ fn wait_for_mpv_window(
             return Ok(hwnd);
         }
         let _ = skip_pids;
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(50));
     }
     Err(format!("等待 MPV 窗口超时 (pid={})", pid))
 }

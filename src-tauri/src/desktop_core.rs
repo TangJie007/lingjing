@@ -5,13 +5,15 @@
 
 #![cfg(target_os = "windows")]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetParent,
-    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible, MoveWindow,
+    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow, IsWindowVisible,
+    MoveWindow,
     SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow, SendMessageW, GWL_EXSTYLE, GWL_STYLE,
     HWND_BOTTOM, HWND_TOP, SW_HIDE, SW_SHOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     SWP_SHOWWINDOW, WS_CHILD, WS_EX_NOREDIRECTIONBITMAP, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
@@ -54,20 +56,108 @@ pub enum AttachMode {
     ShellHostLayered,
 }
 
-/// 探测并准备桌面层（发送 0x052C 创建 WorkerW）
+static WORKERW_SPAWNED: AtomicBool = AtomicBool::new(false);
+static CACHED_LAYER: OnceLock<Mutex<Option<CachedDesktopLayer>>> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy)]
+struct CachedDesktopLayer {
+    progman: Option<isize>,
+    shell_host: isize,
+    shell_view: isize,
+    worker_w: Option<isize>,
+    is_raised: bool,
+}
+
+impl From<DesktopLayer> for CachedDesktopLayer {
+    fn from(layer: DesktopLayer) -> Self {
+        Self {
+            progman: layer.progman.map(|h| h.0 as isize),
+            shell_host: layer.shell_host.0 as isize,
+            shell_view: layer.shell_view.0 as isize,
+            worker_w: layer.worker_w.map(|h| h.0 as isize),
+            is_raised: layer.is_raised,
+        }
+    }
+}
+
+impl CachedDesktopLayer {
+    fn to_layer(self) -> DesktopLayer {
+        DesktopLayer {
+            progman: self.progman.map(|v| HWND(v as *mut _)),
+            shell_host: HWND(self.shell_host as *mut _),
+            shell_view: HWND(self.shell_view as *mut _),
+            worker_w: self.worker_w.map(|v| HWND(v as *mut _)),
+            is_raised: self.is_raised,
+        }
+    }
+}
+
+fn cached_layer_slot() -> &'static Mutex<Option<CachedDesktopLayer>> {
+    CACHED_LAYER.get_or_init(|| Mutex::new(None))
+}
+
+fn layer_still_valid(layer: &CachedDesktopLayer) -> bool {
+    unsafe {
+        IsWindow(Some(HWND(layer.shell_view as *mut _))).as_bool()
+            && layer
+                .worker_w
+                .map(|w| IsWindow(Some(HWND(w as *mut _))).as_bool())
+                .unwrap_or(true)
+    }
+}
+
+fn store_cached_layer(layer: DesktopLayer) {
+    if let Ok(mut guard) = cached_layer_slot().lock() {
+        *guard = Some(layer.into());
+    }
+}
+
+/// 获取已缓存的桌面层；失效时重新探测（不重复发送 0x052C）
+pub fn get_cached_desktop_layer() -> Result<DesktopLayer, String> {
+    if let Ok(guard) = cached_layer_slot().lock() {
+        if let Some(layer) = guard.as_ref() {
+            if layer_still_valid(layer) {
+                return Ok(layer.to_layer());
+            }
+        }
+    }
+    let layer = detect_desktop_layer()?;
+    store_cached_layer(layer);
+    Ok(layer)
+}
+
+/// 探测并准备桌面层（发送 0x052C 创建 WorkerW，仅首次）
 pub fn setup_desktop_layer() -> Result<DesktopLayer, String> {
-    spawn_workerw();
-    for attempt in 0..8 {
+    if let Ok(guard) = cached_layer_slot().lock() {
+        if let Some(layer) = guard.as_ref() {
+            if layer_still_valid(layer) {
+                return Ok(layer.to_layer());
+            }
+        }
+    }
+
+    let first_spawn = !WORKERW_SPAWNED.swap(true, Ordering::SeqCst);
+    if first_spawn {
+        spawn_workerw();
+    }
+
+    let max_attempts = if first_spawn { 8 } else { 3 };
+    let sleep_ms = if first_spawn { 150 } else { 40 };
+
+    for attempt in 0..max_attempts {
         let layer = detect_desktop_layer()?;
-        if layer.worker_w.is_some() || attempt == 7 {
-            if layer.worker_w.is_none() {
+        if layer.worker_w.is_some() || attempt == max_attempts - 1 {
+            if layer.worker_w.is_none() && first_spawn {
                 log_workerw_probe(layer.progman, layer.shell_host);
             }
+            store_cached_layer(layer);
             return Ok(layer);
         }
-        std::thread::sleep(std::time::Duration::from_millis(150));
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
     }
-    detect_desktop_layer()
+    let layer = detect_desktop_layer()?;
+    store_cached_layer(layer);
+    Ok(layer)
 }
 
 /// 仅探测桌面层（不重复发送 0x052C，供 Z-order 维持线程使用）
