@@ -1,6 +1,6 @@
 version: '1.0'
 workflow: full
-phase: done
+phase: build
 mode: incremental
 prd:
   current: AI动态桌面_V2_PRD.md
@@ -30,7 +30,15 @@ changes_root: wetspec/changes
 active_change: lingscape-v2
 openspec_change: lingscape-v2
 design_doc: wetspec/changes/lingscape-v2/design.md
-build_target: null
+build_target: specs/壁纸库管理/壁纸库视觉化升级_spec.yaml
 verify_result: pending
 verification_report: null
-unit_test: null
+unit_test:
+  framework: vitest
+  deferred: false
+  path: src/**/__tests__/**/*.test.{js,ts}
+  command: npm run test:unit
+  configured_at: '2026-06-15'
+  ac_runner: vitest
+  ac_note: wetspec verify 整包执行 unit_test.command
+  pending_framework: null

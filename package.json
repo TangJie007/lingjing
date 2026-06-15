@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "docs:preview": "vitepress preview",
+    "test": "npm run test:unit"
   },
   "author": "",
   "license": "ISC",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "^2.11.2",
+    "@types/node": "^25.9.3",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/test-utils": "^2.4.11",
     "@wetspace/wetspec-cli": "^1.2.2",

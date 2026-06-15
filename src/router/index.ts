@@ -38,6 +38,11 @@ const routes: RouteRecordRaw[] = [
     name: 'DesktopPlayer',
     component: () => import('@/views/DesktopPlayer.vue'),
   },
+  {
+    path: '/wallpaper/:id',
+    name: 'WallpaperDetail',
+    component: () => import('@/views/WallpaperDetailPage.vue'),
+  },
 ]
 
 const router = createRouter({

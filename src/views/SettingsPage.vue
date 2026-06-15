@@ -7,6 +7,8 @@ import { useAppStore } from '@/stores/app'
 import { useApiKeysStore } from '@/stores/api-keys'
 import { invoke } from '@tauri-apps/api/core'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
+import MonitorConfig from '@/components/settings/MonitorConfig.vue'
+import ShortcutConfig from '@/components/settings/ShortcutConfig.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -295,6 +297,72 @@ function statusBadgeText(status: string) {
         <button type="button" class="btn-danger">{{ t('settings.clearCache') }}</button>
       </div>
     </section>
+
+    <!-- V2: 退出恢复 (SET-006) -->
+    <section class="settings-section">
+      <h2 class="settings-section-title">{{ t('settings.restoreOnExit') }}</h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.restoreOnExit') }}</span>
+          <span class="setting-desc">{{ t('settings.restoreOnExitDesc') }}</span>
+        </div>
+        <ToggleSwitch v-model="settings.restoreOnExit" />
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.confirmOnExit') }}</span>
+          <span class="setting-desc">{{ t('settings.confirmOnExitDesc') }}</span>
+        </div>
+        <ToggleSwitch v-model="settings.confirmOnExit" />
+      </div>
+    </section>
+
+    <!-- V2: 多显示器 (SET-008) -->
+    <MonitorConfig />
+
+    <!-- V2: 定时轮换 (SET-007) -->
+    <section class="settings-section">
+      <h2 class="settings-section-title">{{ t('settings.rotate') }}</h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.rotateEnabled') }}</span>
+          <span class="setting-desc">{{ t('settings.restoreOnExitDesc') }}</span>
+        </div>
+        <ToggleSwitch v-model="settings.rotateEnabled" />
+      </div>
+      <div v-if="settings.rotateEnabled" class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.rotateInterval') }}</span>
+        </div>
+        <select v-model="settings.rotateInterval" class="setting-select">
+          <option value="15min">15 分钟</option>
+          <option value="30min">30 分钟</option>
+          <option value="1hour">1 小时</option>
+          <option value="daily">每天</option>
+        </select>
+      </div>
+      <div v-if="settings.rotateEnabled" class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.rotateSource') }}</span>
+        </div>
+        <select v-model="settings.rotateSource" class="setting-select">
+          <option value="all">{{ t('settings.rotateSourceAll') }}</option>
+          <option value="favorites">{{ t('settings.rotateSourceFavorites') }}</option>
+        </select>
+      </div>
+      <div v-if="settings.rotateEnabled" class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.rotateOrder') }}</span>
+        </div>
+        <select v-model="settings.rotateOrder" class="setting-select">
+          <option value="sequential">{{ t('settings.rotateOrderSeq') }}</option>
+          <option value="random">{{ t('settings.rotateOrderRandom') }}</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- V2: 快捷键 (SET-010) -->
+    <ShortcutConfig />
 
     <!-- 关于 -->
     <section class="settings-section">

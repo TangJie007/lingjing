@@ -34,6 +34,8 @@ dirs = "5"
 ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 open = "5"
+image = "0.25"
+webp = "0.3"
 
 # Pin time ≤ 0.3.36 — Rust 1.96 的 time 0.3.37+ HourBase From impl
 # 与 cookie 0.18 / tauri-utils 的 blanket From<T> impl 冲突

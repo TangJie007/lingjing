@@ -50,6 +50,9 @@ export interface WallpaperItem {
   plan?: string
   model?: string
   cost?: number
+  thumbPath?: string
+  favorite?: boolean
+  tags?: string[]
 }
 
 export const useWallpaperStore = defineStore('wallpaper', () => {
@@ -223,6 +226,54 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
     return item
   }
 
+  // 切换收藏状态 (WL-004)
+  function toggleFavorite(id: string) {
+    const wp = wallpapers.value.find((w) => w.id === id)
+    if (wp) {
+      wp.favorite = !wp.favorite
+    }
+  }
+
+  // 更新壁纸标签 (WL-004)
+  function updateTags(id: string, tags: string[]) {
+    const wp = wallpapers.value.find((w) => w.id === id)
+    if (wp) {
+      wp.tags = tags
+    }
+  }
+
+  // 搜索过滤 (WL-004)
+  const searchQuery = ref('')
+  const activeTag = ref<string | null>(null)
+  const showFavoritesOnly = ref(false)
+
+  const filteredWallpapers = computed(() => {
+    let list = [...wallpapers.value]
+    if (showFavoritesOnly.value) {
+      list = list.filter((w) => w.favorite)
+    }
+    if (activeTag.value) {
+      list = list.filter((w) => w.tags?.includes(activeTag.value!))
+    }
+    if (searchQuery.value) {
+      const q = searchQuery.value.toLowerCase()
+      list = list.filter(
+        (w) =>
+          w.filename.toLowerCase().includes(q) ||
+          w.prompt?.toLowerCase().includes(q) ||
+          w.tags?.some((t) => t.toLowerCase().includes(q))
+      )
+    }
+    return list
+  })
+
+  // 所有标签 (WL-004)
+  const allTags = computed(() => {
+    const tagSet = new Set<string>()
+    wallpapers.value.forEach((w) => w.tags?.forEach((t) => tagSet.add(t)))
+    return [...tagSet]
+  })
+
   return {
     wallpapers,
     currentWallpaperId,
@@ -247,5 +298,12 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
     getLibrarySize,
     clearLibrary,
     addAiWallpaper,
+    toggleFavorite,
+    updateTags,
+    searchQuery,
+    activeTag,
+    showFavoritesOnly,
+    filteredWallpapers,
+    allTags,
   }
 })

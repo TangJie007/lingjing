@@ -22,10 +22,23 @@ export const useSettingsStore = defineStore('settings', () => {
   const pauseOnFullscreen = ref(true)
   const cacheLimitGB = ref(5)
 
+  // V2 新增设置 (SET-006~010)
+  const restoreOnExit = ref(true)
+  const confirmOnExit = ref(false)
+  const hoverPreview = ref(true)
+  const rotateEnabled = ref(false)
+  const rotateInterval = ref('30min')
+  const rotateSource = ref('all')
+  const rotateOrder = ref('sequential')
+  const peekHotkey = ref('Win+Shift+P')
+  const peekDuration = ref('3s')
+  const allMonitorsSame = ref(true)
+
   // 持久化 — 监听所有设置变化
   watch(
     [locale, autoStart, videoFps, scalingMode, pauseOnFullscreen, cacheLimitGB,
-     defaultStep1Model, defaultStep2Model, defaultGenerationCount, defaultResolution],
+     defaultStep1Model, defaultStep2Model, defaultGenerationCount, defaultResolution,
+     restoreOnExit, confirmOnExit, hoverPreview, rotateEnabled, rotateInterval, rotateSource, rotateOrder],
     () => {
       localStorage.setItem(
         'lingscape-settings',
@@ -40,6 +53,13 @@ export const useSettingsStore = defineStore('settings', () => {
           defaultStep2Model: defaultStep2Model.value,
           defaultGenerationCount: defaultGenerationCount.value,
           defaultResolution: defaultResolution.value,
+          restoreOnExit: restoreOnExit.value,
+          confirmOnExit: confirmOnExit.value,
+          hoverPreview: hoverPreview.value,
+          rotateEnabled: rotateEnabled.value,
+          rotateInterval: rotateInterval.value,
+          rotateSource: rotateSource.value,
+          rotateOrder: rotateOrder.value,
         })
       )
     },
@@ -61,6 +81,13 @@ export const useSettingsStore = defineStore('settings', () => {
       if (data.defaultStep2Model) defaultStep2Model.value = data.defaultStep2Model
       if (data.defaultGenerationCount) defaultGenerationCount.value = data.defaultGenerationCount
       if (data.defaultResolution) defaultResolution.value = data.defaultResolution
+      if (data.restoreOnExit !== undefined) restoreOnExit.value = data.restoreOnExit
+      if (data.confirmOnExit !== undefined) confirmOnExit.value = data.confirmOnExit
+      if (data.hoverPreview !== undefined) hoverPreview.value = data.hoverPreview
+      if (data.rotateEnabled !== undefined) rotateEnabled.value = data.rotateEnabled
+      if (data.rotateInterval) rotateInterval.value = data.rotateInterval
+      if (data.rotateSource) rotateSource.value = data.rotateSource
+      if (data.rotateOrder) rotateOrder.value = data.rotateOrder
     } catch {
       // ignore corrupted data
     }
@@ -77,6 +104,16 @@ export const useSettingsStore = defineStore('settings', () => {
     scalingMode,
     pauseOnFullscreen,
     cacheLimitGB,
+    restoreOnExit,
+    confirmOnExit,
+    hoverPreview,
+    rotateEnabled,
+    rotateInterval,
+    rotateSource,
+    rotateOrder,
+    peekHotkey,
+    peekDuration,
+    allMonitorsSame,
     loadSettings,
   }
 })
