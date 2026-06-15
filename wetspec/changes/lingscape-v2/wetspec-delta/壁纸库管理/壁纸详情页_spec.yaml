@@ -1,0 +1,80 @@
+metadata:
+  id: WL-003
+  name: 壁纸详情页
+  module: 壁纸库管理
+  version: "2.0.0"
+  status: draft
+  priority: P0
+  source: R-03
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  点击任意壁纸卡片进入全屏或侧边栏详情页，展示大图预览 + 完整元数据 + 操作按钮。
+  AI 生成壁纸额外展示原始描述、优化 Prompt、风格标签、色调、AI 模型信息。
+  动态壁纸在详情页自动播放，有播放控制栏。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望点击壁纸卡片后查看大图预览和完整信息，以便了解壁纸详情
+    acceptance_criteria:
+      - id: AC-001
+        description: 点击卡片进入详情页，左侧大图预览（16:9），右侧元数据面板
+        test_method: auto
+      - id: AC-002
+        description: 显示名称、类型、分辨率、文件大小、导入/生成时间
+        test_method: auto
+  - id: US-002
+    story: 作为用户，我希望在详情页看到 AI 生成的完整信息，以便了解生成参数
+    acceptance_criteria:
+      - id: AC-003
+        description: AI 生成壁纸额外展示原始描述、优化 Prompt、风格标签、色调色块、AI 模型
+        test_method: auto
+      - id: AC-004
+        description: 支持「复制 Prompt」和「用此方案重新生成」按钮
+        test_method: auto
+  - id: US-003
+    story: 作为用户，我希望在详情页预览动态壁纸，以便确认效果
+    acceptance_criteria:
+      - id: AC-005
+        description: MP4/GIF/WebM 在详情页自动播放（静音），无限循环
+        test_method: auto
+      - id: AC-006
+        description: 视频有播放进度条 + 暂停/播放控制
+        test_method: auto
+      - id: AC-007
+        description: 键盘快捷键：空格=暂停/播放，左右箭头=上/下一张壁纸，Esc=返回
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 点击卡片进入详情页，左侧大图预览（16:9），右侧元数据面板
+    test_method: auto
+  - id: AC-002
+    description: 显示名称、类型、分辨率、文件大小、导入/生成时间
+    test_method: auto
+  - id: AC-003
+    description: AI 生成壁纸额外展示原始描述、优化 Prompt、风格标签、色调色块、AI 模型
+    test_method: auto
+  - id: AC-004
+    description: 支持「复制 Prompt」和「用此方案重新生成」按钮
+    test_method: auto
+  - id: AC-005
+    description: MP4/GIF/WebM 在详情页自动播放（静音），无限循环
+    test_method: auto
+  - id: AC-006
+    description: 视频有播放进度条 + 暂停/播放控制
+    test_method: auto
+  - id: AC-007
+    description: 键盘快捷键：空格=暂停/播放，左右箭头=上/下一张壁纸，Esc=返回
+    test_method: auto
+
+dependencies:
+  - WL-001
+  - WL-002
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增壁纸详情页——大图预览、完整元数据、AI 方案信息、动态播放控制

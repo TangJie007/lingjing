@@ -1,0 +1,120 @@
+metadata:
+  id: DO-001
+  name: 桌面分区整理
+  module: 桌面整理
+  version: "2.0.0"
+  status: draft
+  priority: P0
+  source: R-06
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  桌面整理模块使灵境从壁纸工具升级为完整桌面美化套件。采用视觉覆盖式实现（路线A），
+  图标实际位置不动，分区是透明覆盖层，视觉上图标在分区里。
+  对标 Fences 核心能力：创建分区、命名、调色、卷起/展开、图标拖入。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望一键隐藏/显示所有桌面图标，以便快速整理桌面
+    acceptance_criteria:
+      - id: AC-001
+        description: 提供一键隐藏/显示所有桌面图标功能
+        test_method: auto
+      - id: AC-002
+        description: 提供一键对齐网格和按名称/类型/大小/日期排序功能
+        test_method: auto
+  - id: US-002
+    story: 作为用户，我希望拖拽创建分区来整理桌面图标，以便桌面更整洁
+    acceptance_criteria:
+      - id: AC-003
+        description: 在整理模式下可拖拽绘制矩形区域创建分区
+        test_method: auto
+      - id: AC-004
+        description: 创建分区后弹出命名输入框，支持从推荐模板一键创建
+        test_method: auto
+      - id: AC-005
+        description: 分区支持自定义颜色和透明度调节
+        test_method: auto
+  - id: US-003
+    story: 作为用户，我希望双击分区标题栏卷起/展开分区，以便节省桌面空间
+    acceptance_criteria:
+      - id: AC-006
+        description: 双击分区标题栏卷起（只显示标题栏），再次双击展开
+        test_method: auto
+      - id: AC-007
+        description: 卷起状态下标题栏可显示图标数量
+        test_method: auto
+  - id: US-004
+    story: 作为用户，我希望拖拽图标进入分区，以便归类管理
+    acceptance_criteria:
+      - id: AC-008
+        description: 拖桌面图标入分区，视觉上图标在分区内，文件实际位置不变
+        test_method: auto
+      - id: AC-009
+        description: 分区内图标自动网格对齐，支持拖拽排序
+        test_method: auto
+      - id: AC-010
+        description: 从分区拖出图标，图标移回桌面自由区
+        test_method: auto
+      - id: AC-011
+        description: 删除分区不删除文件，图标仍保留在桌面
+        test_method: auto
+  - id: US-005
+    story: 作为用户，我希望分区布局在重启后保持不变
+    acceptance_criteria:
+      - id: AC-012
+        description: 启动时自动应用上次分区布局
+        test_method: auto
+      - id: AC-013
+        description: Explorer 重启后分区容器在 3 秒内自动重建
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 提供一键隐藏/显示所有桌面图标功能
+    test_method: auto
+  - id: AC-002
+    description: 提供一键对齐网格和按名称/类型/大小/日期排序功能
+    test_method: auto
+  - id: AC-003
+    description: 在整理模式下可拖拽绘制矩形区域创建分区
+    test_method: auto
+  - id: AC-004
+    description: 创建分区后弹出命名输入框，支持从推荐模板一键创建
+    test_method: auto
+  - id: AC-005
+    description: 分区支持自定义颜色和透明度调节
+    test_method: auto
+  - id: AC-006
+    description: 双击分区标题栏卷起（只显示标题栏），再次双击展开
+    test_method: auto
+  - id: AC-007
+    description: 卷起状态下标题栏可显示图标数量
+    test_method: auto
+  - id: AC-008
+    description: 拖桌面图标入分区，视觉上图标在分区内，文件实际位置不变
+    test_method: auto
+  - id: AC-009
+    description: 分区内图标自动网格对齐，支持拖拽排序
+    test_method: auto
+  - id: AC-010
+    description: 从分区拖出图标，图标移回桌面自由区
+    test_method: auto
+  - id: AC-011
+    description: 删除分区不删除文件，图标仍保留在桌面
+    test_method: auto
+  - id: AC-012
+    description: 启动时自动应用上次分区布局
+    test_method: auto
+  - id: AC-013
+    description: Explorer 重启后分区容器在 3 秒内自动重建
+    test_method: auto
+
+dependencies: []
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增桌面分区整理——创建分区、命名、调色、卷起/展开、图标拖入、布局持久化

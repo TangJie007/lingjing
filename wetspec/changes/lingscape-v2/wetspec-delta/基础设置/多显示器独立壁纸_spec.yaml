@@ -1,0 +1,49 @@
+metadata:
+  id: SET-008
+  name: 多显示器独立壁纸
+  module: 基础设置
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  source: R-08
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  检测到多显示器时，支持为每块屏幕独立设置不同壁纸（静态或动态）。
+  提供显示器配置界面，可预览每块屏幕的当前壁纸并独立更换。
+
+user_stories:
+  - id: US-001
+    story: 作为多屏用户，我希望每块屏幕设置不同壁纸，以便充分利用多显示器布局
+    acceptance_criteria:
+      - id: AC-001
+        description: 自动检测显示器数量，设置页展示每块屏幕的尺寸和当前壁纸预览
+        test_method: auto
+      - id: AC-002
+        description: 每块屏幕可独立选择壁纸（静态或动态）
+        test_method: auto
+      - id: AC-003
+        description: 提供「所有显示器使用相同壁纸」开关，开启后同步设置
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 自动检测显示器数量，设置页展示每块屏幕的尺寸和当前壁纸预览
+    test_method: auto
+  - id: AC-002
+    description: 每块屏幕可独立选择壁纸（静态或动态）
+    test_method: auto
+  - id: AC-003
+    description: 提供「所有显示器使用相同壁纸」开关，开启后同步设置
+    test_method: auto
+
+dependencies:
+  - WP-001
+  - WP-002
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增多显示器独立壁纸——每屏独立设置、显示器配置界面

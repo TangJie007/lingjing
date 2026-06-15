@@ -1,0 +1,85 @@
+metadata:
+  id: "SET-006"
+  module: "基础设置"
+  feature: "退出恢复原始桌面"
+  version: "2.0.0"
+  status: draft
+  priority: P0
+  created_at: "2026-06-15"
+  updated_at: "2026-06-15"
+  author: "AI"
+  prd_source: "AI动态桌面_V2_PRD.md"
+
+description:
+  summary: "当用户关闭/退出灵境时，自动将 Windows 桌面壁纸恢复为进入灵境之前的原始壁纸，不留下任何残留。"
+  detail: >
+    启动时读取并备份当前 Windows 壁纸路径和显示方式到 %AppData%\LingScape\backup\。
+    正常退出时恢复原始壁纸并清除快照；关闭窗口（最小化到托盘）时不恢复。
+    系统关机/重启时尝试恢复。启动时检测是否有未恢复的快照，若有则弹出提示询问是否恢复。
+    设置中提供「退出时恢复原始桌面」开关（默认开启）和「退出前询问确认」开关（默认关闭）。
+  scope: "原始壁纸快照备份、正常退出恢复、崩溃恢复检测、设置开关"
+
+user_stories:
+  - id: "US-001"
+    role: "用户"
+    action: "退出灵境"
+    goal: "桌面恢复为原来的壁纸，不留残留"
+    priority: P0
+  - id: "US-002"
+    role: "用户"
+    action: "灵境崩溃后重新打开"
+    goal: "检测到未恢复的壁纸并提示恢复"
+    priority: P0
+  - id: "US-003"
+    role: "用户"
+    action: "配置退出行为"
+    goal: "控制退出时是否恢复原始桌面"
+    priority: P1
+
+acceptance_criteria:
+  - id: "AC-001"
+    description: "启动时备份原始壁纸"
+    expected_result: "Given 用户启动灵境，When 应用初始化，Then 读取并备份当前 Windows 壁纸路径和显示方式到 %AppData%"
+    test_method: auto
+  - id: "AC-002"
+    description: "正常退出恢复"
+    expected_result: "Given 用户从托盘退出或点击关闭按钮，When 退出应用，Then 恢复原始壁纸并清除快照"
+    test_method: auto
+  - id: "AC-003"
+    description: "最小化不恢复"
+    expected_result: "Given 用户关闭窗口（最小化到托盘），When 窗口关闭，Then 壁纸继续播放，不恢复原始壁纸"
+    test_method: auto
+  - id: "AC-004"
+    description: "关机时恢复"
+    expected_result: "Given 系统关机/重启，When Windows 会话结束，Then 尝试恢复原始壁纸"
+    test_method: auto
+  - id: "AC-005"
+    description: "崩溃恢复检测"
+    expected_result: "Given 灵境上次异常退出，When 重新启动，Then 检测到未恢复快照，弹出提示询问是否恢复"
+    test_method: auto
+  - id: "AC-006"
+    description: "退出恢复开关"
+    expected_result: "Given 用户在设置页，When 切换「退出时恢复原始桌面」开关，Then 默认开启，关闭后退出不恢复"
+    test_method: auto
+  - id: "AC-007"
+    description: "退出确认开关"
+    expected_result: "Given 用户在设置页，When 开启「退出前询问确认」，Then 每次退出弹出确认对话框"
+    test_method: auto
+
+dependencies:
+  internal: ["ST-001", "WP-001"]
+  external: []
+  blocked_by: []
+
+ui_requirements:
+  pages: ["设置页"]
+  components: ["退出恢复开关", "退出确认开关"]
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    changes:
+      - type: added
+        field: "*"
+        new_value: "V2 新增退出恢复原始桌面——快照备份、正常退出恢复、崩溃恢复检测、设置开关"
+        reason: "用户诉求 R-05，退出后不留残留"

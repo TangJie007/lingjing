@@ -1,0 +1,106 @@
+metadata:
+  id: WL-002
+  name: 壁纸库视觉化升级
+  module: 壁纸库管理
+  version: "2.0.0"
+  status: draft
+  priority: P0
+  source: R-01, R-02, R-04
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  V1 壁纸库以列表/文字为主，缺乏直观预览。V2 全面升级为卡片缩略图网格模式，
+  所有类型壁纸（静态图片、动态视频、AI 生成）都必须有图片展示。
+  支持网格/列表双视图切换、三档卡片尺寸、hover 动态预览、多维度排序。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望壁纸库以卡片缩略图网格展示，以便快速浏览和选择壁纸
+    acceptance_criteria:
+      - id: AC-001
+        description: 壁纸库默认以卡片网格展示，每张卡片包含缩略图、名称、来源标识
+        test_method: auto
+      - id: AC-002
+        description: 支持网格/列表双视图切换，切换后保持用户偏好
+        test_method: auto
+      - id: AC-003
+        description: 卡片尺寸支持大/中/小三档切换，默认中号 180×140px
+        test_method: auto
+  - id: US-002
+    story: 作为用户，我希望动态壁纸（MP4/WebM/GIF）也有缩略图展示，以便区分类型
+    acceptance_criteria:
+      - id: AC-004
+        description: MP4/WebM 导入时自动截取第 0.5 秒帧生成 WebP 缩略图，后台线程不阻塞 UI
+        test_method: auto
+      - id: AC-005
+        description: GIF 导入时自动截取第一帧作为缩略图
+        test_method: auto
+      - id: AC-006
+        description: 动态壁纸卡片右上角显示类型角标（▶ GIF / 🎬 MP4 / 🎬 WebM）
+        test_method: auto
+  - id: US-003
+    story: 作为用户，我希望 hover 卡片时动态壁纸自动播放预览，以便直观感受动态效果
+    acceptance_criteria:
+      - id: AC-007
+        description: hover 停留 0.5s 后 GIF/MP4 自动播放预览（静音），移出停止
+        test_method: auto
+      - id: AC-008
+        description: 设置中可关闭 hover 自动预览
+        test_method: auto
+  - id: US-004
+    story: 作为用户，我希望壁纸按导入时间降序排列，以便最新壁纸排在最前面
+    acceptance_criteria:
+      - id: AC-009
+        description: 默认按导入时间降序排列（最新在前）
+        test_method: auto
+      - id: AC-010
+        description: 支持按名称、文件大小、最近使用排序
+        test_method: auto
+      - id: AC-011
+        description: AI 生成壁纸的入库时间 = 生成完成时间，与导入壁纸统一排序
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 壁纸库默认以卡片网格展示，每张卡片包含缩略图、名称、来源标识
+    test_method: auto
+  - id: AC-002
+    description: 支持网格/列表双视图切换，切换后保持用户偏好
+    test_method: auto
+  - id: AC-003
+    description: 卡片尺寸支持大/中/小三档切换，默认中号 180×140px
+    test_method: auto
+  - id: AC-004
+    description: MP4/WebM 导入时自动截取第 0.5 秒帧生成 WebP 缩略图，后台线程不阻塞 UI
+    test_method: auto
+  - id: AC-005
+    description: GIF 导入时自动截取第一帧作为缩略图
+    test_method: auto
+  - id: AC-006
+    description: 动态壁纸卡片右上角显示类型角标（▶ GIF / 🎬 MP4 / 🎬 WebM）
+    test_method: auto
+  - id: AC-007
+    description: hover 停留 0.5s 后 GIF/MP4 自动播放预览（静音），移出停止
+    test_method: auto
+  - id: AC-008
+    description: 设置中可关闭 hover 自动预览
+    test_method: auto
+  - id: AC-009
+    description: 默认按导入时间降序排列（最新在前）
+    test_method: auto
+  - id: AC-010
+    description: 支持按名称、文件大小、最近使用排序
+    test_method: auto
+  - id: AC-011
+    description: AI 生成壁纸的入库时间 = 生成完成时间，与导入壁纸统一排序
+    test_method: auto
+
+dependencies:
+  - WL-001
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增壁纸库视觉化升级——卡片缩略图网格、动态预览、多维度排序

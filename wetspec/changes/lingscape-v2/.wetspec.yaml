@@ -1,0 +1,15 @@
+version: '1.1'
+scope: change
+workflow: delta
+phase: archive
+mode: incremental
+change_name: lingscape-v2
+main_specs: specs
+delta_dir: wetspec-delta
+prd:
+  current: AI动态桌面_V2_PRD.md
+  previous: AI动态桌面_V1_PRD.md
+last_diff: null
+affected_specs: []
+archived: true
+archived_at: '2026-06-15T06:51:58.584Z'

@@ -1,0 +1,54 @@
+metadata:
+  id: SET-007
+  name: 壁纸自动定时轮换
+  module: 基础设置
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  source: R-07
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  用户可以创建轮换列表，系统按设定时间间隔自动切换壁纸。
+  支持轮换来源选择、间隔设置、顺序/随机模式、时间段限制。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望壁纸自动定时切换，以便桌面保持新鲜感
+    acceptance_criteria:
+      - id: AC-001
+        description: 支持设置轮换来源：全部壁纸/仅收藏/指定标签/手动选择列表
+        test_method: auto
+      - id: AC-002
+        description: 支持轮换间隔：15分钟/30分钟/1小时/每天/每次解锁屏幕
+        test_method: auto
+      - id: AC-003
+        description: 支持轮换顺序：顺序/随机
+        test_method: auto
+      - id: AC-004
+        description: 支持轮换时间段：全天/工作时间(9:00-18:00)/自定义
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 支持设置轮换来源：全部壁纸/仅收藏/指定标签/手动选择列表
+    test_method: auto
+  - id: AC-002
+    description: 支持轮换间隔：15分钟/30分钟/1小时/每天/每次解锁屏幕
+    test_method: auto
+  - id: AC-003
+    description: 支持轮换顺序：顺序/随机
+    test_method: auto
+  - id: AC-004
+    description: 支持轮换时间段：全天/工作时间(9:00-18:00)/自定义
+    test_method: auto
+
+dependencies:
+  - WL-001
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增壁纸自动定时轮换——轮换来源、间隔、顺序、时间段

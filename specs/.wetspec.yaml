@@ -1,19 +1,35 @@
 version: '1.0'
 workflow: full
-phase: build
+phase: done
 mode: incremental
 prd:
-  current: AI动态桌面_V1_PRD.md
-  previous: null
+  current: AI动态桌面_V2_PRD.md
+  previous: AI动态桌面_V2_PRD.md
 last_diff: null
-last_sync_at: null
-affected_specs: []
+last_sync_at: '2026-06-15T06:51:58.580Z'
+affected_specs:
+  - 桌面整理/桌面分区整理_spec.yaml
+  - 桌面整理/文件夹门户_spec.yaml
+  - 桌面整理/Peek功能_spec.yaml
+  - 桌面整理/自动整理规则_spec.yaml
+  - 壁纸库管理/壁纸库视觉化升级_spec.yaml
+  - 壁纸库管理/壁纸详情页_spec.yaml
+  - 壁纸库管理/壁纸收藏与标签分类_spec.yaml
+  - 基础设置/退出恢复原始桌面_spec.yaml
+  - 基础设置/壁纸自动定时轮换_spec.yaml
+  - 基础设置/多显示器独立壁纸_spec.yaml
+  - 基础设置/应用内更新检测_spec.yaml
+  - 基础设置/快捷键支持_spec.yaml
+  - API Key管理/多平台API管理_spec.yaml
+  - AI生成管线/AI生成历史重新生成_spec.yaml
+  - AI生成管线/生成进度实时反馈_spec.yaml
+  - 壁纸播放引擎/壁纸播放调节_spec.yaml
 archived: false
 auto_transition: true
 changes_root: wetspec/changes
-active_change: lingscape-v1-design
-openspec_change: lingscape-v1-design
-design_doc: wetspec/changes/lingscape-v1-design/design.md
+active_change: lingscape-v2
+openspec_change: lingscape-v2
+design_doc: wetspec/changes/lingscape-v2/design.md
 build_target: null
 verify_result: pending
 verification_report: null

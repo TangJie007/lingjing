@@ -1,0 +1,72 @@
+metadata:
+  id: WL-004
+  name: 壁纸收藏与标签分类
+  module: 壁纸库管理
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  source: R-09
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  壁纸库随使用积累会越来越大，V2 新增收藏和标签分类能力，让用户快速找到想要的壁纸。
+  支持一键收藏、自定义标签、AI 自动标签、标签筛选、关键词搜索。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望收藏喜欢的壁纸，以便快速找到它们
+    acceptance_criteria:
+      - id: AC-001
+        description: 卡片上有 ♥ 收藏按钮，点击切换收藏状态
+        test_method: auto
+      - id: AC-002
+        description: 壁纸库顶部有「♥ 收藏」筛选标签，点击只显示收藏壁纸
+        test_method: auto
+  - id: US-002
+    story: 作为用户，我希望给壁纸打标签，以便按类别筛选
+    acceptance_criteria:
+      - id: AC-003
+        description: 用户可为壁纸添加 1-5 个自定义标签
+        test_method: auto
+      - id: AC-004
+        description: AI 生成壁纸自动打上风格标签（来自构建方案）
+        test_method: auto
+      - id: AC-005
+        description: 壁纸库顶部可按标签过滤展示
+        test_method: auto
+  - id: US-003
+    story: 作为用户，我希望搜索壁纸，以便快速定位
+    acceptance_criteria:
+      - id: AC-006
+        description: 壁纸库支持搜索框，按名称/标签/AI描述关键词搜索
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 卡片上有 ♥ 收藏按钮，点击切换收藏状态
+    test_method: auto
+  - id: AC-002
+    description: 壁纸库顶部有「♥ 收藏」筛选标签，点击只显示收藏壁纸
+    test_method: auto
+  - id: AC-003
+    description: 用户可为壁纸添加 1-5 个自定义标签
+    test_method: auto
+  - id: AC-004
+    description: AI 生成壁纸自动打上风格标签（来自构建方案）
+    test_method: auto
+  - id: AC-005
+    description: 壁纸库顶部可按标签过滤展示
+    test_method: auto
+  - id: AC-006
+    description: 壁纸库支持搜索框，按名称/标签/AI描述关键词搜索
+    test_method: auto
+
+dependencies:
+  - WL-001
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增壁纸收藏与标签分类——收藏、自定义标签、AI 自动标签、搜索筛选

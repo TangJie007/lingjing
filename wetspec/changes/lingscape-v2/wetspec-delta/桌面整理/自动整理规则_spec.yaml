@@ -1,0 +1,60 @@
+metadata:
+  id: DO-004
+  name: 自动整理规则
+  module: 桌面整理
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  source: R-06
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  用户可以设定规则，新创建的特定类型文件自动归入指定分区。
+  支持按文件类型/后缀/关键词匹配，提供推荐规则模板。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望新文件自动归入指定分区，以便桌面保持整洁
+    acceptance_criteria:
+      - id: AC-001
+        description: 支持按文件类型（后缀）创建自动归类规则
+        test_method: auto
+      - id: AC-002
+        description: 支持按文件名关键词创建自动归类规则
+        test_method: auto
+      - id: AC-003
+        description: 提供推荐规则模板（图片→图片分区、文档→文档分区等）
+        test_method: auto
+      - id: AC-004
+        description: 文件系统 Watcher 监听桌面文件变化，实时触发规则
+        test_method: auto
+      - id: AC-005
+        description: 提供「立即整理桌面」手动触发按钮
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 支持按文件类型（后缀）创建自动归类规则
+    test_method: auto
+  - id: AC-002
+    description: 支持按文件名关键词创建自动归类规则
+    test_method: auto
+  - id: AC-003
+    description: 提供推荐规则模板（图片→图片分区、文档→文档分区等）
+    test_method: auto
+  - id: AC-004
+    description: 文件系统 Watcher 监听桌面文件变化，实时触发规则
+    test_method: auto
+  - id: AC-005
+    description: 提供「立即整理桌面」手动触发按钮
+    test_method: auto
+
+dependencies:
+  - DO-001
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增自动整理规则——文件类型/关键词匹配、实时监听、推荐模板

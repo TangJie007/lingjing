@@ -1,0 +1,72 @@
+metadata:
+  id: API-003
+  name: 多平台API管理
+  module: API Key管理
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  source: R-12
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  V2 在 V1 火山引擎基础上新增 DeepSeek（第一步）和快手可灵（第二步视频）两个平台。
+  每平台独立卡片，显示 Logo + 名称 + Key 输入框 + 状态指示灯 + 测试连接按钮。
+  生成界面新增「生成模式」下拉：图片模式（Seedream）/ 视频模式（可灵/即梦）。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望使用 DeepSeek 作为第一步模型，以便有更多模型选择
+    acceptance_criteria:
+      - id: AC-001
+        description: API 管理页新增 DeepSeek 平台卡片，支持 Key 输入、掩码显示、测试连接
+        test_method: auto
+  - id: US-002
+    story: 作为用户，我希望使用可灵生成视频壁纸，以便获得动态壁纸
+    acceptance_criteria:
+      - id: AC-002
+        description: API 管理页新增可灵平台卡片，支持 Key 输入、掩码显示、测试连接
+        test_method: auto
+      - id: AC-003
+        description: 生成界面新增「生成模式」下拉：图片模式/视频模式
+        test_method: auto
+      - id: AC-004
+        description: 视频模式选择可灵或即梦作为第二步模型
+        test_method: auto
+  - id: US-003
+    story: 作为用户，我希望系统记住我的模型偏好，以便下次快速生成
+    acceptance_criteria:
+      - id: AC-005
+        description: 用户可配置第一步偏好模型 + 第二步偏好模型，系统记住上次选择
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: API 管理页新增 DeepSeek 平台卡片，支持 Key 输入、掩码显示、测试连接
+    test_method: auto
+  - id: AC-002
+    description: API 管理页新增可灵平台卡片，支持 Key 输入、掩码显示、测试连接
+    test_method: auto
+  - id: AC-003
+    description: 生成界面新增「生成模式」下拉：图片模式/视频模式
+    test_method: auto
+  - id: AC-004
+    description: 视频模式选择可灵或即梦作为第二步模型
+    test_method: auto
+  - id: AC-005
+    description: 用户可配置第一步偏好模型 + 第二步偏好模型，系统记住上次选择
+    test_method: auto
+
+dependencies:
+  - API-001
+  - API-002
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: modified
+    description: V2 扩展多平台 API 支持——新增 DeepSeek（第一步）+ 可灵（第二步视频），生成模式下拉
+  - version: "1.0.0"
+    date: "2026-06-12"
+    type: added
+    description: V1 火山引擎首发，DeepSeek/智谱/可灵灰色待扩展

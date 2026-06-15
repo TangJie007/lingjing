@@ -1,0 +1,50 @@
+metadata:
+  id: AI-005
+  name: 生成进度实时反馈
+  module: AI生成管线
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  source: R-13
+  created: "2026-06-15"
+  prd_version: V2.0
+
+description: >
+  V1 生成时只有旋转动画，用户不知道进度。V2 做到清晰的分步进度反馈：
+  第一步显示 AI 意图分析状态和用时，第二步显示 Seedream 生成进度条和预计剩余时间。
+  支持取消生成按钮。
+
+user_stories:
+  - id: US-001
+    story: 作为用户，我希望看到 AI 生成的分步进度，以便知道还要等多久
+    acceptance_criteria:
+      - id: AC-001
+        description: 第一步完成后显示状态和实际用时
+        test_method: auto
+      - id: AC-002
+        description: 第二步显示进度条和预计剩余时间
+        test_method: auto
+      - id: AC-003
+        description: 支持取消生成按钮，取消时提示可能已扣费
+        test_method: auto
+
+acceptance_criteria:
+  - id: AC-001
+    description: 第一步完成后显示状态和实际用时
+    test_method: auto
+  - id: AC-002
+    description: 第二步显示进度条和预计剩余时间
+    test_method: auto
+  - id: AC-003
+    description: 支持取消生成按钮，取消时提示可能已扣费
+    test_method: auto
+
+dependencies:
+  - AI-001
+  - AI-003
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    type: added
+    description: V2 新增生成进度实时反馈——分步状态、进度条、预计时间、取消按钮

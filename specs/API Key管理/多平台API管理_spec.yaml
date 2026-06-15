@@ -1,25 +1,83 @@
-# Spec 文件: 多平台API管理
-# 模块: API Key管理
-# 生成时间: 2026-06-12
-# 版本: 1.0.0
-
-spec:
-  id: "API Key管理-多平台API管理"
-  name: "多平台API管理"
+metadata:
+  id: "API-003"
   module: "API Key管理"
-  description: "火山引擎（V1首发）+ DeepSeek/智谱AI/快手可灵（后续扩展），每平台独立卡片"
-  status: "draft"
-  priority: "low"
-  tags: []
-  acceptance:
-  - "Given 用户打开API管理页，When 查看平台列表，Then 显示火山引擎卡片（V1）+其他平台（灰色不可用）"
-  dependencies: []
-  notes: ""
-  changelog:
-    - date: "2026-06-12"
-      author: "AI"
-      summary: "初始版本，由 PRD 解析生成"
-      changes:
-        - "全量生成"
-  version: "1.0.0"
-  updated_at: "2026-06-12"
+  feature: "多平台API管理"
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  created_at: "2026-06-15"
+  updated_at: "2026-06-15"
+  author: "AI"
+  prd_source: "AI动态桌面_V2_PRD.md"
+
+description:
+  summary: "V2 在 V1 火山引擎基础上新增 DeepSeek（第一步）和快手可灵（第二步视频）两个平台。"
+  detail: >
+    每平台独立卡片，显示 Logo + 名称 + Key 输入框 + 状态指示灯 + 测试连接按钮。
+    生成界面新增「生成模式」下拉：图片模式（Seedream）/ 视频模式（可灵/即梦）。
+    用户可配置第一步偏好模型 + 第二步偏好模型，系统记住上次选择。
+  scope: "DeepSeek 接入、可灵接入、生成模式下拉、模型偏好记忆"
+
+user_stories:
+  - id: "US-001"
+    role: "用户"
+    action: "配置 DeepSeek API Key"
+    goal: "使用 DeepSeek 作为第一步模型"
+    priority: P1
+  - id: "US-002"
+    role: "用户"
+    action: "配置可灵 API Key"
+    goal: "生成视频壁纸"
+    priority: P1
+  - id: "US-003"
+    role: "用户"
+    action: "选择生成模式"
+    goal: "系统记住模型偏好以便下次快速生成"
+    priority: P1
+
+acceptance_criteria:
+  - id: "AC-001"
+    description: "DeepSeek 平台卡片"
+    expected_result: "Given 用户打开 API 管理页，When 查看平台列表，Then 新增 DeepSeek 卡片，支持 Key 输入、掩码显示、测试连接"
+    test_method: auto
+  - id: "AC-002"
+    description: "可灵平台卡片"
+    expected_result: "Given 用户打开 API 管理页，When 查看平台列表，Then 新增可灵卡片，支持 Key 输入、掩码显示、测试连接"
+    test_method: auto
+  - id: "AC-003"
+    description: "生成模式下拉"
+    expected_result: "Given 用户在 AI 创作页，When 选择生成模式，Then 支持图片模式/视频模式切换"
+    test_method: auto
+  - id: "AC-004"
+    description: "视频模式模型选择"
+    expected_result: "Given 用户选择视频模式，When 选择第二步模型，Then 可选可灵或即梦"
+    test_method: auto
+  - id: "AC-005"
+    description: "模型偏好记忆"
+    expected_result: "Given 用户配置了模型偏好，When 下次打开生成页，Then 自动选中上次选择的模型"
+    test_method: auto
+
+dependencies:
+  internal: ["API-001", "API-002"]
+  external: []
+  blocked_by: []
+
+ui_requirements:
+  pages: ["API 管理页", "AI 创作页"]
+  components: ["平台卡片（DeepSeek/可灵）", "生成模式下拉", "模型选择器"]
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    changes:
+      - type: modified
+        field: "*"
+        new_value: "V2 扩展多平台 API 支持——新增 DeepSeek（第一步）+ 可灵（第二步视频），生成模式下拉"
+        reason: "V1 遗漏 R-12，扩展平台生态"
+  - version: "1.0.0"
+    date: "2026-06-12"
+    changes:
+      - type: added
+        field: "*"
+        new_value: "V1 火山引擎首发，DeepSeek/智谱/可灵灰色待扩展"
+        reason: "首次解析 AI动态桌面_V1_PRD.md"

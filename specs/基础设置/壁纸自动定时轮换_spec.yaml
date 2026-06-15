@@ -1,0 +1,62 @@
+metadata:
+  id: "SET-007"
+  module: "基础设置"
+  feature: "壁纸自动定时轮换"
+  version: "2.0.0"
+  status: draft
+  priority: P1
+  created_at: "2026-06-15"
+  updated_at: "2026-06-15"
+  author: "AI"
+  prd_source: "AI动态桌面_V2_PRD.md"
+
+description:
+  summary: "用户可以创建轮换列表，系统按设定时间间隔自动切换壁纸。"
+  detail: >
+    支持轮换来源选择（全部壁纸/仅收藏/指定标签/手动选择列表）。
+    支持轮换间隔（15分钟/30分钟/1小时/每天/每次解锁屏幕）。
+    支持轮换顺序（顺序/随机）和轮换时间段（全天/工作时间/自定义）。
+  scope: "轮换来源、间隔设置、顺序模式、时间段限制"
+
+user_stories:
+  - id: "US-001"
+    role: "用户"
+    action: "配置自动轮换"
+    goal: "壁纸自动定时切换以保持桌面新鲜感"
+    priority: P1
+
+acceptance_criteria:
+  - id: "AC-001"
+    description: "轮换来源设置"
+    expected_result: "Given 用户在设置页，When 配置轮换，Then 支持选择全部壁纸/仅收藏/指定标签/手动选择列表"
+    test_method: auto
+  - id: "AC-002"
+    description: "轮换间隔设置"
+    expected_result: "Given 用户在设置页，When 选择轮换间隔，Then 支持 15分钟/30分钟/1小时/每天/每次解锁屏幕"
+    test_method: auto
+  - id: "AC-003"
+    description: "轮换顺序设置"
+    expected_result: "Given 用户在设置页，When 选择轮换顺序，Then 支持顺序/随机"
+    test_method: auto
+  - id: "AC-004"
+    description: "轮换时间段设置"
+    expected_result: "Given 用户在设置页，When 选择轮换时间段，Then 支持全天/工作时间(9:00-18:00)/自定义"
+    test_method: auto
+
+dependencies:
+  internal: ["WL-001"]
+  external: []
+  blocked_by: []
+
+ui_requirements:
+  pages: ["设置页"]
+  components: ["轮换来源选择", "间隔下拉", "顺序选择", "时间段配置"]
+
+changelog:
+  - version: "2.0.0"
+    date: "2026-06-15"
+    changes:
+      - type: added
+        field: "*"
+        new_value: "V2 新增壁纸自动定时轮换——轮换来源、间隔、顺序、时间段"
+        reason: "V1.5 计划提前至 V2（R-07）"
