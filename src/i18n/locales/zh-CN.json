@@ -31,6 +31,7 @@
   "common": {
     "confirm": "确认",
     "cancel": "取消",
+    "browse": "浏览",
     "save": "保存",
     "delete": "删除",
     "retry": "重试",
@@ -227,6 +228,11 @@
     "shortcutPause": "暂停/继续播放",
     "shortcutHideIcons": "隐藏/显示桌面图标",
     "shortcutDefault": "默认：{keys}",
+    "playbackAdjust": "播放调节",
+    "playbackSpeed": "播放速度",
+    "brightness": "亮度",
+    "saturation": "饱和度",
+    "contrast": "对比度",
     "updateCheck": "更新检测",
     "updateAvailable": "新版本 {version} 已发布",
     "updateCurrent": "当前版本 {version}",
@@ -265,5 +271,18 @@
     "navigate": "切换",
     "close": "返回",
     "notFound": "壁纸不存在"
+  },
+  "desktop": {
+    "editMode": "进入整理模式",
+    "doneEditing": "完成整理",
+    "hideIcons": "隐藏图标",
+    "showIcons": "显示图标",
+    "iconCount": "共 {count} 个图标",
+    "quickCreate": "快速创建",
+    "dragIconsHere": "拖拽图标到此处",
+    "noPartitions": "还没有分区",
+    "startOrganizing": "开始整理桌面",
+    "namePartition": "命名分区",
+    "namePlaceholder": "输入分区名称..."
   }
 }

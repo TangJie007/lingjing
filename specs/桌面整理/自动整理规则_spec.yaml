@@ -1,67 +1,78 @@
 metadata:
-  id: "DO-004"
-  module: "桌面整理"
-  feature: "自动整理规则"
-  version: "2.0.0"
-  status: draft
+  id: DO-004
+  module: 桌面整理
+  feature: 自动整理规则
+  version: 2.0.0
+  status: implemented
   priority: P1
-  created_at: "2026-06-15"
-  updated_at: "2026-06-15"
-  author: "AI"
-  prd_source: "AI动态桌面_V2_PRD.md"
-
+  created_at: '2026-06-15'
+  updated_at: '2026-06-15'
+  author: AI
+  prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: "用户可以设定规则，新创建的特定类型文件自动归入指定分区。"
-  detail: >
-    支持按文件类型（后缀）和文件名关键词创建自动归类规则。
-    提供推荐规则模板（图片→图片分区、文档→文档分区等）。
-    文件系统 Watcher 监听桌面文件变化，实时触发规则。
-    提供「立即整理桌面」手动触发按钮。
-  scope: "文件类型/关键词匹配、实时监听、推荐模板、手动触发"
-
+  summary: 用户可以设定规则，新创建的特定类型文件自动归入指定分区。
+  detail: |
+    支持按文件类型（后缀）和文件名关键词创建自动归类规则。 提供推荐规则模板（图片→图片分区、文档→文档分区等）。 文件系统 Watcher 监听桌面文件变化，实时触发规则。 提供「立即整理桌面」手动触发按钮。
+  scope: 文件类型/关键词匹配、实时监听、推荐模板、手动触发
 user_stories:
-  - id: "US-001"
-    role: "用户"
-    action: "配置自动归类规则"
-    goal: "新文件自动归入指定分区以保持桌面整洁"
+  - id: US-001
+    role: 用户
+    action: 配置自动归类规则
+    goal: 新文件自动归入指定分区以保持桌面整洁
     priority: P1
-
 acceptance_criteria:
-  - id: "AC-001"
-    description: "文件类型规则"
-    expected_result: "Given 用户创建规则，When 选择文件后缀（如 .jpg），Then 新 .jpg 文件自动归入指定分区"
+  - id: AC-001
+    description: 文件类型规则
+    expected_result: Given 用户创建规则，When 选择文件后缀（如 .jpg），Then 新 .jpg 文件自动归入指定分区
     test_method: auto
-  - id: "AC-002"
-    description: "关键词规则"
-    expected_result: "Given 用户创建规则，When 设置关键词（如「截图」），Then 包含关键词的文件自动归入指定分区"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:18.251Z'
+    verify_reason: null
+  - id: AC-002
+    description: 关键词规则
+    expected_result: Given 用户创建规则，When 设置关键词（如「截图」），Then 包含关键词的文件自动归入指定分区
     test_method: auto
-  - id: "AC-003"
-    description: "推荐模板"
-    expected_result: "Given 用户打开规则配置，When 查看推荐模板，Then 显示图片/文档/游戏/下载等预设规则"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:18.251Z'
+    verify_reason: null
+  - id: AC-003
+    description: 推荐模板
+    expected_result: Given 用户打开规则配置，When 查看推荐模板，Then 显示图片/文档/游戏/下载等预设规则
     test_method: auto
-  - id: "AC-004"
-    description: "实时监听"
-    expected_result: "Given 规则已启用，When 桌面出现新文件，Then 文件系统 Watcher 实时触发规则归类"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:18.251Z'
+    verify_reason: null
+  - id: AC-004
+    description: 实时监听
+    expected_result: Given 规则已启用，When 桌面出现新文件，Then 文件系统 Watcher 实时触发规则归类
     test_method: auto
-  - id: "AC-005"
-    description: "手动触发"
-    expected_result: "Given 用户在桌面整理页，When 点击「立即整理桌面」，Then 按规则批量归类现有文件"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:18.251Z'
+    verify_reason: null
+  - id: AC-005
+    description: 手动触发
+    expected_result: Given 用户在桌面整理页，When 点击「立即整理桌面」，Then 按规则批量归类现有文件
     test_method: auto
-
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:18.251Z'
+    verify_reason: null
 dependencies:
-  internal: ["DO-001"]
+  internal:
+    - DO-001
   external: []
   blocked_by: []
-
 ui_requirements:
-  pages: ["桌面整理页"]
-  components: ["规则配置面板", "推荐模板列表", "立即整理按钮"]
-
+  pages:
+    - 桌面整理页
+  components:
+    - 规则配置面板
+    - 推荐模板列表
+    - 立即整理按钮
 changelog:
-  - version: "2.0.0"
-    date: "2026-06-15"
+  - version: 2.0.0
+    date: '2026-06-15'
     changes:
       - type: added
-        field: "*"
-        new_value: "V2 新增自动整理规则——文件类型/关键词匹配、实时监听、推荐模板"
-        reason: "用户诉求 R-06 扩展，Fences 自动化对标"
+        field: '*'
+        new_value: V2 新增自动整理规则——文件类型/关键词匹配、实时监听、推荐模板
+        reason: 用户诉求 R-06 扩展，Fences 自动化对标

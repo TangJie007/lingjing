@@ -1,106 +1,137 @@
 metadata:
-  id: "WL-002"
-  module: "壁纸库管理"
-  feature: "壁纸库视觉化升级"
-  version: "2.0.0"
-  status: draft
+  id: WL-002
+  module: 壁纸库管理
+  feature: 壁纸库视觉化升级
+  version: 2.0.0
+  status: implemented
   priority: P0
-  created_at: "2026-06-15"
-  updated_at: "2026-06-15"
-  author: "AI"
-  prd_source: "AI动态桌面_V2_PRD.md"
-
+  created_at: '2026-06-15'
+  updated_at: '2026-06-15'
+  author: AI
+  prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: "V1 壁纸库以列表/文字为主，缺乏直观预览。V2 全面升级为卡片缩略图网格模式，所有类型壁纸都必须有图片展示。"
+  summary: V1 壁纸库以列表/文字为主，缺乏直观预览。V2 全面升级为卡片缩略图网格模式，所有类型壁纸都必须有图片展示。
   detail: >
-    支持网格/列表双视图切换、三档卡片尺寸（大/中/小）、hover 动态预览（静音）。
-    MP4/WebM 导入时自动截取第 0.5 秒帧生成 WebP 缩略图，GIF 截取第一帧。
-    默认按导入时间降序排列，支持按名称、文件大小、最近使用排序。
-    AI 生成壁纸的入库时间 = 生成完成时间，与导入壁纸统一排序。
-  scope: "卡片缩略图网格、缩略图自动生成、hover 动态预览、多维度排序、视图切换"
-
+    支持网格/列表双视图切换、三档卡片尺寸（大/中/小）、hover 动态预览（静音）。 MP4/WebM 导入时自动截取第 0.5 秒帧生成 WebP 缩略图，GIF 截取第一帧。
+    默认按导入时间降序排列，支持按名称、文件大小、最近使用排序。 AI 生成壁纸的入库时间 = 生成完成时间，与导入壁纸统一排序。
+  scope: 卡片缩略图网格、缩略图自动生成、hover 动态预览、多维度排序、视图切换
 user_stories:
-  - id: "US-001"
-    role: "用户"
-    action: "浏览壁纸库"
-    goal: "以卡片缩略图网格快速预览和选择壁纸"
+  - id: US-001
+    role: 用户
+    action: 浏览壁纸库
+    goal: 以卡片缩略图网格快速预览和选择壁纸
     priority: P0
-  - id: "US-002"
-    role: "用户"
-    action: "查看动态壁纸卡片"
-    goal: "通过缩略图和类型角标区分静态/动态壁纸"
+  - id: US-002
+    role: 用户
+    action: 查看动态壁纸卡片
+    goal: 通过缩略图和类型角标区分静态/动态壁纸
     priority: P0
-  - id: "US-003"
-    role: "用户"
-    action: "hover 壁纸卡片"
-    goal: "动态壁纸自动播放预览以直观感受效果"
+  - id: US-003
+    role: 用户
+    action: hover 壁纸卡片
+    goal: 动态壁纸自动播放预览以直观感受效果
     priority: P1
-  - id: "US-004"
-    role: "用户"
-    action: "切换排序方式"
-    goal: "最新导入的壁纸排在最前面"
+  - id: US-004
+    role: 用户
+    action: 切换排序方式
+    goal: 最新导入的壁纸排在最前面
     priority: P0
-
 acceptance_criteria:
-  - id: "AC-001"
-    description: "卡片网格默认展示"
-    expected_result: "Given 用户打开壁纸库，When 查看壁纸列表，Then 以卡片网格展示，每张卡片包含缩略图、名称、来源标识"
+  - id: AC-001
+    description: 卡片网格默认展示
+    expected_result: Given 用户打开壁纸库，When 查看壁纸列表，Then 以卡片网格展示，每张卡片包含缩略图、名称、来源标识
     test_method: auto
-  - id: "AC-002"
-    description: "网格/列表视图切换"
-    expected_result: "Given 用户在壁纸库，When 切换网格/列表视图，Then 切换后保持用户偏好"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-002
+    description: 网格/列表视图切换
+    expected_result: Given 用户在壁纸库，When 切换网格/列表视图，Then 切换后保持用户偏好
     test_method: auto
-  - id: "AC-003"
-    description: "卡片尺寸切换"
-    expected_result: "Given 用户在壁纸库，When 切换大/中/小卡片尺寸，Then 卡片尺寸实时变化，默认中号 180×140px"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-003
+    description: 卡片尺寸切换
+    expected_result: Given 用户在壁纸库，When 切换大/中/小卡片尺寸，Then 卡片尺寸实时变化，默认中号 180×140px
     test_method: auto
-  - id: "AC-004"
-    description: "MP4/WebM 缩略图自动生成"
-    expected_result: "Given 用户导入 MP4/WebM 文件，When 导入完成，Then 自动截取第 0.5 秒帧生成 WebP 缩略图，后台线程不阻塞 UI"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-004
+    description: MP4/WebM 缩略图自动生成
+    expected_result: Given 用户导入 MP4/WebM 文件，When 导入完成，Then 自动截取第 0.5 秒帧生成 WebP 缩略图，后台线程不阻塞 UI
     test_method: auto
-  - id: "AC-005"
-    description: "GIF 缩略图自动生成"
-    expected_result: "Given 用户导入 GIF 文件，When 导入完成，Then 自动截取第一帧作为缩略图"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-005
+    description: GIF 缩略图自动生成
+    expected_result: Given 用户导入 GIF 文件，When 导入完成，Then 自动截取第一帧作为缩略图
     test_method: auto
-  - id: "AC-006"
-    description: "动态壁纸类型角标"
-    expected_result: "Given 壁纸库中有动态壁纸，When 查看卡片，Then 右上角显示类型角标（▶ GIF / 🎬 MP4 / 🎬 WebM）"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-006
+    description: 动态壁纸类型角标
+    expected_result: Given 壁纸库中有动态壁纸，When 查看卡片，Then 右上角显示类型角标（▶ GIF / 🎬 MP4 / 🎬 WebM）
     test_method: auto
-  - id: "AC-007"
-    description: "hover 动态预览"
-    expected_result: "Given 用户 hover 动态壁纸卡片 0.5s，When 停留，Then GIF/MP4 自动播放预览（静音），移出停止"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-007
+    description: hover 动态预览
+    expected_result: Given 用户 hover 动态壁纸卡片 0.5s，When 停留，Then GIF/MP4 自动播放预览（静音），移出停止
     test_method: auto
-  - id: "AC-008"
-    description: "关闭 hover 预览"
-    expected_result: "Given 用户在设置中关闭 hover 自动预览，When hover 卡片，Then 不自动播放"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-008
+    description: 关闭 hover 预览
+    expected_result: Given 用户在设置中关闭 hover 自动预览，When hover 卡片，Then 不自动播放
     test_method: auto
-  - id: "AC-009"
-    description: "默认排序规则"
-    expected_result: "Given 用户打开壁纸库，When 查看列表，Then 默认按导入时间降序排列（最新在前）"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-009
+    description: 默认排序规则
+    expected_result: Given 用户打开壁纸库，When 查看列表，Then 默认按导入时间降序排列（最新在前）
     test_method: auto
-  - id: "AC-010"
-    description: "多维度排序"
-    expected_result: "Given 用户在壁纸库，When 切换排序方式，Then 支持按名称、文件大小、最近使用排序"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-010
+    description: 多维度排序
+    expected_result: Given 用户在壁纸库，When 切换排序方式，Then 支持按名称、文件大小、最近使用排序
     test_method: auto
-  - id: "AC-011"
-    description: "AI 壁纸排序统一"
-    expected_result: "Given 壁纸库中有 AI 生成壁纸，When 按导入时间排序，Then AI 生成壁纸的入库时间 = 生成完成时间，与导入壁纸统一排序"
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
+  - id: AC-011
+    description: AI 壁纸排序统一
+    expected_result: Given 壁纸库中有 AI 生成壁纸，When 按导入时间排序，Then AI 生成壁纸的入库时间 = 生成完成时间，与导入壁纸统一排序
     test_method: auto
-
+    verify_status: pass
+    verified_at: '2026-06-15T17:39:58.580Z'
+    verify_reason: null
 dependencies:
-  internal: ["WL-001"]
+  internal:
+    - WL-001
   external: []
   blocked_by: []
-
 ui_requirements:
-  pages: ["壁纸库页"]
-  components: ["WallpaperCard（升级）", "视图切换按钮", "排序下拉", "卡片尺寸切换"]
-
+  pages:
+    - 壁纸库页
+  components:
+    - WallpaperCard（升级）
+    - 视图切换按钮
+    - 排序下拉
+    - 卡片尺寸切换
 changelog:
-  - version: "2.0.0"
-    date: "2026-06-15"
+  - version: 2.0.0
+    date: '2026-06-15'
     changes:
       - type: added
-        field: "*"
-        new_value: "V2 新增壁纸库视觉化升级——卡片缩略图网格、动态预览、多维度排序"
-        reason: "用户诉求 R-01/R-02/R-04，提升浏览体验"
+        field: '*'
+        new_value: V2 新增壁纸库视觉化升级——卡片缩略图网格、动态预览、多维度排序
+        reason: 用户诉求 R-01/R-02/R-04，提升浏览体验

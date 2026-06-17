@@ -1,119 +1,155 @@
 metadata:
-  id: "DO-001"
-  module: "桌面整理"
-  feature: "桌面分区整理"
-  version: "2.0.0"
-  status: draft
+  id: DO-001
+  module: 桌面整理
+  feature: 桌面分区整理
+  version: 2.0.0
+  status: implemented
   priority: P0
-  created_at: "2026-06-15"
-  updated_at: "2026-06-15"
-  author: "AI"
-  prd_source: "AI动态桌面_V2_PRD.md"
-
+  created_at: '2026-06-15'
+  updated_at: '2026-06-15'
+  author: AI
+  prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: "桌面整理模块使灵境从壁纸工具升级为完整桌面美化套件。采用视觉覆盖式实现，对标 Fences 核心能力。"
+  summary: 桌面整理模块使灵境从壁纸工具升级为完整桌面美化套件。采用视觉覆盖式实现，对标 Fences 核心能力。
   detail: >
-    采用视觉覆盖式实现（路线A）：图标实际位置不动，分区是透明覆盖层，视觉上图标在分区里。
-    支持拖拽创建分区、命名、自定义颜色和透明度、双击卷起/展开。
-    图标拖入分区视觉上归类，文件实际位置不变。删除分区不删除文件。
+    采用视觉覆盖式实现（路线A）：图标实际位置不动，分区是透明覆盖层，视觉上图标在分区里。 支持拖拽创建分区、命名、自定义颜色和透明度、双击卷起/展开。 图标拖入分区视觉上归类，文件实际位置不变。删除分区不删除文件。
     启动时自动应用上次分区布局，Explorer 重启后 3 秒内自动重建分区容器。
-  scope: "分区创建/命名/调色/卷起/展开、图标拖入/拖出、布局持久化、Explorer 重启恢复"
-
+  scope: 分区创建/命名/调色/卷起/展开、图标拖入/拖出、布局持久化、Explorer 重启恢复
 user_stories:
-  - id: "US-001"
-    role: "用户"
-    action: "一键隐藏/显示桌面图标"
-    goal: "快速整理桌面"
+  - id: US-001
+    role: 用户
+    action: 一键隐藏/显示桌面图标
+    goal: 快速整理桌面
     priority: P0
-  - id: "US-002"
-    role: "用户"
-    action: "拖拽创建分区"
-    goal: "整理桌面图标使桌面更整洁"
+  - id: US-002
+    role: 用户
+    action: 拖拽创建分区
+    goal: 整理桌面图标使桌面更整洁
     priority: P0
-  - id: "US-003"
-    role: "用户"
-    action: "双击分区标题栏"
-    goal: "卷起/展开分区以节省桌面空间"
+  - id: US-003
+    role: 用户
+    action: 双击分区标题栏
+    goal: 卷起/展开分区以节省桌面空间
     priority: P0
-  - id: "US-004"
-    role: "用户"
-    action: "拖拽图标进入分区"
-    goal: "归类管理桌面图标"
+  - id: US-004
+    role: 用户
+    action: 拖拽图标进入分区
+    goal: 归类管理桌面图标
     priority: P0
-  - id: "US-005"
-    role: "用户"
-    action: "重启应用"
-    goal: "分区布局保持不变"
+  - id: US-005
+    role: 用户
+    action: 重启应用
+    goal: 分区布局保持不变
     priority: P0
-
 acceptance_criteria:
-  - id: "AC-001"
-    description: "隐藏/显示图标"
-    expected_result: "Given 用户在桌面整理模式，When 点击隐藏图标，Then 所有桌面图标隐藏/显示"
+  - id: AC-001
+    description: 隐藏/显示图标
+    expected_result: Given 用户在桌面整理模式，When 点击隐藏图标，Then 所有桌面图标隐藏/显示
     test_method: auto
-  - id: "AC-002"
-    description: "对齐与排序"
-    expected_result: "Given 用户在桌面整理模式，When 选择排序方式，Then 支持按名称/类型/大小/日期排序"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-002
+    description: 对齐与排序
+    expected_result: Given 用户在桌面整理模式，When 选择排序方式，Then 支持按名称/类型/大小/日期排序
     test_method: auto
-  - id: "AC-003"
-    description: "拖拽创建分区"
-    expected_result: "Given 用户在整理模式，When 拖拽绘制矩形区域，Then 创建分区并弹出命名输入框"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-003
+    description: 拖拽创建分区
+    expected_result: Given 用户在整理模式，When 拖拽绘制矩形区域，Then 创建分区并弹出命名输入框
     test_method: auto
-  - id: "AC-004"
-    description: "推荐模板创建"
-    expected_result: "Given 用户点击新建分区，When 选择推荐模板，Then 一键创建工作区/娱乐/工具/临时分区"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-004
+    description: 推荐模板创建
+    expected_result: Given 用户点击新建分区，When 选择推荐模板，Then 一键创建工作区/娱乐/工具/临时分区
     test_method: auto
-  - id: "AC-005"
-    description: "分区自定义颜色和透明度"
-    expected_result: "Given 用户右键分区标题栏，When 选择变色/透明度，Then 分区外观实时更新"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-005
+    description: 分区自定义颜色和透明度
+    expected_result: Given 用户右键分区标题栏，When 选择变色/透明度，Then 分区外观实时更新
     test_method: auto
-  - id: "AC-006"
-    description: "卷起/展开"
-    expected_result: "Given 用户双击分区标题栏，When 双击，Then 卷起（只显示标题栏），再次双击展开"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-006
+    description: 卷起/展开
+    expected_result: Given 用户双击分区标题栏，When 双击，Then 卷起（只显示标题栏），再次双击展开
     test_method: auto
-  - id: "AC-007"
-    description: "卷起状态图标数量"
-    expected_result: "Given 分区处于卷起状态，When 查看标题栏，Then 显示图标数量"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-007
+    description: 卷起状态图标数量
+    expected_result: Given 分区处于卷起状态，When 查看标题栏，Then 显示图标数量
     test_method: auto
-  - id: "AC-008"
-    description: "图标拖入分区"
-    expected_result: "Given 用户拖桌面图标入分区，When 放入，Then 视觉上图标在分区内，文件实际位置不变"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-008
+    description: 图标拖入分区
+    expected_result: Given 用户拖桌面图标入分区，When 放入，Then 视觉上图标在分区内，文件实际位置不变
     test_method: auto
-  - id: "AC-009"
-    description: "分区内图标排序"
-    expected_result: "Given 图标在分区内，When 拖拽排序，Then 图标自动网格对齐"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-009
+    description: 分区内图标排序
+    expected_result: Given 图标在分区内，When 拖拽排序，Then 图标自动网格对齐
     test_method: auto
-  - id: "AC-010"
-    description: "图标拖出分区"
-    expected_result: "Given 用户从分区拖出图标，When 拖到桌面，Then 图标移回桌面自由区"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-010
+    description: 图标拖出分区
+    expected_result: Given 用户从分区拖出图标，When 拖到桌面，Then 图标移回桌面自由区
     test_method: auto
-  - id: "AC-011"
-    description: "删除分区不删文件"
-    expected_result: "Given 用户删除分区，When 确认删除，Then 分区消失，图标文件不受影响"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-011
+    description: 删除分区不删文件
+    expected_result: Given 用户删除分区，When 确认删除，Then 分区消失，图标文件不受影响
     test_method: auto
-  - id: "AC-012"
-    description: "启动恢复布局"
-    expected_result: "Given 用户上次有分区布局，When 启动灵境，Then 自动应用上次分区布局"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-012
+    description: 启动恢复布局
+    expected_result: Given 用户上次有分区布局，When 启动灵境，Then 自动应用上次分区布局
     test_method: auto
-  - id: "AC-013"
-    description: "Explorer 重启恢复"
-    expected_result: "Given Explorer 重启，When 重新加载，Then 分区容器在 3 秒内自动重建"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
+  - id: AC-013
+    description: Explorer 重启恢复
+    expected_result: Given Explorer 重启，When 重新加载，Then 分区容器在 3 秒内自动重建
     test_method: auto
-
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:10.735Z'
+    verify_reason: null
 dependencies:
   internal: []
   external: []
   blocked_by: []
-
 ui_requirements:
-  pages: ["桌面整理页"]
-  components: ["分区容器（透明窗口）", "分区标题栏", "图标网格", "整理模式工具栏"]
-
+  pages:
+    - 桌面整理页
+  components:
+    - 分区容器（透明窗口）
+    - 分区标题栏
+    - 图标网格
+    - 整理模式工具栏
 changelog:
-  - version: "2.0.0"
-    date: "2026-06-15"
+  - version: 2.0.0
+    date: '2026-06-15'
     changes:
       - type: added
-        field: "*"
-        new_value: "V2 新增桌面分区整理——创建分区、命名、调色、卷起/展开、图标拖入、布局持久化"
-        reason: "用户诉求 R-06，完整桌面美化闭环"
+        field: '*'
+        new_value: V2 新增桌面分区整理——创建分区、命名、调色、卷起/展开、图标拖入、布局持久化
+        reason: 用户诉求 R-06，完整桌面美化闭环

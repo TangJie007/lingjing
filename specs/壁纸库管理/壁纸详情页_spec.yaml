@@ -1,84 +1,105 @@
 metadata:
-  id: "WL-003"
-  module: "壁纸库管理"
-  feature: "壁纸详情页"
-  version: "2.0.0"
-  status: draft
+  id: WL-003
+  module: 壁纸库管理
+  feature: 壁纸详情页
+  version: 2.0.0
+  status: implemented
   priority: P0
-  created_at: "2026-06-15"
-  updated_at: "2026-06-15"
-  author: "AI"
-  prd_source: "AI动态桌面_V2_PRD.md"
-
+  created_at: '2026-06-15'
+  updated_at: '2026-06-15'
+  author: AI
+  prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: "点击任意壁纸卡片进入全屏或侧边栏详情页，展示大图预览 + 完整元数据 + 操作按钮。"
+  summary: 点击任意壁纸卡片进入全屏或侧边栏详情页，展示大图预览 + 完整元数据 + 操作按钮。
   detail: >
-    AI 生成壁纸额外展示原始描述、优化 Prompt、风格标签、色调色块、AI 模型信息。
-    动态壁纸在详情页自动播放（静音），有播放进度条 + 暂停/播放控制。
+    AI 生成壁纸额外展示原始描述、优化 Prompt、风格标签、色调色块、AI 模型信息。 动态壁纸在详情页自动播放（静音），有播放进度条 + 暂停/播放控制。
     支持键盘快捷键：空格=暂停/播放，左右箭头=上/下一张壁纸，Esc=返回。
-  scope: "大图预览、元数据面板、AI 方案信息展示、动态播放控制、键盘快捷键"
-
+  scope: 大图预览、元数据面板、AI 方案信息展示、动态播放控制、键盘快捷键
 user_stories:
-  - id: "US-001"
-    role: "用户"
-    action: "点击壁纸卡片"
-    goal: "查看大图预览和完整信息以了解壁纸详情"
+  - id: US-001
+    role: 用户
+    action: 点击壁纸卡片
+    goal: 查看大图预览和完整信息以了解壁纸详情
     priority: P0
-  - id: "US-002"
-    role: "用户"
-    action: "查看 AI 生成壁纸详情"
-    goal: "看到完整的 AI 生成参数以便了解生成方案"
+  - id: US-002
+    role: 用户
+    action: 查看 AI 生成壁纸详情
+    goal: 看到完整的 AI 生成参数以便了解生成方案
     priority: P0
-  - id: "US-003"
-    role: "用户"
-    action: "在详情页预览动态壁纸"
-    goal: "确认动态效果后再决定是否应用"
+  - id: US-003
+    role: 用户
+    action: 在详情页预览动态壁纸
+    goal: 确认动态效果后再决定是否应用
     priority: P0
-
 acceptance_criteria:
-  - id: "AC-001"
-    description: "详情页布局"
-    expected_result: "Given 用户点击壁纸卡片，When 进入详情页，Then 左侧大图预览（16:9），右侧元数据面板"
+  - id: AC-001
+    description: 详情页布局
+    expected_result: Given 用户点击壁纸卡片，When 进入详情页，Then 左侧大图预览（16:9），右侧元数据面板
     test_method: auto
-  - id: "AC-002"
-    description: "基础元数据展示"
-    expected_result: "Given 用户在详情页，When 查看信息面板，Then 显示名称、类型、分辨率、文件大小、导入/生成时间"
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
+  - id: AC-002
+    description: 基础元数据展示
+    expected_result: Given 用户在详情页，When 查看信息面板，Then 显示名称、类型、分辨率、文件大小、导入/生成时间
     test_method: auto
-  - id: "AC-003"
-    description: "AI 方案信息展示"
-    expected_result: "Given 用户查看 AI 生成壁纸详情，When 查看信息面板，Then 额外展示原始描述、优化 Prompt、风格标签、色调色块、AI 模型"
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
+  - id: AC-003
+    description: AI 方案信息展示
+    expected_result: Given 用户查看 AI 生成壁纸详情，When 查看信息面板，Then 额外展示原始描述、优化 Prompt、风格标签、色调色块、AI 模型
     test_method: auto
-  - id: "AC-004"
-    description: "复制 Prompt 和重新生成"
-    expected_result: "Given 用户在 AI 壁纸详情页，When 点击操作按钮，Then 支持「复制 Prompt」和「用此方案重新生成」"
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
+  - id: AC-004
+    description: 复制 Prompt 和重新生成
+    expected_result: Given 用户在 AI 壁纸详情页，When 点击操作按钮，Then 支持「复制 Prompt」和「用此方案重新生成」
     test_method: auto
-  - id: "AC-005"
-    description: "动态壁纸自动播放"
-    expected_result: "Given 用户进入动态壁纸详情页，When 页面加载，Then MP4/GIF/WebM 自动播放（静音），无限循环"
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
+  - id: AC-005
+    description: 动态壁纸自动播放
+    expected_result: Given 用户进入动态壁纸详情页，When 页面加载，Then MP4/GIF/WebM 自动播放（静音），无限循环
     test_method: auto
-  - id: "AC-006"
-    description: "播放控制栏"
-    expected_result: "Given 用户在动态壁纸详情页，When 查看播放控制，Then 有播放进度条 + 暂停/播放控制"
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
+  - id: AC-006
+    description: 播放控制栏
+    expected_result: Given 用户在动态壁纸详情页，When 查看播放控制，Then 有播放进度条 + 暂停/播放控制
     test_method: auto
-  - id: "AC-007"
-    description: "键盘快捷键"
-    expected_result: "Given 用户在详情页，When 按键，Then 空格=暂停/播放，左右箭头=上/下一张壁纸，Esc=返回"
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
+  - id: AC-007
+    description: 键盘快捷键
+    expected_result: Given 用户在详情页，When 按键，Then 空格=暂停/播放，左右箭头=上/下一张壁纸，Esc=返回
     test_method: auto
-
+    verify_status: pass
+    verified_at: '2026-06-15T17:40:01.745Z'
+    verify_reason: null
 dependencies:
-  internal: ["WL-001", "WL-002"]
+  internal:
+    - WL-001
+    - WL-002
   external: []
   blocked_by: []
-
 ui_requirements:
-  pages: ["壁纸详情页"]
-  components: ["大图预览区", "元数据面板", "播放控制栏", "操作按钮组"]
-
+  pages:
+    - 壁纸详情页
+  components:
+    - 大图预览区
+    - 元数据面板
+    - 播放控制栏
+    - 操作按钮组
 changelog:
-  - version: "2.0.0"
-    date: "2026-06-15"
+  - version: 2.0.0
+    date: '2026-06-15'
     changes:
       - type: added
-        field: "*"
-        new_value: "V2 新增壁纸详情页——大图预览、完整元数据、AI 方案信息、动态播放控制"
-        reason: "用户诉求 R-03，提升壁纸浏览深度"
+        field: '*'
+        new_value: V2 新增壁纸详情页——大图预览、完整元数据、AI 方案信息、动态播放控制
+        reason: 用户诉求 R-03，提升壁纸浏览深度

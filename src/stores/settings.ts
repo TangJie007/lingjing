@@ -33,6 +33,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const peekHotkey = ref('Win+Shift+P')
   const peekDuration = ref('3s')
   const allMonitorsSame = ref(true)
+  const playbackSpeed = ref(1.0)
+  const brightness = ref(0)
+  const saturation = ref(0)
+  const contrast = ref(0)
 
   // 持久化 — 监听所有设置变化
   watch(
@@ -114,6 +118,10 @@ export const useSettingsStore = defineStore('settings', () => {
     peekHotkey,
     peekDuration,
     allMonitorsSame,
+    playbackSpeed,
+    brightness,
+    saturation,
+    contrast,
     loadSettings,
   }
 })

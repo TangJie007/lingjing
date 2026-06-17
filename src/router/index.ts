@@ -43,6 +43,11 @@ const routes: RouteRecordRaw[] = [
     name: 'WallpaperDetail',
     component: () => import('@/views/WallpaperDetailPage.vue'),
   },
+  {
+    path: '/desktop-organizer',
+    name: 'DesktopOrganizer',
+    component: () => import('@/views/DesktopOrganizerPage.vue'),
+  },
 ]
 
 const router = createRouter({

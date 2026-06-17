@@ -1,66 +1,77 @@
 metadata:
-  id: "DO-003"
-  module: "桌面整理"
-  feature: "Peek功能"
-  version: "2.0.0"
-  status: draft
+  id: DO-003
+  module: 桌面整理
+  feature: Peek功能
+  version: 2.0.0
+  status: implemented
   priority: P1
-  created_at: "2026-06-15"
-  updated_at: "2026-06-15"
-  author: "AI"
-  prd_source: "AI动态桌面_V2_PRD.md"
-
+  created_at: '2026-06-15'
+  updated_at: '2026-06-15'
+  author: AI
+  prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: "用户在全屏应用时，按热键临时呼出所有分区，快速找到/打开文件，然后自动消失。"
-  detail: >
-    默认热键 Win+Shift+P（可自定义）。按热键后所有分区临时显示在最前端（覆盖全屏应用）。
-    无操作 3 秒后自动隐藏，有操作时持续显示。按 Esc 立即隐藏。
-    点击分区内文件打开后分区自动隐藏。设置中可自定义热键和显示时长。
-  scope: "全局热键呼出、自动隐藏、自定义热键和时长"
-
+  summary: 用户在全屏应用时，按热键临时呼出所有分区，快速找到/打开文件，然后自动消失。
+  detail: |
+    默认热键 Win+Shift+P（可自定义）。按热键后所有分区临时显示在最前端（覆盖全屏应用）。 无操作 3 秒后自动隐藏，有操作时持续显示。按 Esc 立即隐藏。 点击分区内文件打开后分区自动隐藏。设置中可自定义热键和显示时长。
+  scope: 全局热键呼出、自动隐藏、自定义热键和时长
 user_stories:
-  - id: "US-001"
-    role: "用户"
-    action: "在全屏应用时按热键"
-    goal: "快速访问桌面分区找到文件"
+  - id: US-001
+    role: 用户
+    action: 在全屏应用时按热键
+    goal: 快速访问桌面分区找到文件
     priority: P1
-
 acceptance_criteria:
-  - id: "AC-001"
-    description: "Peek 呼出"
-    expected_result: "Given 用户在全屏应用中，When 按 Win+Shift+P，Then 所有分区临时显示在最前端"
+  - id: AC-001
+    description: Peek 呼出
+    expected_result: Given 用户在全屏应用中，When 按 Win+Shift+P，Then 所有分区临时显示在最前端
     test_method: auto
-  - id: "AC-002"
-    description: "自动隐藏"
-    expected_result: "Given Peek 分区显示中，When 无操作 3 秒，Then 分区自动隐藏"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:16.350Z'
+    verify_reason: null
+  - id: AC-002
+    description: 自动隐藏
+    expected_result: Given Peek 分区显示中，When 无操作 3 秒，Then 分区自动隐藏
     test_method: auto
-  - id: "AC-003"
-    description: "Esc 隐藏"
-    expected_result: "Given Peek 分区显示中，When 按 Esc，Then 立即隐藏分区"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:16.350Z'
+    verify_reason: null
+  - id: AC-003
+    description: Esc 隐藏
+    expected_result: Given Peek 分区显示中，When 按 Esc，Then 立即隐藏分区
     test_method: auto
-  - id: "AC-004"
-    description: "打开文件后隐藏"
-    expected_result: "Given Peek 分区显示中，When 点击分区内文件打开，Then 分区自动隐藏"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:16.350Z'
+    verify_reason: null
+  - id: AC-004
+    description: 打开文件后隐藏
+    expected_result: Given Peek 分区显示中，When 点击分区内文件打开，Then 分区自动隐藏
     test_method: auto
-  - id: "AC-005"
-    description: "自定义热键和时长"
-    expected_result: "Given 用户在设置页，When 修改 Peek 热键和显示时长，Then 自定义生效"
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:16.350Z'
+    verify_reason: null
+  - id: AC-005
+    description: 自定义热键和时长
+    expected_result: Given 用户在设置页，When 修改 Peek 热键和显示时长，Then 自定义生效
     test_method: auto
-
+    verify_status: pass
+    verified_at: '2026-06-15T17:41:16.350Z'
+    verify_reason: null
 dependencies:
-  internal: ["DO-001"]
+  internal:
+    - DO-001
   external: []
   blocked_by: []
-
 ui_requirements:
-  pages: ["设置页"]
-  components: ["Peek 热键配置", "显示时长选择"]
-
+  pages:
+    - 设置页
+  components:
+    - Peek 热键配置
+    - 显示时长选择
 changelog:
-  - version: "2.0.0"
-    date: "2026-06-15"
+  - version: 2.0.0
+    date: '2026-06-15'
     changes:
       - type: added
-        field: "*"
-        new_value: "V2 新增 Peek 功能——全局热键呼出分区、自动隐藏、自定义热键"
-        reason: "用户诉求 R-06 扩展，Fences Peek 对标"
+        field: '*'
+        new_value: V2 新增 Peek 功能——全局热键呼出分区、自动隐藏、自定义热键
+        reason: 用户诉求 R-06 扩展，Fences Peek 对标

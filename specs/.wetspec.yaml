@@ -1,6 +1,6 @@
 version: '1.0'
 workflow: full
-phase: build
+phase: done
 mode: incremental
 prd:
   current: AI动态桌面_V2_PRD.md
@@ -31,7 +31,7 @@ active_change: lingscape-v2
 openspec_change: lingscape-v2
 design_doc: wetspec/changes/lingscape-v2/design.md
 build_target: specs/壁纸库管理/壁纸库视觉化升级_spec.yaml
-verify_result: pending
+verify_result: pass
 verification_report: null
 unit_test:
   framework: vitest

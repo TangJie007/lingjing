@@ -364,6 +364,43 @@ function statusBadgeText(status: string) {
     <!-- V2: 快捷键 (SET-010) -->
     <ShortcutConfig />
 
+    <!-- V2: 播放调节 (WP-004) -->
+    <section class="settings-section">
+      <h2 class="settings-section-title">{{ t('settings.playbackAdjust') }}</h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.playbackSpeed') }}</span>
+        </div>
+        <select v-model="settings.playbackSpeed" class="setting-select">
+          <option :value="0.5">0.5x</option>
+          <option :value="1">1x</option>
+          <option :value="1.5">1.5x</option>
+          <option :value="2">2x</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.brightness') }}</span>
+        </div>
+        <input v-model.number="settings.brightness" type="range" min="-50" max="50" class="setting-slider" />
+        <span class="slider-value">{{ settings.brightness }}%</span>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.saturation') }}</span>
+        </div>
+        <input v-model.number="settings.saturation" type="range" min="-50" max="50" class="setting-slider" />
+        <span class="slider-value">{{ settings.saturation }}%</span>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.contrast') }}</span>
+        </div>
+        <input v-model.number="settings.contrast" type="range" min="-50" max="50" class="setting-slider" />
+        <span class="slider-value">{{ settings.contrast }}%</span>
+      </div>
+    </section>
+
     <!-- 关于 -->
     <section class="settings-section">
       <h2 class="settings-section-title">{{ t('settings.about') }}</h2>

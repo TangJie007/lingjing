@@ -3,9 +3,14 @@
 
 mod api;
 mod auto_rotate;
+mod auto_rules;
 mod autostart;
 mod crypto;
 mod desktop_core;
+#[cfg(target_os = "windows")]
+mod desktop_organizer;
+mod folder_portal;
+mod playback_adjust;
 mod thumbnail;
 mod tray;
 mod update_checker;
@@ -17,12 +22,18 @@ use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(autostart::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(wallpaper_engine::CurrentWallpaperState::default())
         .manage(video_player::VideoPlayerState::default())
         .manage(auto_rotate::RotateState::default())
+        .manage(auto_rules::RuleState::default());
+
+    #[cfg(target_os = "windows")]
+    let builder = builder.manage(desktop_organizer::OrganizerState::default());
+
+    builder
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -91,6 +102,32 @@ pub fn run() {
             auto_rotate::set_rotate_config,
             auto_rotate::get_rotate_config,
             update_checker::check_update,
+            folder_portal::open_folder_portal,
+            folder_portal::refresh_folder_portal,
+            auto_rules::get_auto_rules,
+            auto_rules::update_auto_rule,
+            auto_rules::apply_auto_rules,
+            playback_adjust::set_playback_params,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::enumerate_desktop_icons,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::create_partition,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::delete_partition,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::update_partition,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::move_icon_to_partition,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::get_partition_layout,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::save_partition_layout,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::load_partition_layout,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::hide_desktop_icons,
+            #[cfg(target_os = "windows")]
+            desktop_organizer::show_desktop_icons,
             crypto::crypto_encrypt,
             crypto::crypto_decrypt,
             crypto::crypto_list_platforms,
