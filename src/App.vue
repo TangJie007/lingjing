@@ -32,7 +32,8 @@ function onContentScroll() {
 
 const isOnboarding = computed(() => route.path === '/onboarding')
 const isDesktopPlayer = computed(() => route.path === '/desktop-player')
-const showChrome = computed(() => !isOnboarding.value && !isDesktopPlayer.value)
+const isFenceOverlay = computed(() => route.path === '/fence-overlay')
+const showChrome = computed(() => !isOnboarding.value && !isDesktopPlayer.value && !isFenceOverlay.value)
 
 // 系统托盘事件处理
 useTray((action) => {
@@ -124,8 +125,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- 桌面播放器 — 无 chrome，全屏 -->
-  <template v-if="isDesktopPlayer">
+  <!-- 桌面播放器 / 栅格叠加层 — 无 chrome，全屏 -->
+  <template v-if="isDesktopPlayer || isFenceOverlay">
     <router-view />
   </template>
 

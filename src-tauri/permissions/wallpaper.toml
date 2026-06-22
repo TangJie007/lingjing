@@ -24,11 +24,6 @@ description = "Enables the set_wallpaper command."
 commands.allow = ["set_wallpaper"]
 
 [[permission]]
-identifier = "allow-check-desktop-layer-conflicts"
-description = "Enables the check_desktop_layer_conflicts command."
-commands.allow = ["check_desktop_layer_conflicts"]
-
-[[permission]]
 identifier = "allow-get-current-wallpaper"
 description = "Enables the get_current_wallpaper command."
 commands.allow = ["get_current_wallpaper"]
@@ -62,7 +57,6 @@ permissions = [
   "allow-delete-wallpaper",
   "allow-export-wallpaper",
   "allow-set-wallpaper",
-  "allow-check-desktop-layer-conflicts",
   "allow-get-current-wallpaper",
   "allow-get-library-size",
   "allow-clear-library",

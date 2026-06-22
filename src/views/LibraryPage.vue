@@ -4,11 +4,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useWallpaperStore } from '@/stores/wallpaper'
+import { useDesktopOrganizerStore } from '@/stores/desktop-organizer'
 import WallpaperCard from '@/components/wallpaper/WallpaperCard.vue'
 import Toast from '@/components/common/Toast.vue'
 
 const { t } = useI18n()
 const wallpaperStore = useWallpaperStore()
+const organizerStore = useDesktopOrganizerStore()
 const toastRef = ref<InstanceType<typeof Toast>>()
 
 const activeCategory = ref('all')
@@ -68,6 +70,20 @@ const displayList = computed(() => {
   }
   return sorted
 })
+
+// 一键整理桌面
+async function organizeDesktop() {
+  try {
+    const result = await organizerStore.organizeDesktop()
+    toastRef.value?.show(
+      'success',
+      t('desktop.organizeSuccess', { count: result.arranged }),
+    )
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    toastRef.value?.show('error', t('desktop.organizeFailed', { msg }))
+  }
+}
 
 // 应用壁纸
 function applyWallpaper(id: string) {
@@ -154,6 +170,21 @@ onMounted(() => {
 
 <template>
   <div class="page-library">
+    <!-- 桌面整理：一键 -->
+    <button
+      class="organizer-shortcut"
+      :disabled="organizerStore.organizing"
+      @click="organizeDesktop"
+    >
+      <span class="oc-icon">🗂️</span>
+      <div class="oc-text">
+        <span class="oc-title">{{ t('desktop.organizeBtn') }}</span>
+        <span class="oc-desc">{{ t('desktop.shortcutDesc') }}</span>
+      </div>
+      <span v-if="organizerStore.organizing" class="oc-spinner" />
+      <svg v-else class="oc-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+
     <!-- 搜索 + 标签筛选栏 -->
     <div class="lib-search-bar">
       <div class="search-input-wrap">
@@ -282,6 +313,54 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* ── Desktop Organizer shortcut ───────────────────────────── */
+.organizer-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  background: linear-gradient(135deg, rgba(0,131,54,0.06) 0%, rgba(6,141,154,0.06) 100%);
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: all 0.15s;
+  text-align: left;
+}
+.organizer-shortcut:hover {
+  border-color: var(--color-primary);
+  background: linear-gradient(135deg, rgba(0,131,54,0.1) 0%, rgba(6,141,154,0.1) 100%);
+  box-shadow: var(--shadow-sm);
+}
+.oc-icon { font-size: 22px; flex-shrink: 0; }
+.oc-text { flex: 1; min-width: 0; }
+.oc-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  font-family: var(--font-ui);
+}
+.oc-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-top: 1px;
+}
+.oc-arrow { color: var(--color-primary); opacity: 0.7; flex-shrink: 0; }
+.oc-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-primary-surface);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.organizer-shortcut:disabled { opacity: 0.75; cursor: wait; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .lib-search-bar {
   margin-bottom: 12px;
 }

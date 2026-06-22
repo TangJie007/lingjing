@@ -7,6 +7,7 @@
   "nav": {
     "aiCreate": "AI 创作",
     "library": "我的壁纸",
+    "desktopOrganizer": "桌面整理",
     "apiKeys": "API 管理",
     "settings": "设置"
   },
@@ -273,16 +274,13 @@
     "notFound": "壁纸不存在"
   },
   "desktop": {
-    "editMode": "进入整理模式",
-    "doneEditing": "完成整理",
-    "hideIcons": "隐藏图标",
-    "showIcons": "显示图标",
-    "iconCount": "共 {count} 个图标",
-    "quickCreate": "快速创建",
-    "dragIconsHere": "拖拽图标到此处",
-    "noPartitions": "还没有分区",
-    "startOrganizing": "开始整理桌面",
-    "namePartition": "命名分区",
-    "namePlaceholder": "输入分区名称..."
+    "title": "桌面整理",
+    "desc": "自动按类型归类桌面图标，文件夹、文档、图片视频各归其位",
+    "organizeBtn": "一键整理桌面",
+    "organizing": "正在整理…",
+    "shortcutDesc": "自动归类排列，像腾讯桌面整理一样简单",
+    "organizeSuccess": "已整理 {count} 个桌面图标",
+    "organizeFailed": "整理失败：{msg}",
+    "lastResult": "上次整理了 {count} 个图标"
   }
 }
