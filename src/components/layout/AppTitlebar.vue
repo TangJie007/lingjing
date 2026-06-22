@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import logoUrl from '@/assets/icons/lingscape-icon.png'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -22,46 +23,7 @@ function openSettings() {
 <template>
   <header class="titlebar" :class="{ 'titlebar--scrolled': scrolled }" data-tauri-drag-region>
     <div class="titlebar-brand" data-tauri-drag-region>
-      <svg class="brand-icon-svg" viewBox="0 0 48 48" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <filter id="logo-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="1.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <linearGradient id="logo-fill" x1="4" y1="36" x2="44" y2="8" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#fbbf24" />
-            <stop offset="25%" stop-color="#a3e635" />
-            <stop offset="55%" stop-color="#34d399" />
-            <stop offset="85%" stop-color="#22d3ee" />
-            <stop offset="100%" stop-color="#67e8f9" />
-          </linearGradient>
-          <radialGradient id="logo-highlight" cx="16" cy="14" r="18" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="white" stop-opacity="0.35" />
-            <stop offset="60%" stop-color="white" stop-opacity="0.08" />
-            <stop offset="100%" stop-color="white" stop-opacity="0" />
-          </radialGradient>
-        </defs>
-        <path
-          d="M 24 3 C 14 3, 5 12, 5 24 C 5 35, 12 43, 20 45 C 28 47, 38 42, 41 33 C 44 24, 42 14, 34 8 C 30 5, 27 3, 24 3 Z"
-          fill="url(#logo-fill)"
-          filter="url(#logo-glow)"
-        />
-        <path
-          d="M 24 6 C 28 6, 32 9, 35 15 C 38 21, 37 29, 33 35 C 30 39, 25 41, 20 40"
-          fill="none"
-          stroke="white"
-          stroke-width="0.8"
-          stroke-linecap="round"
-          opacity="0.25"
-        />
-        <path
-          d="M 24 3 C 14 3, 5 12, 5 24 C 5 35, 12 43, 20 45 C 28 47, 38 42, 41 33 C 44 24, 42 14, 34 8 C 30 5, 27 3, 24 3 Z"
-          fill="url(#logo-highlight)"
-        />
-      </svg>
+      <img class="brand-icon" :src="logoUrl" width="22" height="22" alt="" />
       <span class="brand-name">{{ t('app.name') }}</span>
       <span class="brand-sub">LingScape</span>
     </div>
@@ -143,7 +105,7 @@ function openSettings() {
   border-color: oklch(90% 0.008 163 / 0.6);
 }
 
-.brand-icon-svg { flex-shrink: 0; }
+.brand-icon { flex-shrink: 0; border-radius: var(--radius-sm); }
 
 .brand-name {
   font-family: var(--font-display);
