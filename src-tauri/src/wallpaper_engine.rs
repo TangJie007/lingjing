@@ -307,23 +307,12 @@ pub fn init_desktop_player(app: &AppHandle) {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetWallpaperResult {
-    pub conflicts: Vec<crate::desktop_core::DesktopLayerConflict>,
-}
-
-#[tauri::command]
-pub fn check_desktop_layer_conflicts() -> Vec<crate::desktop_core::DesktopLayerConflict> {
-    crate::desktop_core::detect_desktop_layer_conflicts()
-}
-
 #[tauri::command]
 pub fn set_wallpaper(
     app: AppHandle,
     id: String,
     state: tauri::State<'_, CurrentWallpaperState>,
-) -> Result<SetWallpaperResult, String> {
+) -> Result<(), String> {
     let meta = load_meta(&app);
     let entry = meta
         .wallpapers
@@ -408,18 +397,7 @@ pub fn set_wallpaper(
         save_meta(&app_meta, &meta);
     });
 
-    let app_conflicts = app.clone();
-    std::thread::spawn(move || {
-        let conflicts = crate::desktop_core::detect_desktop_layer_conflicts();
-        if !conflicts.is_empty() {
-            for c in &conflicts {
-                log::warn!("检测到桌面层级冲突: {} ({})", c.name, c.id);
-            }
-            let _ = app_conflicts.emit("wallpaper-conflicts", &conflicts);
-        }
-    });
-
-    Ok(SetWallpaperResult { conflicts: vec![] })
+    Ok(())
 }
 
 #[tauri::command]

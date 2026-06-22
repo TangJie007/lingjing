@@ -1,6 +1,6 @@
 //! Windows 桌面层嵌入（参考 Lively Wallpaper / 飞火动态壁纸）
 //! 默认：ClassicWorkerW（MPV 在壁纸 WorkerW 内，不挡图标）
-//! 共存：启动时临时隐藏竞争动态壁纸 + 腾讯整理全屏皮肤，退出时恢复
+//! 共存：启动时临时隐藏竞争动态壁纸（飞火 / Lively / MPV 系），退出时恢复
 //! 回退：ShellHostLayered / RaisedProgman
 
 #![cfg(target_os = "windows")]
@@ -420,36 +420,6 @@ fn raise_icon_children(layer: &DesktopLayer) -> Result<(), String> {
     Ok(())
 }
 
-/// 桌面层级冲突（第三方工具占用壁纸层）
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopLayerConflict {
-    pub id: String,
-    pub name: String,
-}
-
-/// 检测可能遮挡动态壁纸的第三方桌面工具（仅检测，不修改其窗口）
-#[cfg(target_os = "windows")]
-pub fn detect_desktop_layer_conflicts() -> Vec<DesktopLayerConflict> {
-    let mut conflicts = Vec::new();
-    if is_tencent_desktop_process_running() {
-        conflicts.push(DesktopLayerConflict {
-            id: "tencent_desktop".into(),
-            name: "腾讯桌面整理".into(),
-        });
-    }
-    if let Ok(layer) = detect_desktop_layer() {
-        if has_third_party_desktop_overlay(&layer) {
-            if !conflicts.iter().any(|c| c.id == "tencent_desktop") {
-                conflicts.push(DesktopLayerConflict {
-                    id: "tencent_desktop".into(),
-                    name: "腾讯桌面整理".into(),
-                });
-            }
-        }
-    }
-    conflicts
-}
 
 fn find_child_syslistview(parent: HWND) -> Option<HWND> {
     unsafe {
@@ -460,87 +430,6 @@ fn find_child_syslistview(parent: HWND) -> Option<HWND> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-pub fn detect_desktop_layer_conflicts() -> Vec<DesktopLayerConflict> {
-    Vec::new()
-}
-
-const TENCENT_DESKTOP_PROCESS_MARKERS: &[&str] = &[
-    "desktopservice64",
-    "minihomepagepro",
-    "txdesk",
-    "qqdesktop",
-];
-
-#[cfg(target_os = "windows")]
-fn is_tencent_desktop_process_running() -> bool {
-    use std::process::Command;
-    let output = Command::new("tasklist")
-        .args(["/FO", "CSV", "/NH"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output();
-    let Ok(output) = output else {
-        return false;
-    };
-    let text = String::from_utf8_lossy(&output.stdout).to_lowercase();
-    TENCENT_DESKTOP_PROCESS_MARKERS
-        .iter()
-        .any(|marker| text.contains(marker))
-}
-
-/// 腾讯桌面整理等第三方覆盖层类名
-const THIRD_PARTY_DESKTOP_OVERLAY_CLASSES: &[&str] = &["TXMiniSkin"];
-
-fn has_third_party_desktop_overlay(layer: &DesktopLayer) -> bool {
-    has_visible_third_party_overlay(layer.shell_host)
-        || has_fullscreen_overlay_in_shell(layer.shell_host)
-}
-
-fn has_fullscreen_overlay_in_shell(shell_host: HWND) -> bool {
-    let screen = get_virtual_screen_rect();
-    let min_area = (screen.w as i64 * screen.h as i64) * 70 / 100;
-    let mut found = false;
-    unsafe {
-        struct Ctx {
-            shell_host: HWND,
-            min_area: i64,
-            found: *mut bool,
-        }
-        unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows_core::BOOL {
-            let ctx = &mut *(lparam.0 as *mut Ctx);
-            if GetParent(hwnd).ok() != Some(ctx.shell_host) {
-                return windows_core::BOOL(1);
-            }
-            let mut buf = [0u16; 256];
-            if GetClassNameW(hwnd, &mut buf) == 0 {
-                return windows_core::BOOL(1);
-            }
-            let class = String::from_utf16_lossy(
-                &buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())],
-            );
-            if !THIRD_PARTY_DESKTOP_OVERLAY_CLASSES.contains(&class.as_str()) {
-                return windows_core::BOOL(1);
-            }
-            let area = get_window_rect(hwnd)
-                .map(|r| (r.right - r.left) as i64 * (r.bottom - r.top) as i64)
-                .unwrap_or(0);
-            if area >= ctx.min_area {
-                unsafe { *ctx.found = true };
-            }
-            windows_core::BOOL(1)
-        }
-        let mut ctx = Ctx {
-            shell_host,
-            min_area,
-            found: &mut found,
-        };
-        let _ = EnumChildWindows(Some(shell_host), Some(cb), LPARAM(&mut ctx as *mut _ as isize));
-    }
-    found
-}
-
 pub fn is_window_visible(hwnd: HWND) -> bool {
     unsafe { IsWindowVisible(hwnd).as_bool() }
 }
@@ -549,7 +438,7 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
 const COMPETING_WALLPAPER_PLAYER_CLASSES: &[&str] =
     &["mpv", "glfw", "QWidget", "Chrome_WidgetWin_1", "CefBrowserWindow"];
 
-/// 启动壁纸前隐藏占用桌面层的竞争窗口（动态壁纸 + 腾讯整理全屏皮肤等）；退出时恢复
+/// 启动壁纸前隐藏占用桌面层的竞争动态壁纸窗口（飞火 / Lively / MPV 系）；退出时恢复
 pub fn suppress_competing_wallpaper_players(our_pids: &[u32]) -> Result<(), String> {
     suppress_desktop_layer_interference(our_pids)
 }
@@ -564,8 +453,6 @@ pub fn suppress_desktop_layer_interference(our_pids: &[u32]) -> Result<(), Strin
     let screen = get_virtual_screen_rect();
     let screen_area = screen.w as i64 * screen.h as i64;
     let min_player_area = screen_area / 4;
-    // 仅隐藏全屏桌面整理皮肤（≥70% 虚拟桌面），保留小栅栏/格子
-    let min_overlay_area = screen_area * 70 / 100;
     let mut newly_hidden = Vec::new();
     let hosts = collect_wallpaper_search_roots(&layer);
     for host in hosts {
@@ -573,7 +460,6 @@ pub fn suppress_desktop_layer_interference(our_pids: &[u32]) -> Result<(), Strin
             host,
             our_pids,
             min_player_area,
-            min_overlay_area,
             &mut newly_hidden,
         );
     }
@@ -625,14 +511,12 @@ fn collect_interference_windows_under(
     root: HWND,
     our_pids: &[u32],
     min_player_area: i64,
-    min_overlay_area: i64,
     hidden: &mut Vec<HWND>,
 ) {
     unsafe {
         struct Ctx {
             our_pids: Vec<u32>,
             min_player_area: i64,
-            min_overlay_area: i64,
             hidden: *mut Vec<HWND>,
         }
         unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows_core::BOOL {
@@ -644,18 +528,12 @@ fn collect_interference_windows_under(
             if hidden.contains(&hwnd) {
                 return windows_core::BOOL(1);
             }
-            if should_suppress_desktop_window(
-                hwnd,
-                &ctx.our_pids,
-                ctx.min_player_area,
-                ctx.min_overlay_area,
-            ) {
+            if should_suppress_desktop_window(hwnd, &ctx.our_pids, ctx.min_player_area) {
                 hidden.push(hwnd);
             }
             let sub = Ctx {
                 our_pids: ctx.our_pids.clone(),
                 min_player_area: ctx.min_player_area,
-                min_overlay_area: ctx.min_overlay_area,
                 hidden: ctx.hidden,
             };
             let _ = EnumChildWindows(Some(hwnd), Some(cb), LPARAM(&sub as *const _ as isize));
@@ -664,7 +542,6 @@ fn collect_interference_windows_under(
         let mut ctx = Ctx {
             our_pids: our_pids.to_vec(),
             min_player_area,
-            min_overlay_area,
             hidden,
         };
         let _ = EnumChildWindows(Some(root), Some(cb), LPARAM(&mut ctx as *mut _ as isize));
@@ -675,7 +552,6 @@ fn should_suppress_desktop_window(
     hwnd: HWND,
     our_pids: &[u32],
     min_player_area: i64,
-    min_overlay_area: i64,
 ) -> bool {
     if !is_window_visible(hwnd) {
         return false;
@@ -688,9 +564,6 @@ fn should_suppress_desktop_window(
     let area = get_window_rect(hwnd)
         .map(|r| (r.right - r.left) as i64 * (r.bottom - r.top) as i64)
         .unwrap_or(0);
-    if THIRD_PARTY_DESKTOP_OVERLAY_CLASSES.contains(&class.as_str()) {
-        return area >= min_overlay_area;
-    }
     if area < min_player_area {
         return false;
     }
@@ -766,35 +639,6 @@ pub fn desktop_wallpaper_needs_recovery(layer: &DesktopLayer) -> bool {
             || layer
                 .worker_w
                 .is_some_and(|ww| !is_window_visible(ww)),
-    }
-}
-
-fn has_visible_third_party_overlay(shell_host: HWND) -> bool {
-    unsafe {
-        struct Ctx {
-            found: bool,
-        }
-        unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows_core::BOOL {
-            let ctx = &mut *(lparam.0 as *mut Ctx);
-            if !IsWindowVisible(hwnd).as_bool() {
-                return windows_core::BOOL(1);
-            }
-            let mut buf = [0u16; 256];
-            if GetClassNameW(hwnd, &mut buf) == 0 {
-                return windows_core::BOOL(1);
-            }
-            let class = String::from_utf16_lossy(
-                &buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())],
-            );
-            if THIRD_PARTY_DESKTOP_OVERLAY_CLASSES.contains(&class.as_str()) {
-                ctx.found = true;
-                return windows_core::BOOL(0);
-            }
-            windows_core::BOOL(1)
-        }
-        let mut ctx = Ctx { found: false };
-        let _ = EnumChildWindows(Some(shell_host), Some(cb), LPARAM(&mut ctx as *mut _ as isize));
-        ctx.found
     }
 }
 
@@ -1132,10 +976,6 @@ fn log_workerw_probe(progman: Option<HWND>, shell_host: HWND) {
         progman,
         shell_host
     );
-}
-
-fn find_shell_layer() -> Option<(HWND, HWND)> {
-    detect_shell_layer()
 }
 
 fn detect_shell_layer() -> Option<(HWND, HWND)> {

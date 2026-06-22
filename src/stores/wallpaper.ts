@@ -27,15 +27,6 @@ async function invokeWithTimeout<T>(
 }
 import { useSettingsStore } from './settings'
 
-export interface DesktopLayerConflict {
-  id: string
-  name: string
-}
-
-export interface SetWallpaperResult {
-  conflicts: DesktopLayerConflict[]
-}
-
 export interface WallpaperItem {
   id: string
   filename: string
@@ -148,7 +139,7 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
   }
 
   // 设置壁纸（乐观更新 UI，后台完成实际切换）
-  async function setWallpaper(id: string): Promise<SetWallpaperResult> {
+  async function setWallpaper(id: string): Promise<void> {
     const prevId = currentWallpaperId.value
     const wp = wallpapers.value.find((w) => w.id === id)
 
@@ -158,8 +149,7 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
     }
 
     try {
-      const result = await invokeWithTimeout<SetWallpaperResult>('set_wallpaper', { id })
-      return result
+      await invokeWithTimeout<void>('set_wallpaper', { id })
     } catch (e) {
       currentWallpaperId.value = prevId
       if (wp && wp.mediaType === 'video') {

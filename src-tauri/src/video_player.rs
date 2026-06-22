@@ -28,7 +28,7 @@ fn start_desktop_watchdog(state: &VideoPlayerState) {
     let state_addr = state as *const VideoPlayerState as usize;
     std::thread::spawn(move || {
         while DESKTOP_WATCHDOG.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_secs(3));
+            std::thread::sleep(Duration::from_secs(5));
             if !DESKTOP_WATCHDOG.load(Ordering::SeqCst) {
                 break;
             }
@@ -49,8 +49,6 @@ fn maintain_desktop_wallpaper(state: &VideoPlayerState) -> Result<(), String> {
     };
 
     let layer = desktop_core::get_cached_desktop_layer()?;
-
-    let _ = desktop_core::suppress_competing_wallpaper_players(&pids);
 
     let mpv_missing = pids.iter().any(|&pid| !mpv_has_visible_window(pid));
     if desktop_core::desktop_wallpaper_needs_recovery(&layer) || mpv_missing {
