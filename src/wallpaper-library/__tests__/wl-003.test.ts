@@ -15,6 +15,15 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: vi.fn(() => false),
 }))
 
+vi.mock('plyr', () => ({
+  default: class MockPlyr {
+    destroy = vi.fn()
+    play = vi.fn()
+    togglePlay = vi.fn()
+    constructor(_el: unknown, _options?: unknown) {}
+  },
+}))
+
 const i18n = createI18n({
   legacy: false,
   locale: 'zh-CN',
@@ -182,16 +191,19 @@ describe('WL-003', () => {
   })
 
   describe('AC-005: 动态壁纸自动播放', () => {
-    it('视频壁纸应显示 video 元素', async () => {
+    it('视频壁纸应显示 Plyr 播放器', async () => {
       const wrapper = await makeWrapper(mockVideoWallpaper, 'wp_test_005')
-      const video = wrapper.find('video')
-      expect(video.exists()).toBe(true)
+      expect(wrapper.find('.wallpaper-preview-player').exists()).toBe(true)
+      expect(wrapper.find('video').exists()).toBe(true)
     })
 
-    it('video 应包含 controls 属性', async () => {
-      const wrapper = await makeWrapper(mockVideoWallpaper, 'wp_test_005')
+    it('视频播放器应支持封面图', async () => {
+      const wrapper = await makeWrapper(
+        { ...mockVideoWallpaper, thumbPath: '/test/sunset-timelapse.thumb.webp' },
+        'wp_test_005',
+      )
       const video = wrapper.find('video')
-      expect(video.attributes('controls')).toBeDefined()
+      expect(video.attributes('poster')).toBe('/test/sunset-timelapse.thumb.webp')
     })
   })
 

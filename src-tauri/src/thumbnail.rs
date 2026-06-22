@@ -1,6 +1,5 @@
 //! Thumbnail generation for wallpaper library (WL-002)
-//! Generates WebP thumbnails for video (MP4/WebM via FFmpeg) and GIF (via image crate).
-//! Runs in background threads to avoid blocking the UI.
+//! Video: MPV frame capture → WebP. GIF: first frame via image crate.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,50 +8,73 @@ use std::process::Command;
 /// Returns the path to the generated .thumb.webp file.
 #[tauri::command]
 pub fn generate_thumbnail(wallpaper_path: String, media_type: String) -> Result<String, String> {
-    let path = PathBuf::from(&wallpaper_path);
-    let thumb_path = thumbnail_path(&path);
+    generate_thumbnail_internal(&wallpaper_path, &media_type)
+}
+
+/// Internal thumbnail generation (also used by wallpaper_engine on import).
+pub fn generate_thumbnail_internal(
+    wallpaper_path: &str,
+    media_type: &str,
+) -> Result<String, String> {
+    let path = PathBuf::from(wallpaper_path);
+    let thumb_path = thumb_path_for(&path);
     if thumb_path.exists() {
         return Ok(thumb_path.to_string_lossy().to_string());
     }
 
-    match media_type.as_str() {
+    match media_type {
         "video" => generate_video_thumbnail(&path, &thumb_path),
         "gif" => generate_gif_thumbnail(&path, &thumb_path),
-        _ => {
-            // For static images, just return the original path (no thumbnail needed)
-            Ok(wallpaper_path)
-        }
+        _ => Ok(wallpaper_path.to_string()),
     }
 }
 
-/// Generate thumbnail for video files using FFmpeg.
-/// Extracts frame at 0.5 seconds, encodes as WebP.
-fn generate_video_thumbnail(source: &Path, dest: &Path) -> Result<String, String> {
-    let ffmpeg = find_ffmpeg().ok_or("未找到 ffmpeg.exe。请安装 FFmpeg 或将 ffmpeg.exe 放到 PATH 中")?;
+/// Compute the thumbnail path for a wallpaper file: `{name}.thumb.webp`
+pub fn thumb_path_for(wallpaper_path: &Path) -> PathBuf {
+    let mut thumb = wallpaper_path.to_path_buf();
+    thumb.set_extension("thumb.webp");
+    thumb
+}
 
-    let output = Command::new(&ffmpeg)
+/// Generate thumbnail for video files using bundled MPV.
+fn generate_video_thumbnail(source: &Path, dest: &Path) -> Result<String, String> {
+    let mpv = find_mpv().ok_or("未找到 mpv.exe。请运行 pnpm setup:mpv 或安装系统 MPV")?;
+
+    let temp_png = dest.with_extension("tmp.png");
+    let _ = std::fs::remove_file(&temp_png);
+
+    let output = Command::new(&mpv)
         .args([
-            "-ss", "0.5",
-            "-i", &source.to_string_lossy(),
-            "-vframes", "1",
-            "-q:v", "80",
-            "-y",
-            &dest.to_string_lossy(),
+            "--no-config",
+            "--no-terminal",
+            "--really-quiet",
+            "--no-audio",
+            "--start=0.5",
+            "--frames=1",
+            &format!("--o={}", temp_png.to_string_lossy()),
+            &source.to_string_lossy(),
         ])
         .output()
-        .map_err(|e| format!("FFmpeg 执行失败: {}", e))?;
+        .map_err(|e| format!("MPV 执行失败: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("FFmpeg 缩略图生成失败: {}", stderr));
+        let _ = std::fs::remove_file(&temp_png);
+        return Err(format!("MPV 缩略图生成失败: {}", stderr.trim()));
     }
+
+    if !temp_png.exists() {
+        return Err("MPV 未输出缩略图文件".into());
+    }
+
+    encode_png_as_webp(&temp_png, dest)?;
+    let _ = std::fs::remove_file(&temp_png);
 
     log::info!("视频缩略图已生成: {}", dest.display());
     Ok(dest.to_string_lossy().to_string())
 }
 
 /// Generate thumbnail for GIF files using the image crate.
-/// Extracts the first frame and encodes as WebP.
 fn generate_gif_thumbnail(source: &Path, dest: &Path) -> Result<String, String> {
     use image::codecs::gif::GifDecoder;
     use image::AnimationDecoder;
@@ -75,7 +97,6 @@ fn generate_gif_thumbnail(source: &Path, dest: &Path) -> Result<String, String> 
     let frame_buffer = first_frame.into_buffer();
     let dynamic_image = image::DynamicImage::ImageRgba8(frame_buffer);
 
-    // Encode as WebP
     let encoder = webp::Encoder::from_image(&dynamic_image)
         .map_err(|e| format!("WebP 编码失败: {}", e))?;
 
@@ -88,34 +109,31 @@ fn generate_gif_thumbnail(source: &Path, dest: &Path) -> Result<String, String> 
     Ok(dest.to_string_lossy().to_string())
 }
 
-/// Compute the thumbnail path for a wallpaper file.
-/// Format: {wallpaper_path_without_ext}.thumb.webp
-fn thumbnail_path(wallpaper_path: &Path) -> PathBuf {
-    let mut thumb = wallpaper_path.to_path_buf();
-    thumb.set_extension("thumb.webp");
-    thumb
+fn encode_png_as_webp(source: &Path, dest: &Path) -> Result<(), String> {
+    let img = image::open(source).map_err(|e| format!("读取缩略图失败: {}", e))?;
+    let encoder = webp::Encoder::from_image(&img).map_err(|e| format!("WebP 编码失败: {}", e))?;
+    let webp_data = encoder.encode(80.0);
+    std::fs::write(dest, &*webp_data).map_err(|e| format!("WebP 写入失败: {}", e))?;
+    Ok(())
 }
 
-/// Find FFmpeg executable in PATH or bundled directory.
-fn find_ffmpeg() -> Option<PathBuf> {
-    // Check bundled first
+fn find_mpv() -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let bundled = dir.join("bin").join("ffmpeg").join("ffmpeg.exe");
-            if bundled.exists() {
-                return Some(bundled);
-            }
-            let bundled2 = dir.join("ffmpeg.exe");
-            if bundled2.exists() {
-                return Some(bundled2);
+            for candidate in [
+                dir.join("bin").join("mpv").join("mpv.exe"),
+                dir.join("mpv.exe"),
+            ] {
+                if candidate.exists() {
+                    return Some(candidate);
+                }
             }
         }
     }
 
-    // Check PATH
     std::env::var_os("PATH").and_then(|path_var| {
         std::env::split_paths(&path_var)
-            .map(|d| d.join("ffmpeg.exe"))
+            .map(|d| d.join("mpv.exe"))
             .find(|p| p.exists())
     })
 }
@@ -125,9 +143,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_thumbnail_path() {
+    fn test_thumb_path_for() {
         let p = Path::new("C:/test/wallpaper.mp4");
-        let thumb = thumbnail_path(p);
+        let thumb = thumb_path_for(p);
         assert_eq!(
             thumb.to_string_lossy(),
             "C:/test/wallpaper.thumb.webp"

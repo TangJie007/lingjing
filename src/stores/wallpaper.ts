@@ -3,6 +3,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 const INVOKE_TIMEOUT_MS = 15_000
 
@@ -61,6 +62,18 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
   const isVideoPlaying = ref(false)
   const isFullscreenPaused = ref(false)
   const loading = ref(false)
+  let thumbnailListener: UnlistenFn | null = null
+
+  async function ensureThumbnailListener() {
+    if (thumbnailListener || !isTauri()) return
+    thumbnailListener = await listen<{ id: string; thumbPath: string }>(
+      'thumbnail-ready',
+      (event) => {
+        const wp = wallpapers.value.find((w) => w.id === event.payload.id)
+        if (wp) wp.thumbPath = event.payload.thumbPath
+      }
+    )
+  }
 
   // 当前使用中的壁纸
   const currentWallpaper = computed(() =>
@@ -91,6 +104,7 @@ export const useWallpaperStore = defineStore('wallpaper', () => {
   async function loadWallpapers() {
     loading.value = true
     try {
+      await ensureThumbnailListener()
       wallpapers.value = await invokeWithTimeout<WallpaperItem[]>('list_wallpapers')
     } catch (e) {
       console.error('加载壁纸列表失败:', e)

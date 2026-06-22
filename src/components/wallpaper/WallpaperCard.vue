@@ -3,7 +3,13 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import type { WallpaperItem } from '@/stores/wallpaper'
+
+function assetUrl(path: string | undefined | null): string | null {
+  if (!path) return null
+  return isTauri() ? convertFileSrc(path) : path
+}
 
 const props = defineProps<{
   wallpaper: WallpaperItem
@@ -30,10 +36,12 @@ const isAi = computed(() => props.wallpaper.source === 'ai')
 const isFavorited = computed(() => props.wallpaper.favorite === true)
 
 const thumbSrc = computed(() => {
-  if (props.wallpaper.thumbPath) return props.wallpaper.thumbPath
-  if (props.wallpaper.mediaType === 'image') return props.wallpaper.path
+  if (props.wallpaper.thumbPath) return assetUrl(props.wallpaper.thumbPath)
+  if (props.wallpaper.mediaType === 'image') return assetUrl(props.wallpaper.path)
   return null
 })
+
+const previewSrc = computed(() => assetUrl(props.wallpaper.path))
 
 const formatBadge = computed(() => {
   if (isGif.value) return 'GIF'
@@ -107,7 +115,7 @@ function openDetail() {
       <template v-else-if="showPreview && (isVideo || isGif)">
         <video
           v-if="isVideo"
-          :src="wallpaper.path"
+          :src="previewSrc ?? undefined"
           muted
           loop
           autoplay
@@ -116,7 +124,7 @@ function openDetail() {
         />
         <img
           v-else-if="isGif"
-          :src="wallpaper.path"
+          :src="previewSrc ?? undefined"
           :alt="wallpaper.filename"
         />
       </template>

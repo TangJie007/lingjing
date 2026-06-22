@@ -1,9 +1,10 @@
 ﻿//! 壁纸引擎模块
 //! 静态壁纸（Windows API）+ 视频壁纸（MPV + desktop_core，参考 Lively Wallpaper）
 
+use crate::thumbnail;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 缩放模式（保留给后续设置壁纸风格时使用）
@@ -35,6 +36,8 @@ pub struct WallpaperEntry {
     pub plan: Option<String>,
     pub model: Option<String>,
     pub cost: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,13 +127,82 @@ fn dir_size(path: &PathBuf) -> u64 {
     total
 }
 
+fn remove_thumb_files(entry: &WallpaperEntry) {
+    if let Some(ref thumb) = entry.thumb_path {
+        let _ = fs::remove_file(thumb);
+    }
+    let thumb = thumbnail::thumb_path_for(Path::new(&entry.path));
+    if thumb.exists() {
+        let _ = fs::remove_file(thumb);
+    }
+}
+
+fn spawn_thumbnail_generation(app: AppHandle, id: String, path: String, media_type: String) {
+    if media_type != "video" && media_type != "gif" {
+        return;
+    }
+
+    std::thread::spawn(move || {
+        match thumbnail::generate_thumbnail_internal(&path, &media_type) {
+            Ok(thumb_path) => {
+                let mut meta = load_meta(&app);
+                if let Some(entry) = meta.wallpapers.iter_mut().find(|w| w.id == id) {
+                    entry.thumb_path = Some(thumb_path.clone());
+                    save_meta(&app, &meta);
+                    let _ = app.emit(
+                        "thumbnail-ready",
+                        serde_json::json!({ "id": id, "thumbPath": thumb_path }),
+                    );
+                }
+            }
+            Err(e) => log::warn!("缩略图生成失败 ({}): {}", id, e),
+        }
+    });
+}
+
+fn enrich_wallpaper_thumbnails(app: &AppHandle, meta: &mut LibraryMeta) -> bool {
+    let mut needs_save = false;
+
+    for entry in &mut meta.wallpapers {
+        if entry
+            .thumb_path
+            .as_ref()
+            .is_some_and(|p| PathBuf::from(p).exists())
+        {
+            continue;
+        }
+
+        let thumb = thumbnail::thumb_path_for(Path::new(&entry.path));
+        if thumb.exists() {
+            entry.thumb_path = Some(thumb.to_string_lossy().to_string());
+            needs_save = true;
+            continue;
+        }
+
+        if entry.media_type == "video" || entry.media_type == "gif" {
+            spawn_thumbnail_generation(
+                app.clone(),
+                entry.id.clone(),
+                entry.path.clone(),
+                entry.media_type.clone(),
+            );
+        }
+    }
+
+    needs_save
+}
+
 // ============================================================
 // Tauri 命令
 // ============================================================
 
 #[tauri::command]
 pub fn list_wallpapers(app: AppHandle) -> Vec<WallpaperEntry> {
-    load_meta(&app).wallpapers
+    let mut meta = load_meta(&app);
+    if enrich_wallpaper_thumbnails(&app, &mut meta) {
+        save_meta(&app, &meta);
+    }
+    meta.wallpapers
 }
 
 #[tauri::command]
@@ -182,11 +254,19 @@ pub fn import_wallpaper(app: AppHandle, source_path: String) -> Result<Wallpaper
         plan: None,
         model: None,
         cost: None,
+        thumb_path: None,
     };
 
     let mut meta = load_meta(&app);
     meta.wallpapers.push(entry.clone());
     save_meta(&app, &meta);
+
+    spawn_thumbnail_generation(
+        app.clone(),
+        id,
+        entry.path.clone(),
+        entry.media_type.clone(),
+    );
 
     Ok(entry)
 }
@@ -199,6 +279,7 @@ pub fn delete_wallpaper(app: AppHandle, id: String) -> Result<(), String> {
         if path.exists() {
             let _ = fs::remove_file(&path);
         }
+        remove_thumb_files(entry);
     }
     meta.wallpapers.retain(|w| w.id != id);
     save_meta(&app, &meta);

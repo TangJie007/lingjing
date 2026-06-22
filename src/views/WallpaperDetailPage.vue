@@ -4,13 +4,21 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import { useWallpaperStore } from '@/stores/wallpaper'
+import WallpaperPreviewPlayer from '@/components/wallpaper/WallpaperPreviewPlayer.vue'
 import type { WallpaperItem } from '@/stores/wallpaper'
+
+function assetUrl(path: string | undefined | null): string | null {
+  if (!path) return null
+  return isTauri() ? convertFileSrc(path) : path
+}
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const wallpaperStore = useWallpaperStore()
+const previewPlayerRef = ref<InstanceType<typeof WallpaperPreviewPlayer> | null>(null)
 
 const wallpaper = computed<WallpaperItem | null>(() =>
   wallpaperStore.wallpapers.find((w) => w.id === route.params.id) ?? null
@@ -20,6 +28,14 @@ const isVideo = computed(() => wallpaper.value?.mediaType === 'video')
 const isGif = computed(() => wallpaper.value?.mediaType === 'gif')
 const isAi = computed(() => wallpaper.value?.source === 'ai')
 const isActive = computed(() => wallpaper.value?.id === wallpaperStore.currentWallpaperId)
+
+const posterSrc = computed(() => {
+  if (!wallpaper.value) return null
+  if (wallpaper.value.thumbPath) return wallpaper.value.thumbPath
+  return null
+})
+
+const previewSrc = computed(() => assetUrl(wallpaper.value?.path))
 
 const sizeText = computed(() => {
   const size = wallpaper.value?.fileSize ?? 0
@@ -64,7 +80,7 @@ function onKeydown(e: KeyboardEvent) {
     goBack()
   } else if (e.key === ' ') {
     e.preventDefault()
-    // toggle play/pause
+    previewPlayerRef.value?.togglePlay()
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     navigateWallpaper(e.key === 'ArrowRight' ? 1 : -1)
   }
@@ -112,23 +128,24 @@ onUnmounted(() => {
     <div v-else class="detail-body">
       <!-- 左侧：大图预览 -->
       <div class="detail-preview">
-        <template v-if="isVideo">
-          <video
-            :src="wallpaper.path"
-            class="preview-media"
-            muted
-            loop
-            autoplay
-            playsinline
-            controls
-          />
-        </template>
-        <template v-else-if="isGif">
-          <img :src="wallpaper.path" :alt="wallpaper.filename" class="preview-media" />
-        </template>
-        <template v-else>
-          <img :src="wallpaper.path" :alt="wallpaper.filename" class="preview-media" />
-        </template>
+        <WallpaperPreviewPlayer
+          v-if="isVideo"
+          ref="previewPlayerRef"
+          :src="wallpaper.path"
+          :poster="posterSrc"
+        />
+        <img
+          v-else-if="isGif"
+          :src="previewSrc ?? undefined"
+          :alt="wallpaper.filename"
+          class="preview-media"
+        />
+        <img
+          v-else
+          :src="previewSrc ?? undefined"
+          :alt="wallpaper.filename"
+          class="preview-media"
+        />
       </div>
 
       <!-- 右侧：信息面板 -->
@@ -189,7 +206,7 @@ onUnmounted(() => {
         <!-- 操作按钮 -->
         <div class="detail-actions">
           <button
-            class="apply-btn"
+            class="action-btn primary"
             :class="{ disabled: isActive }"
             :disabled="isActive"
             @click="applyWallpaper"
@@ -265,19 +282,17 @@ onUnmounted(() => {
 
 .detail-preview {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.03);
-  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  background: oklch(12% 0.01 163);
 }
 
 .preview-media {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .detail-info {
@@ -393,23 +408,13 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.apply-btn {
+.detail-actions .action-btn {
   width: 100%;
-  padding: 12px;
-  border-radius: 12px;
-  border: none;
-  background: var(--gradient-primary);
-  color: white;
-  font-family: var(--font-ui);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  text-align: center;
 }
-.apply-btn:hover:not(.disabled) {
-  opacity: 0.9;
-}
-.apply-btn.disabled {
+
+.action-btn.primary.disabled,
+.action-btn.primary:disabled {
   opacity: 0.5;
   cursor: default;
 }
