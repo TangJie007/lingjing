@@ -2,35 +2,35 @@ metadata:
   id: DO-004
   module: 桌面整理
   feature: 自动整理规则
-  version: 2.0.0
+  version: 3.0.0
   status: implemented
   priority: P1
   created_at: '2026-06-15'
-  updated_at: '2026-06-15'
+  updated_at: '2026-06-23'
   author: AI
   prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: 用户可以设定规则，新创建的特定类型文件自动归入指定分区。
+  summary: 用户可以设定规则，新创建的特定类型文件自动归入指定类别（文件夹/文档/图片视频/应用/其他）。
   detail: |
-    支持按文件类型（后缀）和文件名关键词创建自动归类规则。 提供推荐规则模板（图片→图片分区、文档→文档分区等）。 文件系统 Watcher 监听桌面文件变化，实时触发规则。 提供「立即整理桌面」手动触发按钮。
+    支持按文件类型（后缀）和文件名关键词创建自动归类规则。 提供推荐规则模板（图片→图片与视频、文档→文档等）。 文件系统 Watcher 监听桌面文件变化，实时触发规则。 提供「立即整理桌面」手动触发按钮。 v3.0.0 随桌面整理移除分区/栅格，归类目标由「分区」改为「类别」（target_category）。
   scope: 文件类型/关键词匹配、实时监听、推荐模板、手动触发
 user_stories:
   - id: US-001
     role: 用户
     action: 配置自动归类规则
-    goal: 新文件自动归入指定分区以保持桌面整洁
+    goal: 新文件自动归入指定类别以保持桌面整洁
     priority: P1
 acceptance_criteria:
   - id: AC-001
     description: 文件类型规则
-    expected_result: Given 用户创建规则，When 选择文件后缀（如 .jpg），Then 新 .jpg 文件自动归入指定分区
+    expected_result: Given 用户创建规则，When 选择文件后缀（如 .jpg），Then 新 .jpg 文件自动归入指定类别
     test_method: auto
     verify_status: pass
     verified_at: '2026-06-15T17:41:18.251Z'
     verify_reason: null
   - id: AC-002
     description: 关键词规则
-    expected_result: Given 用户创建规则，When 设置关键词（如「截图」），Then 包含关键词的文件自动归入指定分区
+    expected_result: Given 用户创建规则，When 设置关键词（如「截图」），Then 包含关键词的文件自动归入指定类别
     test_method: auto
     verify_status: pass
     verified_at: '2026-06-15T17:41:18.251Z'
@@ -69,6 +69,13 @@ ui_requirements:
     - 推荐模板列表
     - 立即整理按钮
 changelog:
+  - version: 3.0.0
+    date: '2026-06-23'
+    changes:
+      - type: changed
+        field: target_partition
+        new_value: 归类目标由「分区」改为「类别」（target_category），随桌面整理移除分区/栅格
+        reason: 与一键靠右整理对齐
   - version: 2.0.0
     date: '2026-06-15'
     changes:

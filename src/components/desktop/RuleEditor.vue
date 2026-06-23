@@ -3,15 +3,22 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { useDesktopOrganizerStore } from '@/stores/desktop-organizer'
 
 const { t } = useI18n()
-const orgStore = useDesktopOrganizerStore()
 
 interface AutoRule {
   id: string; name: string; enabled: boolean; fileTypes: string[]
-  keywords: string[]; targetPartition: string
+  keywords: string[]; targetCategory: string
 }
+
+// 一键整理的归类目标（与后端 icon_category 对应）
+const CATEGORIES = [
+  { id: 'folders', label: '文件夹' },
+  { id: 'docs', label: '文档' },
+  { id: 'media', label: '图片与视频' },
+  { id: 'apps', label: '应用/图标' },
+  { id: 'other', label: '其他文件' },
+]
 
 const rules = ref<AutoRule[]>([])
 const loading = ref(false)
@@ -26,12 +33,12 @@ onMounted(async () => {
 
 async function toggleRule(rule: AutoRule) {
   rule.enabled = !rule.enabled
-  await invoke('update_auto_rule', { ruleId: rule.id, enabled: rule.enabled, targetPartition: rule.targetPartition })
+  await invoke('update_auto_rule', { ruleId: rule.id, enabled: rule.enabled, targetCategory: rule.targetCategory })
 }
 
-async function setTarget(rule: AutoRule, partitionId: string) {
-  rule.targetPartition = partitionId
-  await invoke('update_auto_rule', { ruleId: rule.id, targetPartition: partitionId })
+async function setTarget(rule: AutoRule, category: string) {
+  rule.targetCategory = category
+  await invoke('update_auto_rule', { ruleId: rule.id, targetCategory: category })
 }
 
 async function applyAll() {
@@ -51,11 +58,11 @@ async function applyAll() {
         <select
           v-if="rule.enabled"
           class="rule-select"
-          :value="rule.targetPartition"
+          :value="rule.targetCategory"
           @change="setTarget(rule, ($event.target as HTMLSelectElement).value)"
         >
           <option value="">{{ t('settings.selectWallpaper') }}</option>
-          <option v-for="p in orgStore.partitions" :key="p.id" :value="p.id">{{ p.name }}</option>
+          <option v-for="c in CATEGORIES" :key="c.id" :value="c.id">{{ c.label }}</option>
         </select>
       </div>
     </div>

@@ -4,26 +4,6 @@ description = "Enables the organize_desktop_one_click command."
 commands.allow = ["organize_desktop_one_click"]
 
 [[permission]]
-identifier = "allow-get-fence-data"
-description = "Enables the get_fence_data command."
-commands.allow = ["get_fence_data"]
-
-[[permission]]
-identifier = "allow-show-fence-overlay"
-description = "Enables the show_fence_overlay command."
-commands.allow = ["show_fence_overlay"]
-
-[[permission]]
-identifier = "allow-hide-fence-overlay"
-description = "Enables the hide_fence_overlay command."
-commands.allow = ["hide_fence_overlay"]
-
-[[permission]]
-identifier = "allow-clear-fence-overlay"
-description = "Enables the clear_fence_overlay command."
-commands.allow = ["clear_fence_overlay"]
-
-[[permission]]
 identifier = "allow-enumerate-desktop-icons"
 description = "Enables the enumerate_desktop_icons command."
 commands.allow = ["enumerate_desktop_icons"]
@@ -43,10 +23,6 @@ identifier = "desktop-organizer-commands"
 description = "Desktop organizer commands."
 permissions = [
   "allow-organize-desktop-one-click",
-  "allow-get-fence-data",
-  "allow-show-fence-overlay",
-  "allow-hide-fence-overlay",
-  "allow-clear-fence-overlay",
   "allow-enumerate-desktop-icons",
   "allow-hide-desktop-icons",
   "allow-show-desktop-icons",

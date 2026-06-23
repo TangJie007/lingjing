@@ -275,10 +275,10 @@
   },
   "desktop": {
     "title": "桌面整理",
-    "desc": "自动按类型归类桌面图标，文件夹、文档、图片视频各归其位",
+    "desc": "一键将文件夹、文档、图标按类型归类，整齐排列到屏幕最右侧",
     "organizeBtn": "一键整理桌面",
     "organizing": "正在整理…",
-    "shortcutDesc": "自动归类排列，像腾讯桌面整理一样简单",
+    "shortcutDesc": "按类型归类并靠右排列，桌面瞬间清爽",
     "organizeSuccess": "已整理 {count} 个桌面图标",
     "organizeFailed": "整理失败：{msg}",
     "lastResult": "上次整理了 {count} 个图标"

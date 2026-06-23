@@ -30,11 +30,6 @@ pub fn run() {
         .manage(auto_rotate::RotateState::default())
         .manage(auto_rules::RuleState::default());
 
-    #[cfg(target_os = "windows")]
-    let builder = builder
-        .manage(desktop_organizer::OrganizerState::default())
-        .manage(desktop_organizer::FenceOverlayState::default());
-
     builder
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -80,7 +75,6 @@ pub fn run() {
                     if let Err(e) = crate::desktop_core::setup_desktop_layer() {
                         log::warn!("预初始化桌面层失败: {}", e);
                     }
-                    crate::desktop_organizer::init_fence_overlay(&init_handle);
                 }
             });
 
@@ -113,29 +107,7 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             desktop_organizer::enumerate_desktop_icons,
             #[cfg(target_os = "windows")]
-            desktop_organizer::create_partition,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::delete_partition,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::update_partition,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::move_icon_to_partition,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::get_partition_layout,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::save_partition_layout,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::load_partition_layout,
-            #[cfg(target_os = "windows")]
             desktop_organizer::organize_desktop_one_click,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::get_fence_data,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::show_fence_overlay,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::hide_fence_overlay,
-            #[cfg(target_os = "windows")]
-            desktop_organizer::clear_fence_overlay,
             #[cfg(target_os = "windows")]
             desktop_organizer::hide_desktop_icons,
             #[cfg(target_os = "windows")]

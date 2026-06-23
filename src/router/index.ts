@@ -48,11 +48,6 @@ const routes: RouteRecordRaw[] = [
     name: 'DesktopOrganizer',
     component: () => import('@/views/DesktopOrganizerPage.vue'),
   },
-  {
-    path: '/fence-overlay',
-    name: 'FenceOverlay',
-    component: () => import('@/views/FenceOverlayView.vue'),
-  },
 ]
 
 const router = createRouter({

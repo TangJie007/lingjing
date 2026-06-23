@@ -170,36 +170,6 @@ onMounted(() => {
 
 <template>
   <div class="page-library">
-    <!-- 桌面整理：一键 -->
-    <button
-      class="organizer-shortcut"
-      :disabled="organizerStore.organizing"
-      @click="organizeDesktop"
-    >
-      <span class="oc-icon">🗂️</span>
-      <div class="oc-text">
-        <span class="oc-title">{{ t('desktop.organizeBtn') }}</span>
-        <span class="oc-desc">{{ t('desktop.shortcutDesc') }}</span>
-      </div>
-      <span v-if="organizerStore.organizing" class="oc-spinner" />
-      <svg v-else class="oc-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-    </button>
-
-    <!-- 搜索 + 标签筛选栏 -->
-    <div class="lib-search-bar">
-      <div class="search-input-wrap">
-        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          v-model="wallpaperStore.searchQuery"
-          type="text"
-          class="search-input"
-          :placeholder="t('library.searchPlaceholder')"
-        />
-      </div>
-    </div>
-
     <!-- 分类筛选 -->
     <div class="lib-categories">
       <button
@@ -255,6 +225,15 @@ onMounted(() => {
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
           <span>{{ importing ? t('common.loading') : t('library.localImport') }}</span>
+        </button>
+        <!-- 一键桌面整理 -->
+        <button type="button" class="lib-control-btn lib-organize-btn" :disabled="organizerStore.organizing" @click="organizeDesktop">
+          <span v-if="organizerStore.organizing" class="oc-spinner" />
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span>{{ organizerStore.organizing ? t('desktop.organizing') : t('desktop.organizeBtn') }}</span>
         </button>
       </div>
     </div>
@@ -313,86 +292,17 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* ── Desktop Organizer shortcut ───────────────────────────── */
-.organizer-shortcut {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-subtle);
-  background: linear-gradient(135deg, rgba(0,131,54,0.06) 0%, rgba(6,141,154,0.06) 100%);
-  cursor: pointer;
-  margin-bottom: 14px;
-  transition: all 0.15s;
-  text-align: left;
-}
-.organizer-shortcut:hover {
-  border-color: var(--color-primary);
-  background: linear-gradient(135deg, rgba(0,131,54,0.1) 0%, rgba(6,141,154,0.1) 100%);
-  box-shadow: var(--shadow-sm);
-}
-.oc-icon { font-size: 22px; flex-shrink: 0; }
-.oc-text { flex: 1; min-width: 0; }
-.oc-title {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-primary);
-  font-family: var(--font-ui);
-}
-.oc-desc {
-  display: block;
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-top: 1px;
-}
-.oc-arrow { color: var(--color-primary); opacity: 0.7; flex-shrink: 0; }
+/* ── Spinner (shared) ─────────────────────────────────────── */
 .oc-spinner {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid var(--color-primary-surface);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   flex-shrink: 0;
 }
-.organizer-shortcut:disabled { opacity: 0.75; cursor: wait; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.lib-search-bar {
-  margin-bottom: 12px;
-}
-.search-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search-icon {
-  position: absolute;
-  left: 12px;
-  color: var(--color-text-tertiary);
-  pointer-events: none;
-}
-.search-input {
-  width: 100%;
-  padding: 10px 14px 10px 38px;
-  border-radius: 12px;
-  border: 1px solid var(--color-border-subtle);
-  background: rgba(249, 252, 250, 0.7);
-  color: var(--color-text-primary);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-.search-input:focus {
-  border-color: var(--color-primary);
-}
-.search-input::placeholder {
-  color: var(--color-text-tertiary);
-}
 
 .lib-cat-pill.tag {
   background: rgba(203, 236, 218, 0.5);
@@ -414,7 +324,8 @@ onMounted(() => {
   justify-content: center;
 }
 
-.lib-import-btn {
+.lib-import-btn,
+.lib-organize-btn {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -422,12 +333,17 @@ onMounted(() => {
   border-color: var(--color-primary-surface);
   font-weight: 500;
 }
-.lib-import-btn:hover {
+.lib-import-btn:hover,
+.lib-organize-btn:hover {
   background: var(--color-primary-surface);
   border-color: var(--color-primary);
 }
 .lib-import-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.lib-organize-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 </style>

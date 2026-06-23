@@ -1,13 +1,12 @@
-//! Desktop organizer — left: apps in tight columns; right: file fences with overlay.
+//! Desktop organizer — one-click tidy.
+//! Arranges every desktop icon against the right edge of the primary screen,
+//! grouped by category (folders → docs → media → other → apps). No overlay window.
 
 #![cfg(target_os = "windows")]
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::InvalidateRect;
 use windows::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory};
@@ -19,9 +18,8 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowExW, FindWindowW, GetSystemMetrics, GetWindowLongPtrW, GetWindowThreadProcessId,
-    SendMessageW, SetWindowLongPtrW, ShowWindow, SW_HIDE, SW_SHOW,
-    GWL_EXSTYLE, GWL_STYLE,
-    SM_CXICONSPACING, SM_CYICONSPACING, WS_EX_LAYERED, WS_EX_TRANSPARENT,
+    SendMessageW, SetWindowLongPtrW, ShowWindow, GWL_STYLE, SM_CXICONSPACING, SM_CYICONSPACING,
+    SW_HIDE, SW_SHOW,
 };
 
 // ============================================================
@@ -40,23 +38,6 @@ const LVIF_TEXT: u32 = 0x0001;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PartitionInfo {
-    pub id: String,
-    pub name: String,
-    pub x: i32,
-    pub y: i32,
-    pub w: i32,
-    pub h: i32,
-    pub color: String,
-    pub opacity: f32,
-    pub collapsed: bool,
-    pub icon_count: u32,
-    #[serde(default)]
-    pub icon_names: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DesktopIcon {
     pub name: String,
     pub path: String,
@@ -68,64 +49,10 @@ pub struct DesktopIcon {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PartitionLayout {
-    pub partitions: Vec<PartitionInfo>,
-}
-
-/// A visual fence rectangle rendered in the overlay window.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FenceSpec {
-    pub label: String,
-    pub color: String,
-    pub x: i32,
-    pub y: i32,
-    pub w: i32,
-    pub h: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArrangeResult {
-    pub arranged: u32,
-    pub skipped: u32,
-    pub partitions_processed: u32,
-}
-
-/// Shared state that the fence-overlay WebView reads on load.
-pub struct FenceOverlayState(pub Mutex<Vec<FenceSpec>>);
-
-impl Default for FenceOverlayState {
-    fn default() -> Self {
-        Self(Mutex::new(Vec::new()))
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct OrganizeDesktopResult {
     pub arranged: u32,
     pub skipped: u32,
     pub icon_count: u32,
-    pub fences: Vec<FenceSpec>,
-}
-
-pub struct OrganizerState {
-    pub layout: Mutex<PartitionLayout>,
-}
-
-impl Default for OrganizerState {
-    fn default() -> Self {
-        Self {
-            layout: Mutex::new(PartitionLayout {
-                partitions: Vec::new(),
-            }),
-        }
-    }
-}
-
-fn layout_path(app_data: &PathBuf) -> PathBuf {
-    app_data.join("partition_layout.json")
 }
 
 // ============================================================
@@ -136,24 +63,24 @@ fn layout_path(app_data: &PathBuf) -> PathBuf {
 /// Manually defined to guarantee correct alignment without needing Win32_UI_Controls feature.
 #[repr(C)]
 struct LvItemW {
-    mask: u32,       // offset 0
-    i_item: i32,     // offset 4
-    i_sub_item: i32, // offset 8
-    state: u32,      // offset 12
-    state_mask: u32, // offset 16
-    _pad1: u32,      // offset 20 — padding before 8-byte pointer
-    psz_text: u64,   // offset 24 — LPWSTR (pointer in remote process)
+    mask: u32,         // offset 0
+    i_item: i32,       // offset 4
+    i_sub_item: i32,   // offset 8
+    state: u32,        // offset 12
+    state_mask: u32,   // offset 16
+    _pad1: u32,        // offset 20 — padding before 8-byte pointer
+    psz_text: u64,     // offset 24 — LPWSTR (pointer in remote process)
     cch_text_max: i32, // offset 32
-    i_image: i32,    // offset 36
-    l_param: i64,    // offset 40
-    i_indent: i32,   // offset 48
-    i_group_id: i32, // offset 52
-    c_columns: u32,  // offset 56
-    _pad2: u32,      // offset 60
-    pui_columns: u64, // offset 64
-    pi_col_fmt: u64, // offset 72
-    i_group: i32,    // offset 80
-    _pad3: u32,      // offset 84
+    i_image: i32,      // offset 36
+    l_param: i64,      // offset 40
+    i_indent: i32,     // offset 48
+    i_group_id: i32,   // offset 52
+    c_columns: u32,    // offset 56
+    _pad2: u32,        // offset 60
+    pui_columns: u64,  // offset 64
+    pi_col_fmt: u64,   // offset 72
+    i_group: i32,      // offset 80
+    _pad3: u32,        // offset 84
 }
 // static assert: sizeof == 88
 
@@ -330,6 +257,18 @@ fn lv_refresh(lv: HWND) {
     }
 }
 
+/// Clear the LVS_AUTOARRANGE bit so LVM_SETITEMPOSITION positions actually stick.
+fn disable_lv_auto_arrange(lv: HWND) {
+    const LVS_AUTOARRANGE: u32 = 0x0100;
+    unsafe {
+        let style = GetWindowLongPtrW(lv, GWL_STYLE) as u32;
+        if style & LVS_AUTOARRANGE != 0 {
+            SetWindowLongPtrW(lv, GWL_STYLE, (style & !LVS_AUTOARRANGE) as isize);
+            log::info!("已禁用桌面 LVS_AUTOARRANGE，图标位置将持久化");
+        }
+    }
+}
+
 // ============================================================
 // Tauri Commands
 // ============================================================
@@ -366,207 +305,25 @@ pub fn enumerate_desktop_icons() -> Result<Vec<DesktopIcon>, String> {
     Ok(icons)
 }
 
+/// 一键整理桌面 —— 将所有桌面图标顶到屏幕最右侧。
+///
+/// 策略：以桌面 ListView 的真实显示名为基础分类（避免文件名 ≠ 显示名），
+/// 先关闭自动排列再设坐标，否则 Windows 会把图标吸附回默认网格。
+/// 顺序：文件夹 → 文档 → 图片视频 → 其他 → 应用/图标，同类相邻。
+/// 排布：从屏幕最右侧一列开始，自上而下填满后向左推进。
 #[tauri::command]
-pub fn create_partition(
-    state: tauri::State<'_, OrganizerState>,
-    name: String,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-    color: Option<String>,
-    opacity: Option<f32>,
-) -> Result<PartitionInfo, String> {
-    let id = format!(
-        "part_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-    );
-
-    let partition = PartitionInfo {
-        id: id.clone(),
-        name,
-        x,
-        y,
-        w,
-        h,
-        color: color.unwrap_or_else(|| "#008336".into()),
-        opacity: opacity.unwrap_or(0.18),
-        collapsed: false,
-        icon_count: 0,
-        icon_names: Vec::new(),
-    };
-
-    let mut guard = state.layout.lock().map_err(|e| e.to_string())?;
-    guard.partitions.push(partition.clone());
-    Ok(partition)
-}
-
-#[tauri::command]
-pub fn delete_partition(
-    state: tauri::State<'_, OrganizerState>,
-    partition_id: String,
-) -> Result<(), String> {
-    let mut guard = state.layout.lock().map_err(|e| e.to_string())?;
-    guard.partitions.retain(|p| p.id != partition_id);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_partition(
-    state: tauri::State<'_, OrganizerState>,
-    partition_id: String,
-    name: Option<String>,
-    x: Option<i32>,
-    y: Option<i32>,
-    w: Option<i32>,
-    h: Option<i32>,
-    color: Option<String>,
-    opacity: Option<f32>,
-    collapsed: Option<bool>,
-    icon_names: Option<Vec<String>>,
-) -> Result<(), String> {
-    let mut guard = state.layout.lock().map_err(|e| e.to_string())?;
-    if let Some(p) = guard.partitions.iter_mut().find(|p| p.id == partition_id) {
-        if let Some(v) = name {
-            p.name = v;
-        }
-        if let Some(v) = x {
-            p.x = v;
-        }
-        if let Some(v) = y {
-            p.y = v;
-        }
-        if let Some(v) = w {
-            p.w = v;
-        }
-        if let Some(v) = h {
-            p.h = v;
-        }
-        if let Some(v) = color {
-            p.color = v;
-        }
-        if let Some(v) = opacity {
-            p.opacity = v;
-        }
-        if let Some(v) = collapsed {
-            p.collapsed = v;
-        }
-        if let Some(v) = icon_names {
-            p.icon_count = v.len() as u32;
-            p.icon_names = v;
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn move_icon_to_partition(
-    state: tauri::State<'_, OrganizerState>,
-    icon_name: String,
-    partition_id: String,
-) -> Result<(), String> {
-    let mut guard = state.layout.lock().map_err(|e| e.to_string())?;
-
-    // Remove from any existing partition
-    for p in guard.partitions.iter_mut() {
-        p.icon_names.retain(|n| n != &icon_name);
-        p.icon_count = p.icon_names.len() as u32;
-    }
-
-    // Add to target partition
-    if let Some(p) = guard.partitions.iter_mut().find(|p| p.id == partition_id) {
-        p.icon_names.push(icon_name);
-        p.icon_count = p.icon_names.len() as u32;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_partition_layout(
-    state: tauri::State<'_, OrganizerState>,
-) -> Result<PartitionLayout, String> {
-    let guard = state.layout.lock().map_err(|e| e.to_string())?;
-    Ok(guard.clone())
-}
-
-#[tauri::command]
-pub fn save_partition_layout(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, OrganizerState>,
-) -> Result<(), String> {
-    let guard = state.layout.lock().map_err(|e| e.to_string())?;
-    let app_data = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("获取数据目录失败: {}", e))?;
-    fs::create_dir_all(&app_data).map_err(|e| format!("创建目录失败: {}", e))?;
-
-    let json = serde_json::to_string_pretty(&*guard).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(layout_path(&app_data), json).map_err(|e| format!("保存布局失败: {}", e))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn load_partition_layout(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, OrganizerState>,
-) -> Result<PartitionLayout, String> {
-    let app_data = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("获取数据目录失败: {}", e))?;
-    let path = layout_path(&app_data);
-
-    if path.exists() {
-        let json = fs::read_to_string(&path).map_err(|e| format!("读取布局失败: {}", e))?;
-        let layout: PartitionLayout =
-            serde_json::from_str(&json).map_err(|e| format!("解析布局失败: {}", e))?;
-        let mut guard = state.layout.lock().map_err(|e| e.to_string())?;
-        *guard = layout.clone();
-        Ok(layout)
-    } else {
-        let guard = state.layout.lock().map_err(|e| e.to_string())?;
-        Ok(guard.clone())
-    }
-}
-
-/// 一键整理桌面
-/// 策略：以 LV 真实名单为基础分类（避免文件名 ≠ 显示名），先关闭自动排列再设坐标
-/// 左侧：应用/快捷方式/文件夹/系统图标，上到下连续无空隙
-/// 右侧：文件类按类型放入带标题栅格
-#[tauri::command]
-pub fn organize_desktop_one_click(
-    app: tauri::AppHandle,
-    fence_state: tauri::State<'_, FenceOverlayState>,
-) -> Result<OrganizeDesktopResult, String> {
+pub fn organize_desktop_one_click() -> Result<OrganizeDesktopResult, String> {
     let (cell_w, cell_h) = icon_spacing();
     let (screen_w, screen_h) = screen_size();
     let margin: i32 = 8;
-    let rows_per_col = ((screen_h - margin) / cell_h).max(1);
-
-    // ── Fence geometry ───────────────────────────────────────
-    let fence_cols = 3i32;
-    let fence_w    = fence_cols * cell_w;
-    let fence_x    = screen_w - fence_w - margin;
-    let title_h    = 28i32;
-    let pad        = 6i32;
-    let fence_gap  = 12i32;
-
-    fn fence_h(n: usize, title_h: i32, pad: i32, cell_h: i32, cols: i32) -> i32 {
-        if n == 0 { return 0; }
-        title_h + pad + ((n as i32 - 1) / cols + 1) * cell_h + pad
-    }
+    let rows_per_col = ((screen_h - margin * 2) / cell_h).max(1);
 
     // ── Find desktop ListView ─────────────────────────────────
     let lv = unsafe { find_desktop_listview_hwnd() }
         .ok_or("找不到桌面图标列表，请确保桌面可见")?;
 
     // Disable auto-arrange FIRST. When LVS_AUTOARRANGE is set, LVM_SETITEMPOSITION
-    // is silently ignored and icons snap back to the Windows grid. We clear this flag
-    // so our positions actually stick.
+    // is silently ignored and icons snap back to the Windows grid.
     disable_lv_auto_arrange(lv);
 
     // ── Read LV names (what Windows actually shows) ──────────
@@ -579,10 +336,10 @@ pub fn organize_desktop_one_click(
     // "stem" = filename without extension, matches what LV shows when
     // "Hide extensions for known file types" is enabled.
     let mut stem_cat: HashMap<String, &str> = HashMap::new();
-    if let Some(Ok(rd)) = dirs::desktop_dir().map(|d| fs::read_dir(d)) {
+    if let Some(Ok(rd)) = dirs::desktop_dir().map(fs::read_dir) {
         for e in rd.flatten() {
             let path = e.path();
-            let cat  = icon_category(&path);
+            let cat = icon_category(&path);
             let full = e.file_name().to_string_lossy().to_lowercase();
             stem_cat.insert(full.clone(), cat);
             if let Some(st) = std::path::Path::new(&full).file_stem() {
@@ -592,242 +349,99 @@ pub fn organize_desktop_one_click(
         }
     }
 
-    // ── Classify ALL LV items ─────────────────────────────────
+    // ── Classify ALL LV items (alphabetical within each category) ──
     let mut sorted_names: Vec<String> = lv_name_map.keys().cloned().collect();
+    sorted_names.sort();
 
-    // Log actual LV names to help debug locale/encoding issues.
-    log::info!("桌面 LV 图标列表: {:?}", sorted_names);
-
-    // Helper: is this LV item a virtual system icon (not present on filesystem)?
-    // Covers: 此电脑, 回收站, 网络, 控制面板, etc.
-    let is_virtual = |name: &str| -> bool {
-        !stem_cat.contains_key(name)
-            && !stem_cat.contains_key(&format!("{}.lnk", name) as &str)
-    };
-
-    // Helper: is this the "This PC / 此电脑 / 计算机" icon?
-    // We use contains() rather than == to survive minor locale/encoding variations.
-    let is_this_pc = |name: &str| -> bool {
-        let lc = name.to_lowercase();
-        lc.contains("电脑") || lc.contains("计算机")
-            || lc == "this pc" || lc == "my computer"
-    };
-
-    sorted_names.sort_by(|a, b| {
-        let a_pc   = is_this_pc(a);
-        let b_pc   = is_this_pc(b);
-        let a_virt = !a_pc && is_virtual(a);
-        let b_virt = !b_pc && is_virtual(b);
-
-        // Priority: 此电脑  >  other virtual icons  >  regular apps (alphabetical)
-        if a_pc   && !b_pc   { return std::cmp::Ordering::Less; }
-        if b_pc   && !a_pc   { return std::cmp::Ordering::Greater; }
-        if a_virt && !b_virt { return std::cmp::Ordering::Less; }
-        if b_virt && !a_virt { return std::cmp::Ordering::Greater; }
-        a.cmp(b)
-    });
-
-    let mut app_idxs:    Vec<usize> = Vec::new(); // apps/shortcuts/virtual icons (left)
-    let mut folder_idxs: Vec<usize> = Vec::new(); // user folders          (right fence)
-    let mut doc_idxs:    Vec<usize> = Vec::new(); // documents             (right fence)
-    let mut img_idxs:    Vec<usize> = Vec::new(); // images/video          (right fence)
-    let mut other_idxs:  Vec<usize> = Vec::new(); // other files           (right fence)
+    let mut folder_idxs: Vec<usize> = Vec::new(); // user folders
+    let mut doc_idxs: Vec<usize> = Vec::new(); // documents
+    let mut img_idxs: Vec<usize> = Vec::new(); // images/video
+    let mut other_idxs: Vec<usize> = Vec::new(); // other files
+    let mut app_idxs: Vec<usize> = Vec::new(); // apps/shortcuts/virtual icons
 
     for name in &sorted_names {
         let &idx = lv_name_map.get(name).unwrap();
-        // Look up category via filesystem stem map.
-        // Virtual icons (此电脑, 回收站, 网络…) not in filesystem → "apps".
-        let cat = stem_cat.get(name.as_str())
+        // Virtual icons (此电脑, 回收站, 网络…) are not on the filesystem → "apps".
+        let cat = stem_cat
+            .get(name.as_str())
             .or_else(|| stem_cat.get(&format!("{}.lnk", name) as &str))
             .copied()
             .unwrap_or("apps");
 
         match cat {
-            "folders" => folder_idxs.push(idx), // user folders → right side
-            "apps"    => app_idxs.push(idx),
-            "docs"    => doc_idxs.push(idx),
-            "media"   => img_idxs.push(idx),
-            _         => other_idxs.push(idx),
+            "folders" => folder_idxs.push(idx),
+            "docs" => doc_idxs.push(idx),
+            "media" => img_idxs.push(idx),
+            "apps" => app_idxs.push(idx),
+            _ => other_idxs.push(idx),
         }
     }
 
     let icon_count = lv_name_map.len() as u32;
 
-    // ── Compute fence positions (right side, stacked top-to-bottom) ───
-    let folder_h = fence_h(folder_idxs.len(), title_h, pad, cell_h, fence_cols);
-    let doc_h    = fence_h(doc_idxs.len(),    title_h, pad, cell_h, fence_cols);
-    let img_h    = fence_h(img_idxs.len(),    title_h, pad, cell_h, fence_cols);
-    let other_h  = fence_h(other_idxs.len(),  title_h, pad, cell_h, fence_cols);
+    // ── Place every icon in one continuous right-aligned grid ──
+    // Order keeps categories contiguous; columns advance leftward from the
+    // right edge so the whole block hugs the right side of the screen.
+    let mut ordered: Vec<usize> = Vec::with_capacity(icon_count as usize);
+    ordered.extend(folder_idxs.iter());
+    ordered.extend(doc_idxs.iter());
+    ordered.extend(img_idxs.iter());
+    ordered.extend(other_idxs.iter());
+    ordered.extend(app_idxs.iter());
 
-    let folder_y = margin;
-    let doc_y    = folder_y + if !folder_idxs.is_empty() { folder_h + fence_gap } else { 0 };
-    let img_y    = doc_y    + if !doc_idxs.is_empty()    { doc_h    + fence_gap } else { 0 };
-    let other_y  = img_y    + if !img_idxs.is_empty()    { img_h    + fence_gap } else { 0 };
-
-    // ── Place icons via LVM_SETITEMPOSITION ───────────────────
-    // col_first = true  → fill column top-to-bottom, then advance right (apps)
-    // col_first = false → fill row left-to-right, then advance down   (fence files)
-    let place_all = |indices: &[usize], ox: i32, oy: i32, cols: i32, col_first: bool| {
-        for (slot, &idx) in indices.iter().enumerate() {
-            let s = slot as i32;
-            let (cx, cy) = if col_first {
-                (ox + (s / rows_per_col) * cell_w, oy + (s % rows_per_col) * cell_h)
-            } else {
-                (ox + (s % cols) * cell_w, oy + (s / cols) * cell_h)
-            };
-            lv_set_item_position(lv, idx, cx, cy);
-        }
-    };
-
-    place_all(&app_idxs,    margin,        margin,               8,          true);
-    place_all(&folder_idxs, fence_x + pad, folder_y + title_h + pad, fence_cols, false);
-    place_all(&doc_idxs,    fence_x + pad, doc_y    + title_h + pad, fence_cols, false);
-    place_all(&img_idxs,    fence_x + pad, img_y    + title_h + pad, fence_cols, false);
-    place_all(&other_idxs,  fence_x + pad, other_y  + title_h + pad, fence_cols, false);
+    let right_x = screen_w - cell_w - margin;
+    for (slot, &idx) in ordered.iter().enumerate() {
+        let s = slot as i32;
+        let col = s / rows_per_col; // 0 = rightmost column
+        let row = s % rows_per_col;
+        let x = right_x - col * cell_w;
+        let y = margin + row * cell_h;
+        lv_set_item_position(lv, idx, x, y);
+    }
 
     lv_refresh(lv);
 
-    let arranged = icon_count;
-    let skipped  = 0u32;
-
-    // ── Build fence specs ────────────────────────────────────
-    let mut fences = Vec::new();
-    if !folder_idxs.is_empty() {
-        fences.push(FenceSpec {
-            label: "文件夹".into(), color: "#008336".into(),
-            x: fence_x, y: folder_y, w: fence_w, h: folder_h,
-        });
-    }
-    if !doc_idxs.is_empty() {
-        fences.push(FenceSpec {
-            label: "文档".into(), color: "#068d9a".into(),
-            x: fence_x, y: doc_y, w: fence_w, h: doc_h,
-        });
-    }
-    if !img_idxs.is_empty() {
-        fences.push(FenceSpec {
-            label: "图片与视频".into(), color: "#aa6300".into(),
-            x: fence_x, y: img_y, w: fence_w, h: img_h,
-        });
-    }
-    if !other_idxs.is_empty() {
-        fences.push(FenceSpec {
-            label: "其他文件".into(), color: "#64748b".into(),
-            x: fence_x, y: other_y, w: fence_w, h: other_h,
-        });
-    }
-
     log::info!(
-        "桌面整理: total={} apps={} folders={} docs={} imgs={} other={} rows_per_col={}",
-        icon_count, app_idxs.len(), folder_idxs.len(), doc_idxs.len(), img_idxs.len(),
-        other_idxs.len(), rows_per_col
+        "桌面整理: total={} folders={} docs={} imgs={} other={} apps={} rows_per_col={}",
+        icon_count,
+        folder_idxs.len(),
+        doc_idxs.len(),
+        img_idxs.len(),
+        other_idxs.len(),
+        app_idxs.len(),
+        rows_per_col
     );
 
-    *fence_state.0.lock().map_err(|e| e.to_string())? = fences.clone();
-    notify_fence_overlay(&app, &fences);
-
-    Ok(OrganizeDesktopResult { arranged, skipped, icon_count, fences })
+    Ok(OrganizeDesktopResult {
+        arranged: icon_count,
+        skipped: 0,
+        icon_count,
+    })
 }
 
-/// Clear the LVS_AUTOARRANGE bit so LVM_SETITEMPOSITION positions actually stick.
-fn disable_lv_auto_arrange(lv: HWND) {
-    const LVS_AUTOARRANGE: u32 = 0x0100;
+#[tauri::command]
+pub fn hide_desktop_icons() -> Result<(), String> {
     unsafe {
-        let style = GetWindowLongPtrW(lv, GWL_STYLE) as u32;
-        if style & LVS_AUTOARRANGE != 0 {
-            SetWindowLongPtrW(lv, GWL_STYLE, (style & !LVS_AUTOARRANGE) as isize);
-            log::info!("已禁用桌面 LVS_AUTOARRANGE，图标位置将持久化");
+        if let Some(shell_view) = find_shell_view() {
+            let _ = ShowWindow(shell_view, SW_HIDE);
         }
     }
-}
-
-/// Return current fence layout to the overlay WebView when it loads.
-#[tauri::command]
-pub fn get_fence_data(
-    state: tauri::State<'_, FenceOverlayState>,
-) -> Vec<FenceSpec> {
-    state.0.lock().map(|g| g.clone()).unwrap_or_default()
-}
-
-/// Called by the fence overlay Vue component once it has finished rendering fences.
-/// The window was created at startup but hidden; we only show it after Vue has painted.
-#[tauri::command]
-pub fn show_fence_overlay(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("fence-overlay") {
-        w.show().map_err(|e| format!("显示栅格叠加层失败: {}", e))?;
-    }
     Ok(())
 }
 
-/// Called by the fence overlay Vue component to hide itself (no fences to show).
 #[tauri::command]
-pub fn hide_fence_overlay(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("fence-overlay") {
-        let _ = w.hide();
-    }
-    Ok(())
-}
-
-/// Hide and clear the fence overlay.
-#[tauri::command]
-pub fn clear_fence_overlay(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, FenceOverlayState>,
-) -> Result<(), String> {
-    *state.0.lock().map_err(|e| e.to_string())? = Vec::new();
-    if let Some(w) = app.get_webview_window("fence-overlay") {
-        let _ = w.hide();
-    }
-    Ok(())
-}
-
-/// 仅向已存在的叠加层窗口发送栅格数据，窗口本身在启动时预创建
-fn notify_fence_overlay(app: &tauri::AppHandle, fences: &[FenceSpec]) {
-    if let Some(w) = app.get_webview_window("fence-overlay") {
-        let _ = w.emit("fence-update", fences);
-    }
-}
-
-/// 在 app 启动时（主线程）预创建栅格叠加层窗口，与桌面播放器窗口同样的模式
-pub fn init_fence_overlay(app: &tauri::AppHandle) {
-    let (sw, sh) = screen_size();
-
-    let result = WebviewWindowBuilder::new(
-        app,
-        "fence-overlay",
-        WebviewUrl::App("/#/fence-overlay".into()),
-    )
-    .title("LingScape Fence Overlay")
-    .inner_size(sw as f64, sh as f64)
-    .position(0.0, 0.0)
-    .decorations(false)
-    .resizable(false)
-    .always_on_bottom(false)
-    .skip_taskbar(true)
-    .focusable(false)
-    .visible(false)
-    .transparent(true)
-    .build();
-
-    match result {
-        Ok(w) => {
-            // Make it click-through so desktop icons remain interactive.
-            if let Ok(hwnd) = w.hwnd() {
-                unsafe {
-                    let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-                    SetWindowLongPtrW(
-                        hwnd,
-                        GWL_EXSTYLE,
-                        (ex | WS_EX_TRANSPARENT.0 | WS_EX_LAYERED.0) as isize,
-                    );
-                }
-            }
-            log::info!("栅格叠加层窗口已预创建（隐藏）");
+pub fn show_desktop_icons() -> Result<(), String> {
+    unsafe {
+        if let Some(shell_view) = find_shell_view() {
+            let _ = ShowWindow(shell_view, SW_SHOW);
         }
-        Err(e) => log::warn!("预创建栅格叠加层失败: {}", e),
     }
+    Ok(())
 }
 
+// ============================================================
+// Private helpers
+// ============================================================
 
 fn screen_size() -> (i32, i32) {
     unsafe {
@@ -855,96 +469,12 @@ fn icon_category(path: &std::path::Path) -> &'static str {
         .to_lowercase();
     match ext.as_str() {
         "doc" | "docx" | "pdf" | "txt" | "xlsx" | "pptx" | "xls" | "ppt" | "md" | "rtf" => "docs",
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico"
-        | "mp4" | "avi" | "mkv" | "mov" | "webm" | "mp3" | "wav" => "media",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico" | "mp4" | "avi" | "mkv"
+        | "mov" | "webm" | "mp3" | "wav" => "media",
         "exe" | "lnk" | "url" | "msi" => "apps",
         _ => "other",
     }
 }
-
-/// Auto-assign icons to partitions based on file extension.
-#[tauri::command]
-pub fn auto_assign_icons(
-    state: tauri::State<'_, OrganizerState>,
-) -> Result<u32, String> {
-    let desktop = dirs::desktop_dir().ok_or("无法获取桌面路径")?;
-    let entries: Vec<_> = fs::read_dir(&desktop)
-        .map_err(|e| format!("读取桌面目录失败: {}", e))?
-        .flatten()
-        .collect();
-
-    let mut guard = state.layout.lock().map_err(|e| e.to_string())?;
-    if guard.partitions.is_empty() {
-        return Err("请先创建分区".into());
-    }
-
-    // Clear existing assignments
-    for p in guard.partitions.iter_mut() {
-        p.icon_names.clear();
-        p.icon_count = 0;
-    }
-
-    let part_count = guard.partitions.len();
-    let mut assigned = 0u32;
-
-    for entry in &entries {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-        let ext = path
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_lowercase();
-
-        // Simple type-based routing
-        let target_idx: usize = if path.is_dir() {
-            0 // first partition gets folders
-        } else {
-            match ext.as_str() {
-                "doc" | "docx" | "pdf" | "txt" | "xlsx" | "pptx" | "xls" | "ppt" => {
-                    1 % part_count
-                }
-                "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" => 2 % part_count,
-                "mp4" | "avi" | "mkv" | "mov" | "webm" => 3 % part_count,
-                "zip" | "rar" | "7z" | "tar" | "gz" => (part_count - 1).min(4),
-                "exe" | "lnk" | "url" => 0,
-                _ => part_count.saturating_sub(1), // last partition for misc
-            }
-        };
-
-        if let Some(p) = guard.partitions.get_mut(target_idx) {
-            p.icon_names.push(name);
-            p.icon_count += 1;
-            assigned += 1;
-        }
-    }
-
-    Ok(assigned)
-}
-
-#[tauri::command]
-pub fn hide_desktop_icons() -> Result<(), String> {
-    unsafe {
-        if let Some(shell_view) = find_shell_view() {
-            let _ = ShowWindow(shell_view, SW_HIDE);
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn show_desktop_icons() -> Result<(), String> {
-    unsafe {
-        if let Some(shell_view) = find_shell_view() {
-            let _ = ShowWindow(shell_view, SW_SHOW);
-        }
-    }
-    Ok(())
-}
-
-// ============================================================
-// Private helpers
-// ============================================================
 
 unsafe fn find_shell_view() -> Option<HWND> {
     let progman = FindWindowW(windows::core::w!("Progman"), None).ok()?;

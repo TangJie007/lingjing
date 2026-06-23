@@ -20,11 +20,6 @@ async function organize() {
     toastRef.value?.show('error', t('desktop.organizeFailed', { msg }))
   }
 }
-
-async function clearFences() {
-  await store.clearFences()
-  toastRef.value?.show('info', '栅格已清除')
-}
 </script>
 
 <template>
@@ -44,13 +39,6 @@ async function clearFences() {
       <p v-if="store.lastResult" class="organizer-result">
         {{ t('desktop.lastResult', { count: store.lastResult.arranged }) }}
       </p>
-      <button
-        v-if="store.hasFences"
-        class="clear-btn"
-        @click="clearFences"
-      >
-        清除栅格
-      </button>
     </div>
     <Toast ref="toastRef" />
   </div>
@@ -120,19 +108,4 @@ async function clearFences() {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.clear-btn {
-  margin-top: 10px;
-  padding: 7px 20px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-subtle);
-  background: transparent;
-  color: var(--color-text-tertiary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.clear-btn:hover {
-  border-color: var(--color-error);
-  color: var(--color-error);
-}
 </style>
