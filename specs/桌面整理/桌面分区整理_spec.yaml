@@ -10,13 +10,14 @@ metadata:
   author: AI
   prd_source: AI动态桌面_V2_PRD.md
 description:
-  summary: 桌面整理模块提供「一键整理桌面」能力——按类型自动归类并整齐排列到屏幕最右侧。
+  summary: 桌面整理模块提供「一键整理桌面」能力——经典左右分区：应用图标靠左、文件类图标靠右（仿 Fences，不绘制栅格框）。
   detail: >
     通过桌面 ListView 跨进程读取图标真实显示名进行分类，整理前清除 LVS_AUTOARRANGE 使坐标持久化。
-    分类顺序：文件夹 → 文档 → 图片视频 → 其他 → 应用/图标，同类相邻；从屏幕最右侧一列起自上而下填满后向左推进。
+    左侧：应用/快捷方式/系统图标（此电脑排第一，其次其他虚拟图标，再按字母序），自上而下填满一列后向右推进。
+    右侧：文件夹 / 文档 / 图片 / 视频音频 / 其他（非应用图标）按类别分区（横向带，图片单独成区）——每个类别占一条横向带（固定列宽、左→右填充满则下行），各带自上而下堆叠、之间留一行空隙，整体紧贴右边缘。
     仅调整图标显示坐标，桌面文件实际位置不变。支持一键隐藏/显示全部桌面图标。
     v3.0.0 移除视觉覆盖式分区与栅格叠加层（Fence Overlay）实现。
-  scope: 按类型自动归类、靠右排列、显示坐标调整（文件不移动）、一键隐藏/显示桌面图标
+  scope: 左右分区归类（应用靠左/文件靠右）、显示坐标调整（文件不移动）、一键隐藏/显示桌面图标
 user_stories:
   - id: US-001
     role: 用户
@@ -36,21 +37,21 @@ user_stories:
 acceptance_criteria:
   - id: AC-001
     description: 一键整理
-    expected_result: Given 桌面可见，When 点击一键整理，Then 全部图标按类型归类并紧贴屏幕最右侧排列
+    expected_result: Given 桌面可见，When 点击一键整理，Then 应用图标归到屏幕左侧、非应用图标归到屏幕右侧
     test_method: manual
     verify_status: pending
     verified_at: null
     verify_reason: null
   - id: AC-002
-    description: 分类正确
-    expected_result: Given 桌面含文件夹/文档/图片视频/应用，When 整理，Then 各类型图标相邻成组（文件夹→文档→图片视频→其他→应用）
+    description: 左侧应用排序
+    expected_result: Given 桌面含此电脑/快捷方式，When 整理，Then 左侧第一个为「此电脑」，其次虚拟图标，再按字母序
     test_method: manual
     verify_status: pending
     verified_at: null
     verify_reason: null
   - id: AC-003
-    description: 靠右对齐
-    expected_result: Given 图标数量超过一列，When 整理，Then 自上而下填满一列后向左扩展，整体贴紧右边缘
+    description: 右侧分类与靠右
+    expected_result: Given 桌面含文件夹/文档/图片/视频，When 整理，Then 右侧按 文件夹/文档/图片/视频音频/其他 各成一条横向带、自上而下堆叠（带间留一行空隙），图片单独成区，整体紧贴右边缘
     test_method: manual
     verify_status: pending
     verified_at: null
@@ -101,7 +102,7 @@ changelog:
     changes:
       - type: changed
         field: '*'
-        new_value: 移除视觉覆盖式分区与栅格叠加层，改为「一键按类型归类并靠右排列」，文件夹/文档/图标顶到屏幕最右侧
+        new_value: 移除视觉覆盖式分区与栅格叠加层，改为「一键左右分区归类」：应用图标靠左（此电脑第一），文件夹/文档/图片等非应用图标靠最右侧
         reason: 简化实现、提升稳定性，聚焦壁纸应用核心体验
   - version: 2.0.0
     date: '2026-06-15'

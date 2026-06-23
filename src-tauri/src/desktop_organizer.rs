@@ -245,6 +245,28 @@ fn lv_set_item_position(lv: HWND, idx: usize, x: i32, y: i32) {
     }
 }
 
+/// Primary monitor rectangle expressed in desktop-ListView client coordinates,
+/// returned as (origin_x, origin_y, width, height).
+///
+/// On multi-monitor systems the desktop ListView spans the whole virtual desktop,
+/// so positions are relative to the virtual top-left. The primary monitor's
+/// top-left is virtual (0,0); the ListView window's screen origin tells us the
+/// virtual top-left, so the primary offset in client coords = (-left, -top).
+/// Confining the layout here guarantees a one-click tidy always lands on the
+/// main screen, flush to its edges, regardless of secondary-monitor placement/DPI.
+fn primary_area_in_lv_coords(lv: HWND) -> (i32, i32, i32, i32) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    let (pw, ph) = screen_size(); // primary monitor size (SM_CXSCREEN / SM_CYSCREEN)
+    unsafe {
+        let mut r = RECT::default();
+        if GetWindowRect(lv, &mut r).is_ok() {
+            return (-r.left, -r.top, pw, ph);
+        }
+    }
+    (0, 0, pw, ph)
+}
+
 fn lv_refresh(lv: HWND) {
     unsafe {
         SendMessageW(
@@ -305,18 +327,19 @@ pub fn enumerate_desktop_icons() -> Result<Vec<DesktopIcon>, String> {
     Ok(icons)
 }
 
-/// 一键整理桌面 —— 将所有桌面图标顶到屏幕最右侧。
+/// 一键整理桌面 —— 经典左右分区（仿 Fences，但不绘制栅格框）。
 ///
 /// 策略：以桌面 ListView 的真实显示名为基础分类（避免文件名 ≠ 显示名），
 /// 先关闭自动排列再设坐标，否则 Windows 会把图标吸附回默认网格。
-/// 顺序：文件夹 → 文档 → 图片视频 → 其他 → 应用/图标，同类相邻。
-/// 排布：从屏幕最右侧一列开始，自上而下填满后向左推进。
+/// 左侧：应用/快捷方式/系统图标（此电脑排第一，其次其他虚拟图标，再按字母序），
+///       自上而下填满一列后向右推进。
+/// 右侧：文件夹 / 文档 / 图片 / 视频音频 / 其他（非应用图标）各自成区（横向带）——
+///       每个类别占一条横向带（左→右填充、满则下行），各带自上而下堆叠、之间留
+///       空行形成视觉分区，整体紧贴右边缘。
 #[tauri::command]
 pub fn organize_desktop_one_click() -> Result<OrganizeDesktopResult, String> {
     let (cell_w, cell_h) = icon_spacing();
-    let (screen_w, screen_h) = screen_size();
     let margin: i32 = 8;
-    let rows_per_col = ((screen_h - margin * 2) / cell_h).max(1);
 
     // ── Find desktop ListView ─────────────────────────────────
     let lv = unsafe { find_desktop_listview_hwnd() }
@@ -325,6 +348,16 @@ pub fn organize_desktop_one_click() -> Result<OrganizeDesktopResult, String> {
     // Disable auto-arrange FIRST. When LVS_AUTOARRANGE is set, LVM_SETITEMPOSITION
     // is silently ignored and icons snap back to the Windows grid.
     disable_lv_auto_arrange(lv);
+
+    // Confine the layout to the PRIMARY monitor (main screen), in ListView
+    // client coordinates. (ox, oy) shifts the primary's top-left when the
+    // desktop ListView spans multiple monitors.
+    let (ox, oy, area_w, area_h) = primary_area_in_lv_coords(lv);
+    let rows_per_col = ((area_h - margin * 2) / cell_h).max(1);
+    log::info!(
+        "桌面整理区域(主屏, LV坐标): origin=({},{}) size={}x{} rows_per_col={}",
+        ox, oy, area_w, area_h, rows_per_col
+    );
 
     // ── Read LV names (what Windows actually shows) ──────────
     let lv_name_map = lv_read_name_index_map(lv);
@@ -349,15 +382,46 @@ pub fn organize_desktop_one_click() -> Result<OrganizeDesktopResult, String> {
         }
     }
 
-    // ── Classify ALL LV items (alphabetical within each category) ──
-    let mut sorted_names: Vec<String> = lv_name_map.keys().cloned().collect();
-    sorted_names.sort();
+    // Is this LV item a virtual system icon (not present on filesystem)?
+    // Covers 此电脑 / 回收站 / 网络 / 控制面板 etc.
+    let is_virtual = |name: &str| -> bool {
+        !stem_cat.contains_key(name) && !stem_cat.contains_key(&format!("{}.lnk", name) as &str)
+    };
+    // Is this the "This PC / 此电脑 / 计算机" icon? Use contains() to survive locale variations.
+    let is_this_pc = |name: &str| -> bool {
+        let lc = name.to_lowercase();
+        lc.contains("电脑") || lc.contains("计算机") || lc == "this pc" || lc == "my computer"
+    };
 
-    let mut folder_idxs: Vec<usize> = Vec::new(); // user folders
-    let mut doc_idxs: Vec<usize> = Vec::new(); // documents
-    let mut img_idxs: Vec<usize> = Vec::new(); // images/video
-    let mut other_idxs: Vec<usize> = Vec::new(); // other files
-    let mut app_idxs: Vec<usize> = Vec::new(); // apps/shortcuts/virtual icons
+    // ── Sort: 此电脑 → 其他虚拟图标 → 普通项（字母序） ──────────
+    let mut sorted_names: Vec<String> = lv_name_map.keys().cloned().collect();
+    sorted_names.sort_by(|a, b| {
+        let a_pc = is_this_pc(a);
+        let b_pc = is_this_pc(b);
+        let a_virt = !a_pc && is_virtual(a);
+        let b_virt = !b_pc && is_virtual(b);
+        if a_pc && !b_pc {
+            return std::cmp::Ordering::Less;
+        }
+        if b_pc && !a_pc {
+            return std::cmp::Ordering::Greater;
+        }
+        if a_virt && !b_virt {
+            return std::cmp::Ordering::Less;
+        }
+        if b_virt && !a_virt {
+            return std::cmp::Ordering::Greater;
+        }
+        a.cmp(b)
+    });
+
+    // ── Classify ALL LV items ─────────────────────────────────
+    let mut app_idxs: Vec<usize> = Vec::new(); // apps/shortcuts/virtual icons → left
+    let mut folder_idxs: Vec<usize> = Vec::new(); // user folders → right
+    let mut doc_idxs: Vec<usize> = Vec::new(); // documents → right
+    let mut img_idxs: Vec<usize> = Vec::new(); // images → right (own zone)
+    let mut vid_idxs: Vec<usize> = Vec::new(); // video/audio → right
+    let mut other_idxs: Vec<usize> = Vec::new(); // other files → right
 
     for name in &sorted_names {
         let &idx = lv_name_map.get(name).unwrap();
@@ -371,7 +435,8 @@ pub fn organize_desktop_one_click() -> Result<OrganizeDesktopResult, String> {
         match cat {
             "folders" => folder_idxs.push(idx),
             "docs" => doc_idxs.push(idx),
-            "media" => img_idxs.push(idx),
+            "images" => img_idxs.push(idx),
+            "media" => vid_idxs.push(idx),
             "apps" => app_idxs.push(idx),
             _ => other_idxs.push(idx),
         }
@@ -379,36 +444,61 @@ pub fn organize_desktop_one_click() -> Result<OrganizeDesktopResult, String> {
 
     let icon_count = lv_name_map.len() as u32;
 
-    // ── Place every icon in one continuous right-aligned grid ──
-    // Order keeps categories contiguous; columns advance leftward from the
-    // right edge so the whole block hugs the right side of the screen.
-    let mut ordered: Vec<usize> = Vec::with_capacity(icon_count as usize);
-    ordered.extend(folder_idxs.iter());
-    ordered.extend(doc_idxs.iter());
-    ordered.extend(img_idxs.iter());
-    ordered.extend(other_idxs.iter());
-    ordered.extend(app_idxs.iter());
-
-    let right_x = screen_w - cell_w - margin;
-    for (slot, &idx) in ordered.iter().enumerate() {
+    // ── LEFT: apps, fill a column top-to-bottom then advance right ──
+    for (slot, &idx) in app_idxs.iter().enumerate() {
         let s = slot as i32;
-        let col = s / rows_per_col; // 0 = rightmost column
-        let row = s % rows_per_col;
-        let x = right_x - col * cell_w;
-        let y = margin + row * cell_h;
+        let x = ox + margin + (s / rows_per_col) * cell_w;
+        let y = oy + margin + (s % rows_per_col) * cell_h;
         lv_set_item_position(lv, idx, x, y);
+    }
+
+    // ── RIGHT: non-app icons split into per-category zones (row bands) ──
+    // Each category is a horizontal band `zone_cols` wide, filled left→right then
+    // wrapping down; bands stack top→bottom separated by one empty row so they
+    // read as distinct zones (分区) without drawing any overlay. The whole block
+    // hugs the right edge.
+    let zone_cols = 3i32;
+    let zone_x0 = ox + (area_w - margin - zone_cols * cell_w).max(margin); // left edge of zone
+    let gap_rows = 2i32; // empty rows between category zones (clear visual separation)
+
+    // Place one category as a row band starting at `start_row`. Returns the
+    // number of rows the band consumed.
+    let place_zone = |indices: &[usize], start_row: i32| -> i32 {
+        for (slot, &idx) in indices.iter().enumerate() {
+            let s = slot as i32;
+            let col = s % zone_cols;
+            let row = start_row + s / zone_cols;
+            let x = zone_x0 + col * cell_w;
+            let y = oy + margin + row * cell_h;
+            lv_set_item_position(lv, idx, x, y);
+        }
+        if indices.is_empty() {
+            0
+        } else {
+            (indices.len() as i32 + zone_cols - 1) / zone_cols
+        }
+    };
+
+    let mut row_cursor = 0i32;
+    for zone in [&folder_idxs, &doc_idxs, &img_idxs, &vid_idxs, &other_idxs] {
+        if zone.is_empty() {
+            continue;
+        }
+        let used = place_zone(zone, row_cursor);
+        row_cursor += used + gap_rows;
     }
 
     lv_refresh(lv);
 
     log::info!(
-        "桌面整理: total={} folders={} docs={} imgs={} other={} apps={} rows_per_col={}",
+        "桌面整理: total={} apps(left)={} folders={} docs={} images={} video={} other={} rows_per_col={}",
         icon_count,
+        app_idxs.len(),
         folder_idxs.len(),
         doc_idxs.len(),
         img_idxs.len(),
+        vid_idxs.len(),
         other_idxs.len(),
-        app_idxs.len(),
         rows_per_col
     );
 
@@ -469,8 +559,8 @@ fn icon_category(path: &std::path::Path) -> &'static str {
         .to_lowercase();
     match ext.as_str() {
         "doc" | "docx" | "pdf" | "txt" | "xlsx" | "pptx" | "xls" | "ppt" | "md" | "rtf" => "docs",
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico" | "mp4" | "avi" | "mkv"
-        | "mov" | "webm" | "mp3" | "wav" => "media",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico" => "images",
+        "mp4" | "avi" | "mkv" | "mov" | "webm" | "mp3" | "wav" => "media",
         "exe" | "lnk" | "url" | "msi" => "apps",
         _ => "other",
     }
