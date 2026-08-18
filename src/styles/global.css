@@ -1,21 +1,71 @@
 @import "tailwindcss";
 
-/* 将设计令牌映射到 Tailwind v4 主题，使 bg-accent / text-dim 等工具类可用 */
+/* ===== Frost Light 主题 Token（PRD §8.2，浅色基线）=====
+   所有颜色/间距/圆角/阴影均以 var(--xxx) 暴露，切换主题只改根变量。*/
 @theme {
-  --color-bg: rgba(18, 18, 22, 0.82);
-  --color-bg-elevated: rgba(32, 32, 38, 0.92);
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-text: #e8e8ec;
-  --color-text-dim: #9a9aa5;
-  --color-accent: #7c5cff;
-  --color-accent-soft: rgba(124, 92, 255, 0.16);
+  --color-bg: #f4f5f7;
+  --color-bg-elevated: #ffffff;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-text: #1f2329;
+  --color-text-dim: #6b7280;
+  --color-primary: #4f46e5;
+  --color-primary-soft: rgba(79, 70, 229, 0.12);
+  --color-secondary: #0891b2;
+  --color-secondary-soft: rgba(8, 145, 178, 0.12);
 
   --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 
-  /* 自定义动画 */
-  --animate-fade-in: fade-in 0.35s ease both;
-  --animate-pop: pop 0.18s ease both;
+  /* 自定义动画（仅 transform / opacity）*/
+  --animate-fade-in: fade-in var(--dur-slow) var(--ease) both;
+  --animate-pop: pop var(--dur-fast) var(--ease) both;
   --animate-shimmer: shimmer 2.4s linear infinite;
+}
+
+/* ===== 动效 Token（GPU-friendly，仅 transform/opacity）===== */
+:root {
+  --dur-fast: 150ms;
+  --dur-base: 280ms;
+  --dur-slow: 520ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.7, 0.5, 1);
+}
+
+/* ===== Frost Light 浅色根变量（PRD §8.2）===== */
+:root,
+:root[data-theme="frost-light"] {
+  --bg: #f4f5f7;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text: #1f2329;
+  --text-dim: #6b7280;
+  --text-2: #6b7280;
+  --primary: #4f46e5;
+  --primary-soft: rgba(79, 70, 229, 0.12);
+  --secondary: #0891b2;
+  --secondary-soft: rgba(8, 145, 178, 0.12);
+  --accent: #4f46e5;
+  --accent-soft: rgba(79, 70, 229, 0.12);
+  --radius: 12px;
+  --font: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* ===== Frost Dark 可切换（同 Token 结构，暗面）===== */
+:root[data-theme="frost-dark"] {
+  --bg: #16181d;
+  --bg-elevated: #1e2128;
+  --surface: #23272f;
+  --border: #2c313a;
+  --text: #e8e8ec;
+  --text-dim: #9aa0a8;
+  --text-2: #9aa0a8;
+  --primary: #818cf8;
+  --primary-soft: rgba(129, 140, 248, 0.16);
+  --secondary: #22d3ee;
+  --secondary-soft: rgba(34, 211, 238, 0.16);
+  --accent: #818cf8;
+  --accent-soft: rgba(129, 140, 248, 0.16);
 }
 
 @keyframes fade-in {
@@ -32,17 +82,24 @@
   to { background-position: 200% 0; }
 }
 
-/* 保留原始 CSS 变量，供 scoped 样式与 Tauri 原生指令使用 */
-:root {
-  --bg: rgba(18, 18, 22, 0.82);
-  --bg-elevated: rgba(32, 32, 38, 0.92);
-  --border: rgba(255, 255, 255, 0.08);
-  --text: #e8e8ec;
-  --text-dim: #9a9aa5;
-  --accent: #7c5cff;
-  --accent-soft: rgba(124, 92, 255, 0.16);
-  --radius: 12px;
-  --font: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+/* 卡片错峰入场（仅 transform/opacity）*/
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 图标弹性回弹（侧栏点击）*/
+@keyframes icon-spring {
+  0% { transform: scale(0.86); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* 收藏心跳 */
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.25); }
+  60% { transform: scale(0.95); }
 }
 
 * {
@@ -60,7 +117,7 @@ body,
 body {
   font-family: var(--font);
   color: var(--text);
-  background: transparent;
+  background: var(--bg);
   overflow: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -74,10 +131,27 @@ button {
   background: transparent;
 }
 
+/* 浅色滚动条 */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(31, 35, 41, 0.18);
   border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(31, 35, 41, 0.32);
+}
+
+/* 降低动态偏好：全局禁用入场/过渡动画（PRD F9 / 无障碍）*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

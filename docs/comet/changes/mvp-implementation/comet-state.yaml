@@ -1,0 +1,189 @@
+schema: comet.native.v4
+name: mvp-implementation
+language: en
+phase: build
+status: active
+state_version: 2
+brief: brief.md
+spec_changes:
+  - capability: discover-browse
+    operation: modify
+    source: specs/discover-browse/spec.md
+  - capability: shell-layout
+    operation: modify
+    source: specs/shell-layout/spec.md
+workspace:
+  isolation: current
+  change_branch: v1.1.0
+  target_branch: v1.1.0
+  finish: null
+loop:
+  stage: building
+  goal_cycle: 1
+  iteration: 1
+  attempt: 0
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: submit-builder-candidate
+acceptance:
+  - id: A1
+    source: specs/discover-browse/spec.md
+    text: The app MUST render a categorized wallpaper grid from a local placeholder
+      catalog (bundled JSON of demo entries with thumbnails), so browsing is
+      demonstrable offline. Each card shows thumbnail, title, size, and type tag
+      (video / GIF / image). A category tag cloud (全部·推荐·游戏·动漫·风景·动物·
+      科技·趣味·人机交互) and sort (最热/最新) are selectable. Top-bar search box with
+      hot-word hints and results/empty states.
+    result: pending
+    reason: null
+  - id: A2
+    source: specs/discover-browse/spec.md
+    text: WHEN the app loads the catalog THEN a grid of placeholder wallpaper cards
+      renders with thumbnail, title, size, and type tag. (A1-grid)
+    result: pending
+    reason: null
+  - id: A3
+    source: specs/discover-browse/spec.md
+    text: WHEN the user selects a category tag or sort THEN the grid filters
+      accordingly and the selection persists within the session. (A1-filter)
+    result: pending
+    reason: null
+  - id: A4
+    source: specs/discover-browse/spec.md
+    text: WHEN the user types in search THEN results/empty states display.
+      (A1-search)
+    result: pending
+    reason: null
+  - id: A5
+    source: specs/discover-browse/spec.md
+    text: Hovering a card MUST reveal a quick-action bar (▶ 预览 / 设为壁纸). Clicking a
+      card MUST slide in the 320px frosted right drawer (no route jump) with a
+      large preview, a 60-second SVG countdown ring (auto-collapses at zero,
+      cancellable), and an action area (favorite / share / download / set).
+      Right-click context menu (set / favorite / share / details).
+    result: pending
+    reason: null
+  - id: A6
+    source: specs/discover-browse/spec.md
+    text: WHEN the user hovers a card THEN a quick-action bar (预览 / 设为壁纸) appears.
+      (A3-hover)
+    result: pending
+    reason: null
+  - id: A7
+    source: specs/discover-browse/spec.md
+    text: WHEN the user clicks a card THEN the 320px frosted drawer slides in with a
+      large preview and a 60s countdown ring that auto-collapses at zero but is
+      cancellable. (A3-drawer)
+    result: pending
+    reason: null
+  - id: A8
+    source: specs/discover-browse/spec.md
+    text: WHEN the user right-clicks a card THEN a context menu (set / favorite /
+      share / details) appears and is keyboard reachable. (A3-menu)
+    result: pending
+    reason: null
+  - id: A9
+    source: specs/shell-layout/spec.md
+    text: "The app MUST render a three-zone immersive layout on launch:"
+    result: pending
+    reason: null
+  - id: A10
+    source: specs/shell-layout/spec.md
+    text: Left icon rail (80px) with navigation entries (online / local / my /
+      settings) and a selected-state indicator.
+    result: pending
+    reason: null
+  - id: A11
+    source: specs/shell-layout/spec.md
+    text: "Center area: top bar (search + theme toggle) + category tag cloud +
+      wallpaper card grid."
+    result: pending
+    reason: null
+  - id: A12
+    source: specs/shell-layout/spec.md
+    text: Right detail drawer (320px, frosted glass), collapsible, slides in on card
+      click.
+    result: pending
+    reason: null
+  - id: A13
+    source: specs/shell-layout/spec.md
+    text: "Global bottom playback control bar. Tauri window header keeps
+      `app-region: drag`; interactive controls keep `app-region: no-drag`."
+    result: pending
+    reason: null
+  - id: A14
+    source: specs/shell-layout/spec.md
+    text: WHEN the app launches THEN a three-zone shell renders with an 80px icon
+      rail, a wallpaper grid, a collapsible 320px frosted drawer, and a bottom
+      playback bar. (A1)
+    result: pending
+    reason: null
+  - id: A15
+    source: specs/shell-layout/spec.md
+    text: "WHEN the app launches THEN the shell header is draggable via `app-region:
+      drag` while buttons/inputs remain interactive (`no-drag`). (A1-drag)"
+    result: pending
+    reason: null
+  - id: A16
+    source: specs/shell-layout/spec.md
+    text: "The app MUST apply the Frost Light (浅色) token baseline: `--bg #F4F5F7`,
+      `--surface #FFFFFF`, `--primary #4F46E5`, `--secondary #0891B2`, `--text
+      #1F2329`, `--text-2 #6B7280`, `--border #E5E7EB`. A dark token set MUST be
+      switchable via the same token structure. All colors/spacing/radius/shadow
+      are `var(--xxx)`."
+    result: pending
+    reason: null
+  - id: A17
+    source: specs/shell-layout/spec.md
+    text: WHEN the app renders in default theme THEN background uses `#F4F5F7`,
+      surface `#FFFFFF`, primary `#4F46E5`, text `#1F2329`. (A8)
+    result: pending
+    reason: null
+  - id: A18
+    source: specs/shell-layout/spec.md
+    text: WHEN the user toggles theme THEN only root token variables change; no
+      structural change occurs. (A8-switch)
+    result: pending
+    reason: null
+  - id: A19
+    source: specs/shell-layout/spec.md
+    text: "The app MUST animate using only `transform` / `opacity` (no reflow).
+      Motion tokens: `--dur-fast 150ms`, `--dur-base 280ms`, `--dur-slow 520ms`,
+      `--ease cubic-bezier(.4,0,.2,1)`, `--ease-spring
+      cubic-bezier(.34,1.7,.5,1)`. Card entrance uses staggered upward float
+      with skeleton placeholders."
+    result: pending
+    reason: null
+  - id: A20
+    source: specs/shell-layout/spec.md
+    text: WHEN cards mount or the drawer opens THEN transitions use only transform/
+      opacity and durations from the 150/280/520ms token set. (A7)
+    result: pending
+    reason: null
+  - id: A21
+    source: specs/shell-layout/spec.md
+    text: WHEN `prefers-reduced-motion` is set THEN entrance/transition animations
+      are disabled app-wide. (A7-reduced)
+    result: pending
+    reason: null
+builder_handoff: null
+blockers: []
+verification: null
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-08-18T19:34:44.839Z
