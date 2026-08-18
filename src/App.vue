@@ -12,51 +12,15 @@ function onSelect(item: WallpaperItem) {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg)] shadow-[0_24px_64px_rgba(0,0,0,0.45)] backdrop-blur-2xl backdrop-saturate-140 animate-fade-in">
     <TopBar />
-    <div class="app-body">
-      <aside class="sidebar">
+    <div class="flex min-h-0 flex-1">
+      <aside class="flex w-[260px] flex-shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-elevated)]">
         <WallpaperList @select="onSelect" />
       </aside>
-      <main class="stage">
+      <main class="flex min-w-0 flex-1">
         <PreviewStage ref="preview" />
       </main>
     </div>
   </div>
 </template>
-
-<style scoped>
-.app-shell {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  backdrop-filter: blur(28px) saturate(140%);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
-}
-
-.app-body {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-.sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  background: var(--bg-elevated);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.stage {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-}
-</style>

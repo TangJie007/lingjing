@@ -1,3 +1,38 @@
+@import "tailwindcss";
+
+/* 将设计令牌映射到 Tailwind v4 主题，使 bg-accent / text-dim 等工具类可用 */
+@theme {
+  --color-bg: rgba(18, 18, 22, 0.82);
+  --color-bg-elevated: rgba(32, 32, 38, 0.92);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text: #e8e8ec;
+  --color-text-dim: #9a9aa5;
+  --color-accent: #7c5cff;
+  --color-accent-soft: rgba(124, 92, 255, 0.16);
+
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+
+  /* 自定义动画 */
+  --animate-fade-in: fade-in 0.35s ease both;
+  --animate-pop: pop 0.18s ease both;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pop {
+  0% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+@keyframes shimmer {
+  to { background-position: 200% 0; }
+}
+
+/* 保留原始 CSS 变量，供 scoped 样式与 Tauri 原生指令使用 */
 :root {
   --bg: rgba(18, 18, 22, 0.82);
   --bg-elevated: rgba(32, 32, 38, 0.92);

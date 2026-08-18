@@ -50,92 +50,32 @@ async function addWallpaper() {
 </script>
 
 <template>
-  <div class="list">
-    <div class="list-head">
+  <div class="flex h-full min-h-0 flex-col">
+    <div class="flex items-center justify-between px-4 pb-2.5 pt-3.5 text-xs tracking-wide text-[var(--text-dim)]">
       <span>壁纸库</span>
-      <button class="add" title="添加壁纸" @click="addWallpaper">＋</button>
+      <button class="flex h-6 w-6 items-center justify-center rounded-lg bg-accent-soft text-base leading-none text-accent transition-colors hover:bg-[rgba(124,92,255,0.3)]" title="添加壁纸" @click="addWallpaper">＋</button>
     </div>
-    <div class="scroll">
+    <div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2.5 pb-3">
       <button
         v-for="item in items"
         :key="item.id"
-        class="item"
-        :class="{ active: item.active }"
+        class="item flex items-center gap-2.5 rounded-xl p-2 text-left transition-colors hover:bg-white/5"
+        :class="item.active ? 'bg-accent-soft animate-pop' : ''"
         @click="select(item)"
       >
-        <span class="thumb" :data-type="item.type" />
-        <span class="meta">
-          <span class="name">{{ item.name }}</span>
-          <span class="type">{{ item.type.toUpperCase() }}</span>
+        <span class="thumb h-7 w-10 flex-shrink-0 rounded-md" :data-type="item.type" />
+        <span class="flex min-w-0 flex-col">
+          <span class="truncate text-[13px]">{{ item.name }}</span>
+          <span class="text-[10px] text-[var(--text-dim)]">{{ item.type.toUpperCase() }}</span>
         </span>
       </button>
-      <p v-if="items.length === 0" class="empty">暂无壁纸，点击 ＋ 添加</p>
+      <p v-if="items.length === 0" class="py-6 text-center text-xs text-[var(--text-dim)]">暂无壁纸，点击 ＋ 添加</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.list {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.list-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 10px;
-  font-size: 12px;
-  color: var(--text-dim);
-  letter-spacing: 0.4px;
-}
-
-.add {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 16px;
-  line-height: 1;
-  transition: background 0.15s;
-}
-.add:hover {
-  background: rgba(124, 92, 255, 0.3);
-}
-
-.scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 10px;
-  text-align: left;
-  transition: background 0.15s;
-}
-.item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-.item.active {
-  background: var(--accent-soft);
-}
-
 .thumb {
-  width: 40px;
-  height: 28px;
-  border-radius: 6px;
-  flex-shrink: 0;
   background: linear-gradient(135deg, #2a2a35, #3a3a48);
 }
 .thumb[data-type="video"] {
@@ -146,28 +86,5 @@ async function addWallpaper() {
 }
 .thumb[data-type="image"] {
   background: linear-gradient(135deg, #43e97b, #38f9d7);
-}
-
-.meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.name {
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.type {
-  font-size: 10px;
-  color: var(--text-dim);
-}
-
-.empty {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-dim);
-  padding: 24px 0;
 }
 </style>
