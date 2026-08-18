@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "comet": {
+      "source": "rpamis/comet",
+      "sourceType": "github",
+      "skillPath": "assets/skills/comet/SKILL.md",
+      "computedHash": "60ae096f3a0746ab4c399ffe9f07e59938cf2bc558d221ca0efa04b244d1d49f"
+    }
+  }
+}
