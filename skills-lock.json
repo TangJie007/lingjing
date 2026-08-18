@@ -6,6 +6,18 @@
       "sourceType": "github",
       "skillPath": "assets/skills/comet/SKILL.md",
       "computedHash": "60ae096f3a0746ab4c399ffe9f07e59938cf2bc558d221ca0efa04b244d1d49f"
+    },
+    "comet-classic": {
+      "source": "rpamis/comet",
+      "sourceType": "github",
+      "skillPath": "assets/skills/comet-classic/SKILL.md",
+      "computedHash": "39cfc34d2a05b9a6b89de79c92f428ced2a0723f9aa0ff0f4541b703f2cc72a4"
+    },
+    "comet-native": {
+      "source": "rpamis/comet",
+      "sourceType": "github",
+      "skillPath": "assets/skills/comet-native/SKILL.md",
+      "computedHash": "58b4aa6634a218865803b8d3b700dff3fc4309d7e208fd0678f1cb223cc26ea0"
     }
   }
 }
