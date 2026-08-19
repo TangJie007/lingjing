@@ -17,6 +17,7 @@
         "height": 640,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "resizable": true,
         "minWidth": 720,
         "minHeight": 480

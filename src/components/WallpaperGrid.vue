@@ -1,279 +1,85 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, type Ref } from "vue";
+import { computed, inject, ref, type Ref } from "vue";
+import TopBar from "./TopBar.vue";
 import { CATALOG, CATEGORIES, type WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{ selectedId?: number | null }>();
 const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
-  (e: "favorite", item: WallpaperItem): void;
 }>();
 
-const activeCat = ref<string>("全部");
+const activeCat = ref("全部");
 const search = inject<Ref<string>>("topbarSearch", ref(""));
-
-const ready = ref(false);
-onMounted(() => nextTick(() => (ready.value = true)));
+const sort = inject<Ref<string>>("topbarSort", ref("最热"));
 
 const list = computed(() => {
-  let r = CATALOG;
+  let r = [...CATALOG];
   if (activeCat.value !== "全部") r = r.filter((i) => i.category === activeCat.value);
   if (search.value.trim()) {
     const q = search.value.trim().toLowerCase();
-    r = r.filter((i) => i.name.toLowerCase().includes(q));
+    r = r.filter(
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        i.category.toLowerCase().includes(q) ||
+        i.author.toLowerCase().includes(q),
+    );
   }
+  if (sort.value === "最新") r = [...r].reverse();
   return r;
 });
 
-function pick(item: WallpaperItem) {
-  emit("select", item);
-}
-function setWp(item: WallpaperItem) {
-  emit("set", item);
+function meta(item: WallpaperItem) {
+  const res = item.type === "image" && item.size === "740K" ? "2K" : "4K";
+  return `${item.category} · ${res}`;
 }
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col">
-    <!-- 分类标签 + 排序占位（真实排序由 TopBar 注入） -->
-    <div class="cats-row flex flex-wrap items-center gap-1.5 px-5 pb-2 pt-3">
-      <button
+  <div class="main">
+    <TopBar />
+    <div class="cats">
+      <span
         v-for="c in CATEGORIES"
         :key="c"
         class="chip"
-        :class="activeCat === c ? 'on' : ''"
+        :class="{ on: activeCat === c }"
+        role="button"
+        tabindex="0"
         @click="activeCat = c"
-      >{{ c }}</button>
+        @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activeCat = c; } }"
+      >{{ c }}</span>
     </div>
-
-    <!-- 卡片网格 -->
-    <div class="grid min-h-0 flex-1 content-start gap-3.5 overflow-y-auto px-5 pb-5">
-      <template v-if="!ready">
-        <div v-for="i in 6" :key="`sk-${i}`" class="card skeleton-card">
-          <div class="thumb aspect-[16/10] w-full bg-[var(--border)]" />
-          <div class="info">
-            <div class="skel t w-2/3 bg-[var(--border)]" />
-            <div class="skel m w-1/2 bg-[var(--border)]" />
-          </div>
-        </div>
-      </template>
-
+    <div class="grid">
       <div
         v-for="(item, idx) in list"
-        v-else
         :key="item.id"
-        :class="['card', 'group', 'card-in', props.selectedId === item.id ? 'selected' : '']"
-        :style="{ animationDelay: idx < 6 ? `${idx * 60}ms` : '360ms' }"
+        class="card"
+        :class="{ selected: props.selectedId === item.id }"
+        :style="{ animationDelay: `${Math.min(idx, 5) * 60}ms` }"
         role="button"
         tabindex="0"
         :aria-label="`${item.name}，设为壁纸`"
-        @click="pick(item)"
-        @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(item); } }"
+        @click="emit('select', item)"
+        @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('select', item); } }"
       >
-        <div class="thumb aspect-[16/10] w-full">
+        <div class="thumb">
           <div class="thumb-bg" :style="{ background: item.thumb }" />
           <span v-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
           <span class="vol">{{ item.size }}</span>
           <div class="hover-acts">
-            <button class="ha-btn preview" @click.stop="pick(item)">▶ 预览</button>
-            <button class="ha-btn apply" @click.stop="setWp(item)">设为壁纸</button>
+            <span class="ha-btn preview" @click.stop="emit('select', item)">▶ 预览</span>
+            <span class="ha-btn apply" @click.stop="emit('set', item)">设为壁纸</span>
           </div>
         </div>
         <div class="info">
           <div class="t">{{ item.name }}</div>
-          <div class="m">{{ item.category }} · {{ item.type === 'video' ? '4K' : item.type === 'gif' ? 'GIF' : '2K' }}</div>
+          <div class="m">{{ meta(item) }}</div>
         </div>
-        <span v-if="item.favorite" class="liked-corner">❤️</span>
       </div>
-
-      <p v-if="ready && list.length === 0" class="col-span-full py-10 text-center text-sm text-[var(--text-3)]">
+      <p v-if="list.length === 0" style="grid-column: 1 / -1; text-align: center; color: var(--text-3); padding: 40px 0; font-size: 13px;">
         没有匹配的壁纸
       </p>
     </div>
   </div>
 </template>
-
-<style scoped>
-/* 分类 chip */
-.chip {
-  font-size: 12.5px;
-  padding: 6px 14px;
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease);
-}
-.chip:hover {
-  transform: translateY(-1px);
-  border-color: var(--border-strong);
-}
-.chip:active {
-  transform: scale(0.94);
-}
-.chip.on {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-  font-weight: 600;
-}
-
-/* 卡片 */
-.grid {
-  grid-template-columns: repeat(3, 1fr);
-}
-@media (max-width: 680px) {
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-.card {
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  background: var(--surface);
-  cursor: pointer;
-  position: relative;
-  transition: transform var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease);
-  app-region: no-drag;
-}
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--sh-md);
-  border-color: var(--border-strong);
-}
-.card:active {
-  transform: translateY(-1px) scale(0.99);
-}
-.card.selected {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-soft);
-}
-
-/* 缩略图自身 hover 放大 */
-.thumb {
-  position: relative;
-  overflow: hidden;
-}
-.thumb-bg {
-  position: absolute;
-  inset: 0;
-  transition: transform var(--dur-base) var(--ease);
-}
-.card:hover .thumb-bg {
-  transform: scale(1.07);
-}
-
-/* badge + vol */
-.badge {
-  position: absolute;
-  left: 7px;
-  top: 7px;
-  font-size: 10px;
-  padding: 2px 7px;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--text);
-  font-weight: 600;
-  z-index: 2;
-}
-.vol {
-  position: absolute;
-  right: 7px;
-  bottom: 7px;
-  font-size: 10px;
-  padding: 2px 7px;
-  border-radius: var(--r-pill);
-  background: rgba(17, 24, 39, 0.55);
-  color: #fff;
-  z-index: 2;
-}
-
-/* hover 居中底部浮起快捷操作 */
-.hover-acts {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
-  padding-bottom: 11px;
-  background: linear-gradient(to top, rgba(17, 24, 39, 0.55), transparent 55%);
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
-  z-index: 3;
-}
-.card:hover .hover-acts {
-  opacity: 1;
-  transform: translateY(0);
-}
-.ha-btn {
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: var(--r-pill);
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
-}
-.ha-btn.preview {
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--text);
-}
-.ha-btn.apply {
-  background: var(--primary);
-  color: #fff;
-}
-.ha-btn:hover {
-  transform: scale(1.06);
-}
-.ha-btn:active {
-  transform: scale(0.92);
-}
-
-/* 信息区 */
-.info {
-  padding: 9px 11px;
-}
-.info .t {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.info .m {
-  font-size: 11px;
-  color: var(--text-3);
-  margin-top: 2px;
-}
-
-/* 收藏角标 */
-.liked-corner {
-  position: absolute;
-  right: 2px;
-  top: 2px;
-  font-size: 12px;
-  z-index: 2;
-}
-
-/* 入场 */
-.card-in {
-  animation: fadeUp var(--dur-slow) var(--ease-out) both;
-}
-.skeleton-card {
-  opacity: 0.7;
-}
-.skel {
-  height: 12px;
-  border-radius: 999px;
-  margin-top: 6px;
-}
-</style>
