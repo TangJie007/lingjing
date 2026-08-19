@@ -22,10 +22,17 @@ fn set_wallpaper(
     engine: State<'_, EngineHandle>,
     payload: SetWallpaperPayload,
 ) -> Result<EngineState, String> {
+    eprintln!(
+        "[engine] set_wallpaper id={} mediaType={} uri={}",
+        payload.id, payload.media_type, payload.uri
+    );
     if payload.uri.trim().is_empty() {
         return Err("该资源暂无可用媒体".into());
     }
-    let mut state = engine.state.lock().map_err(|_| "引擎状态锁失败".to_string())?;
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
     state.media_id = Some(payload.id);
     state.title = Some(payload.title);
     state.media_type = Some(payload.media_type);
@@ -37,29 +44,39 @@ fn set_wallpaper(
     let snapshot = state.clone();
     drop(state);
     wallpaper::push_command(&app, "set", &snapshot)?;
-    let _ = app.emit("engine-state", &snapshot);
+    wallpaper::push_state(&app, &snapshot);
+    eprintln!(
+        "[engine] set push_command ok media_id={:?}",
+        snapshot.media_id
+    );
     Ok(snapshot)
 }
 
 #[tauri::command]
 fn engine_play(app: AppHandle, engine: State<'_, EngineHandle>) -> Result<EngineState, String> {
-    let mut state = engine.state.lock().map_err(|_| "引擎状态锁失败".to_string())?;
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
     state.playing = true;
     let snapshot = state.clone();
     drop(state);
     wallpaper::push_command(&app, "play", &snapshot)?;
-    let _ = app.emit("engine-state", &snapshot);
+    wallpaper::push_state(&app, &snapshot);
     Ok(snapshot)
 }
 
 #[tauri::command]
 fn engine_pause(app: AppHandle, engine: State<'_, EngineHandle>) -> Result<EngineState, String> {
-    let mut state = engine.state.lock().map_err(|_| "引擎状态锁失败".to_string())?;
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
     state.playing = false;
     let snapshot = state.clone();
     drop(state);
     wallpaper::push_command(&app, "pause", &snapshot)?;
-    let _ = app.emit("engine-state", &snapshot);
+    wallpaper::push_state(&app, &snapshot);
     Ok(snapshot)
 }
 
@@ -76,13 +93,16 @@ fn engine_set_volume(
     engine: State<'_, EngineHandle>,
     payload: VolumePayload,
 ) -> Result<EngineState, String> {
-    let mut state = engine.state.lock().map_err(|_| "引擎状态锁失败".to_string())?;
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
     state.volume = payload.volume.clamp(0.0, 1.0);
     state.muted = payload.muted;
     let snapshot = state.clone();
     drop(state);
     wallpaper::push_command(&app, "volume", &snapshot)?;
-    let _ = app.emit("engine-state", &snapshot);
+    wallpaper::push_state(&app, &snapshot);
     Ok(snapshot)
 }
 
@@ -110,7 +130,10 @@ fn engine_report_progress(
     engine: State<'_, EngineHandle>,
     payload: ProgressPayload,
 ) -> Result<(), String> {
-    let mut state = engine.state.lock().map_err(|_| "引擎状态锁失败".to_string())?;
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
     state.current_time = payload.current_time;
     state.duration = payload.duration;
     if let Some(p) = payload.playing {
@@ -181,6 +204,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(EngineHandle::default())
+        .setup(|app| {
+            // Try to attach the pre-registered wallpaper window to WorkerW so it renders
+            // beneath the desktop icons. If Progman/WorkerW aren't available (rare on
+            // modern Windows desktops), the worker window will simply not be shown
+            // and the user can still get a preview inside the main app shell.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                match wallpaper::attach_existing(&handle) {
+                    Ok(()) => eprintln!("[wallpaper] startup attach ok"),
+                    Err(e) => eprintln!("[wallpaper] startup attach skipped: {e}"),
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             start_drag,
@@ -196,13 +234,6 @@ pub fn run() {
             set_favorite,
             get_app_paths
         ])
-        .on_window_event(|window, event| {
-            if window.label() == "main" {
-                if let tauri::WindowEvent::Destroyed = event {
-                    wallpaper::destroy_wallpaper(window.app_handle());
-                }
-            }
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

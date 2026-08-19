@@ -23,6 +23,27 @@
         "resizable": true,
         "minWidth": 720,
         "minHeight": 480
+      },
+      {
+        "label": "wallpaper",
+        "title": "LINGJING Wallpaper",
+        "url": "wallpaper.html",
+        "width": 1920,
+        "height": 1080,
+        "x": 0,
+        "y": 0,
+        "decorations": false,
+        "transparent": false,
+        "shadow": false,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "skipTaskbar": true,
+        "focus": false,
+        "visible": false,
+        "alwaysOnTop": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
       }
     ],
     "security": {

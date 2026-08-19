@@ -13,6 +13,7 @@
     "core:window:allow-hide",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
+    "core:window:allow-set-ignore-cursor-events",
     "opener:default",
     "dialog:default",
     "allow-engine"

@@ -16,33 +16,37 @@
       #stage {
         position: fixed;
         inset: 0;
-        display: grid;
-        place-items: center;
         background: #000;
       }
-      video,
-      img {
+      .pane {
+        position: absolute;
+        overflow: hidden;
+        background: #000;
+      }
+      .pane video,
+      .pane img {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;
         display: none;
+        background: #000;
       }
-      video.on,
-      img.on {
+      .pane video.on,
+      .pane img.on {
         display: block;
       }
     </style>
   </head>
   <body>
-    <div id="stage">
-      <video id="vid" playsinline loop muted></video>
-      <img id="img" alt="" />
-    </div>
+    <div id="stage"></div>
     <script>
-      const vid = document.getElementById("vid");
-      const img = document.getElementById("img");
+      const stage = document.getElementById("stage");
       let reportTimer = null;
       let lastState = null;
+      let layoutKey = "";
+      let panes = [];
 
       function isVideo(type, uri) {
         const t = (type || "").toLowerCase();
@@ -67,9 +71,16 @@
         } catch (_) {}
       }
 
+      function primaryVideo() {
+        const pane = panes.find((p) => p.primary) || panes[0];
+        return pane ? pane.vid : null;
+      }
+
       function startVideoReport() {
         clearReport();
         reportTimer = setInterval(() => {
+          const vid = primaryVideo();
+          if (!vid) return;
           report({
             currentTime: vid.currentTime || 0,
             duration: Number.isFinite(vid.duration) ? vid.duration : 0,
@@ -78,45 +89,118 @@
         }, 250);
       }
 
-      window.__wallpaperApply = function (state, cmd) {
-        lastState = state || lastState;
-        if (!lastState) return;
-        const uri = lastState.uri || "";
-        const mediaType = lastState.mediaType || "";
-        const playing = !!lastState.playing;
-        const volume = typeof lastState.volume === "number" ? lastState.volume : 0.8;
-        const muted = !!lastState.muted;
+      function defaultLayout() {
+        return [
+          {
+            x: 0,
+            y: 0,
+            w: Math.max(1, window.innerWidth || 0),
+            h: Math.max(1, window.innerHeight || 0),
+            primary: true,
+          },
+        ];
+      }
+
+      function applyLayout(layout) {
+        const tiles =
+          Array.isArray(layout) && layout.length ? layout : defaultLayout();
+        const key = JSON.stringify(tiles);
+        if (key === layoutKey && panes.length) return;
+        layoutKey = key;
+        for (const pane of panes) {
+          try {
+            pane.vid.pause();
+          } catch (_) {}
+        }
+        stage.innerHTML = "";
+        panes = tiles.map((tile) => {
+          const el = document.createElement("div");
+          el.className = "pane";
+          el.style.left = (tile.x || 0) + "px";
+          el.style.top = (tile.y || 0) + "px";
+          el.style.width = (tile.w || 0) + "px";
+          el.style.height = (tile.h || 0) + "px";
+          const vid = document.createElement("video");
+          vid.playsInline = true;
+          vid.loop = true;
+          vid.muted = true;
+          vid.autoplay = true;
+          const img = document.createElement("img");
+          img.alt = "";
+          el.appendChild(vid);
+          el.appendChild(img);
+          stage.appendChild(el);
+          vid.addEventListener("error", () => {
+            if (tile.primary) {
+              report({ currentTime: 0, duration: 0, error: "视频解码失败", playing: false });
+            }
+          });
+          return { el, vid, img, primary: !!tile.primary };
+        });
+        if (!panes.some((p) => p.primary) && panes[0]) panes[0].primary = true;
+      }
+
+      function applyMedia(state, cmd) {
+        const uri = state.uri || "";
+        const mediaType = state.mediaType || "";
+        const volume = typeof state.volume === "number" ? state.volume : 0.8;
+        const muted = !!state.muted;
+        if (!panes.length) applyLayout(null);
 
         if (cmd === "set" || cmd === undefined || cmd === null) {
           if (isVideo(mediaType, uri)) {
-            img.classList.remove("on");
-            img.removeAttribute("src");
-            vid.classList.add("on");
-            // Single-loop mode keeps native loop; list/random rely on ended → main advances.
-            vid.loop = false;
-            vid.src = uri;
-            vid.volume = volume;
-            vid.muted = muted;
-            const p = vid.play();
-            if (p && p.catch) p.catch((e) => report({ currentTime: 0, duration: 0, error: String(e), playing: false }));
+            panes.forEach((pane, i) => {
+              pane.img.classList.remove("on");
+              pane.img.removeAttribute("src");
+              pane.vid.classList.add("on");
+              pane.vid.loop = true;
+              pane.vid.src = uri;
+              pane.vid.muted = true;
+              pane.vid.volume = pane.primary ? volume : 0;
+              const p = pane.vid.play();
+              if (p && p.then) {
+                p.then(() => {
+                  if (pane.primary) {
+                    pane.vid.muted = muted;
+                    pane.vid.volume = volume;
+                  } else {
+                    pane.vid.muted = true;
+                    pane.vid.volume = 0;
+                  }
+                }).catch((e) => {
+                  if (pane.primary) {
+                    report({ currentTime: 0, duration: 0, error: String(e), playing: false });
+                  }
+                });
+              }
+            });
             startVideoReport();
           } else {
             clearReport();
-            vid.pause();
-            vid.removeAttribute("src");
-            vid.classList.remove("on");
-            img.classList.add("on");
-            img.src = uri;
+            panes.forEach((pane) => {
+              pane.vid.pause();
+              pane.vid.removeAttribute("src");
+              pane.vid.classList.remove("on");
+              pane.img.classList.add("on");
+              pane.img.src = uri;
+              pane.img.onerror = () => {
+                if (pane.primary) {
+                  report({ currentTime: 0, duration: 0, error: "图片加载失败", playing: false });
+                }
+              };
+            });
             report({ currentTime: 0, duration: 0, playing: true });
-            img.onerror = () => report({ currentTime: 0, duration: 0, error: "图片加载失败", playing: false });
           }
           return;
         }
 
         if (cmd === "play") {
-          if (vid.classList.contains("on")) {
-            const p = vid.play();
-            if (p && p.catch) p.catch(() => {});
+          const vid = primaryVideo();
+          if (vid && vid.classList.contains("on")) {
+            panes.forEach((pane) => {
+              const p = pane.vid.play();
+              if (p && p.catch) p.catch(() => {});
+            });
             startVideoReport();
           } else {
             report({ currentTime: 0, duration: 0, playing: true });
@@ -125,8 +209,9 @@
         }
 
         if (cmd === "pause") {
-          if (vid.classList.contains("on")) {
-            vid.pause();
+          const vid = primaryVideo();
+          panes.forEach((pane) => pane.vid.pause());
+          if (vid && vid.classList.contains("on")) {
             report({
               currentTime: vid.currentTime || 0,
               duration: Number.isFinite(vid.duration) ? vid.duration : 0,
@@ -139,36 +224,42 @@
         }
 
         if (cmd === "volume") {
-          if (vid.classList.contains("on")) {
-            vid.volume = volume;
-            vid.muted = muted;
-          }
+          panes.forEach((pane) => {
+            if (!pane.vid.classList.contains("on")) return;
+            if (pane.primary) {
+              pane.vid.volume = volume;
+              pane.vid.muted = muted;
+            } else {
+              pane.vid.volume = 0;
+              pane.vid.muted = true;
+            }
+          });
+        }
+      }
+
+      window.__wallpaperApply = function (state, cmd, layout) {
+        lastState = state || lastState;
+        applyLayout(layout);
+        if (!lastState) return;
+        const doApply = () => applyMedia(lastState, cmd);
+        if (document.readyState === "complete" || document.readyState === "interactive") {
+          doApply();
+        } else {
+          document.addEventListener("DOMContentLoaded", doApply, { once: true });
         }
       };
 
-      // Listen Tauri events when available
       (async () => {
         try {
           const listen = window.__TAURI__?.event?.listen;
           if (listen) {
             await listen("wallpaper-cmd", (ev) => {
               const payload = ev.payload || {};
-              window.__wallpaperApply(payload.state, payload.cmd);
+              window.__wallpaperApply(payload.state, payload.cmd, payload.layout);
             });
           }
         } catch (_) {}
       })();
-
-      vid.addEventListener("error", () => {
-        report({ currentTime: 0, duration: 0, error: "视频解码失败", playing: false });
-      });
-      vid.addEventListener("ended", () => {
-        report({
-          currentTime: Number.isFinite(vid.duration) ? vid.duration : 0,
-          duration: Number.isFinite(vid.duration) ? vid.duration : 0,
-          playing: false,
-        });
-      });
     </script>
   </body>
 </html>

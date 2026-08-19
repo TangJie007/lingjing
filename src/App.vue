@@ -99,7 +99,8 @@ async function onSet(item: WallpaperItem) {
     selectedId.value = item.id;
     showToast(`壁纸「${item.name}」已成功应用到桌面`);
   } catch (e) {
-    showToast(e instanceof Error ? e.message : String(e));
+    const msg = e instanceof Error ? e.message : String(e);
+    showToast(`设壁纸失败：${msg}`);
   }
 }
 

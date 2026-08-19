@@ -26,4 +26,5 @@ tauri-plugin-dialog = "2.7.2"
 uuid = { version = "1.24.1", features = ["v4"] }
 chrono = { version = "0.4.45", features = ["clock"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+tokio = { version = "1.53.1", features = ["time"] }
 
