@@ -11,7 +11,7 @@ import {
   type MigrationPlan,
 } from "../composables/useSettings";
 import { engineSetVolume } from "../composables/useEngine";
-import MigrationModal from "./MigrationModal.vue";
+import MigrationModal from "../components/MigrationModal.vue";
 
 const settings = useSettings();
 const paths = ref<AppPaths | null>(null);

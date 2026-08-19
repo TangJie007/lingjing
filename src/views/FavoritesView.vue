@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import WallpaperCardGrid from "./WallpaperCardGrid.vue";
+import WallpaperCardGrid from "../components/WallpaperCardGrid.vue";
 import type { WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{

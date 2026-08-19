@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, type Ref } from "vue";
-import TopBar from "./TopBar.vue";
-import WallpaperCardGrid from "./WallpaperCardGrid.vue";
+import TopBar from "../components/TopBar.vue";
+import WallpaperCardGrid from "../components/WallpaperCardGrid.vue";
 import { CATALOG, type WallpaperItem } from "../data/catalog";
 
 const props = withDefaults(

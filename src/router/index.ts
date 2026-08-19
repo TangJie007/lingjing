@@ -1,8 +1,8 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
-import WallpaperGrid from "../components/WallpaperGrid.vue";
-import FavoritesView from "../components/FavoritesView.vue";
-import LocalLibraryView from "../components/LocalLibraryView.vue";
-import SettingsView from "../components/SettingsView.vue";
+import OnlineView from "../views/OnlineView.vue";
+import LocalView from "../views/LocalView.vue";
+import FavoritesView from "../views/FavoritesView.vue";
+import SettingsView from "../views/SettingsView.vue";
 import AboutView from "../views/AboutView.vue";
 import { useSettings } from "../composables/useSettings";
 
@@ -28,13 +28,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/local",
     name: "local",
-    component: LocalLibraryView,
+    component: LocalView,
     meta: { showDrawer: true },
   },
   {
     path: "/online",
     name: "online",
-    component: WallpaperGrid,
+    component: OnlineView,
     meta: { showDrawer: true, requiresOnline: true },
   },
   {
