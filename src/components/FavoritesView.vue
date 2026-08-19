@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, type Ref } from "vue";
-import { CATALOG, CATEGORIES, type WallpaperItem } from "../data/catalog";
+import { computed } from "vue";
+import { CATALOG, type WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{ selectedId?: number | null }>();
 const emit = defineEmits<{
@@ -9,21 +9,8 @@ const emit = defineEmits<{
   (e: "favorite", item: WallpaperItem): void;
 }>();
 
-const activeCat = ref<string>("全部");
-const search = inject<Ref<string>>("topbarSearch", ref(""));
-
-const ready = ref(false);
-onMounted(() => nextTick(() => (ready.value = true)));
-
-const list = computed(() => {
-  let r = CATALOG;
-  if (activeCat.value !== "全部") r = r.filter((i) => i.category === activeCat.value);
-  if (search.value.trim()) {
-    const q = search.value.trim().toLowerCase();
-    r = r.filter((i) => i.name.toLowerCase().includes(q));
-  }
-  return r;
-});
+const favs = computed(() => CATALOG.filter((i) => i.favorite));
+const count = computed(() => favs.value.length);
 
 function pick(item: WallpaperItem) {
   emit("select", item);
@@ -34,36 +21,22 @@ function setWp(item: WallpaperItem) {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col">
-    <!-- 分类标签 + 排序占位（真实排序由 TopBar 注入） -->
-    <div class="cats-row flex flex-wrap items-center gap-1.5 px-5 pb-2 pt-3">
-      <button
-        v-for="c in CATEGORIES"
-        :key="c"
-        class="chip"
-        :class="activeCat === c ? 'on' : ''"
-        @click="activeCat = c"
-      >{{ c }}</button>
+  <div class="flex-1 overflow-y-auto px-7 py-5">
+    <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 4px;">我的收藏</h3>
+    <div style="font-size: 12.5px; color: var(--text-3); margin-bottom: 18px;">
+      已收藏 {{ count }} 张壁纸 · 本地保存，无需登录
     </div>
 
-    <!-- 卡片网格 -->
-    <div class="grid min-h-0 flex-1 content-start gap-3.5 overflow-y-auto px-5 pb-5">
-      <template v-if="!ready">
-        <div v-for="i in 6" :key="`sk-${i}`" class="card skeleton-card">
-          <div class="thumb aspect-[16/10] w-full bg-[var(--border)]" />
-          <div class="info">
-            <div class="skel t w-2/3 bg-[var(--border)]" />
-            <div class="skel m w-1/2 bg-[var(--border)]" />
-          </div>
-        </div>
-      </template>
+    <div v-if="count === 0" class="empty">
+      还没有收藏，去发现页点 ❤️ 收藏吧~
+    </div>
 
+    <div v-else class="grid">
       <div
-        v-for="(item, idx) in list"
-        v-else
+        v-for="(item, idx) in favs"
         :key="item.id"
         :class="['card', 'group', 'card-in', props.selectedId === item.id ? 'selected' : '']"
-        :style="{ animationDelay: idx < 6 ? `${idx * 60}ms` : '360ms' }"
+        :style="{ animationDelay: `${Math.min(idx, 5) * 60}ms` }"
         role="button"
         tabindex="0"
         :aria-label="`${item.name}，设为壁纸`"
@@ -83,48 +56,24 @@ function setWp(item: WallpaperItem) {
           <div class="t">{{ item.name }}</div>
           <div class="m">{{ item.category }} · {{ item.type === 'video' ? '4K' : item.type === 'gif' ? 'GIF' : '2K' }}</div>
         </div>
-        <span v-if="item.favorite" class="liked-corner">❤️</span>
+        <span class="liked-corner">❤️</span>
       </div>
-
-      <p v-if="ready && list.length === 0" class="col-span-full py-10 text-center text-sm text-[var(--text-3)]">
-        没有匹配的壁纸
-      </p>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 分类 chip */
-.chip {
-  font-size: 12.5px;
-  padding: 6px 14px;
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease);
+.empty {
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  padding: 48px 0;
 }
-.chip:hover {
-  transform: translateY(-1px);
-  border-color: var(--border-strong);
-}
-.chip:active {
-  transform: scale(0.94);
-}
-.chip.on {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-  font-weight: 600;
-}
-
-/* 卡片 */
 .grid {
+  display: grid;
   grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  align-content: start;
 }
 @media (max-width: 680px) {
   .grid {
@@ -141,22 +90,16 @@ function setWp(item: WallpaperItem) {
   transition: transform var(--dur-fast) var(--ease),
     box-shadow var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease);
-  app-region: no-drag;
 }
 .card:hover {
   transform: translateY(-4px);
   box-shadow: var(--sh-md);
   border-color: var(--border-strong);
 }
-.card:active {
-  transform: translateY(-1px) scale(0.99);
-}
 .card.selected {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-soft);
 }
-
-/* 缩略图自身 hover 放大 */
 .thumb {
   position: relative;
   overflow: hidden;
@@ -169,8 +112,6 @@ function setWp(item: WallpaperItem) {
 .card:hover .thumb-bg {
   transform: scale(1.07);
 }
-
-/* badge + vol */
 .badge {
   position: absolute;
   left: 7px;
@@ -194,8 +135,6 @@ function setWp(item: WallpaperItem) {
   color: #fff;
   z-index: 2;
 }
-
-/* hover 居中底部浮起快捷操作 */
 .hover-acts {
   position: absolute;
   inset: 0;
@@ -221,7 +160,7 @@ function setWp(item: WallpaperItem) {
   border-radius: var(--r-pill);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  transition: transform var(--dur-fast) var(--ease);
 }
 .ha-btn.preview {
   background: rgba(255, 255, 255, 0.94);
@@ -237,8 +176,6 @@ function setWp(item: WallpaperItem) {
 .ha-btn:active {
   transform: scale(0.92);
 }
-
-/* 信息区 */
 .info {
   padding: 9px 11px;
 }
@@ -254,8 +191,6 @@ function setWp(item: WallpaperItem) {
   color: var(--text-3);
   margin-top: 2px;
 }
-
-/* 收藏角标 */
 .liked-corner {
   position: absolute;
   right: 2px;
@@ -263,17 +198,7 @@ function setWp(item: WallpaperItem) {
   font-size: 12px;
   z-index: 2;
 }
-
-/* 入场 */
 .card-in {
   animation: fadeUp var(--dur-slow) var(--ease-out) both;
-}
-.skeleton-card {
-  opacity: 0.7;
-}
-.skel {
-  height: 12px;
-  border-radius: 999px;
-  margin-top: 6px;
 }
 </style>

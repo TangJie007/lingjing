@@ -1,4 +1,4 @@
-# LingScape 灵境 — 动态壁纸
+# 灵镜 LINGJING — 动态壁纸
 
 基于 **Tauri 2 + Vue 3 + TypeScript** 的动态壁纸桌面应用。
 

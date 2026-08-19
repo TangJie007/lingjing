@@ -1,75 +1,45 @@
-# Shell Layout, Motion System & Theme Baseline (F5 architecture, F8 entry)
+## ADDED Requirements
 
-This spec describes the complete shell after Archive: the three-zone immersive
-layout, the self-built GPU-friendly motion system, and the tokenized theme
-architecture whose baseline is Frost Light (浅色). It also defines the
-structural hooks for multi-monitor assignment (F5) and the entry surface for
-the Settings center (F8).
+### Requirement: Three-zone immersive shell
+The app MUST render a three-zone immersive layout on launch:
+- Left icon rail (80px) with navigation entries (online / local / my /
+  settings) and a selected-state indicator.
+- Center area: top bar (search + theme toggle) + category tag cloud +
+  wallpaper card grid.
+- Right detail drawer (320px, frosted glass), collapsible, slides in on card
+  click.
+- Global bottom playback control bar.
+Tauri window header keeps `app-region: drag`; interactive controls keep
+`app-region: no-drag`.
 
-## Layout
+#### Acceptance Criteria
+- WHEN the app launches THEN a three-zone shell renders with an 80px icon rail,
+  a wallpaper grid, a collapsible 320px frosted drawer, and a bottom playback
+  bar. (A1)
+- WHEN the app launches THEN the shell header is draggable via `app-region:
+  drag` while buttons/inputs remain interactive (`no-drag`). (A1-drag)
 
-- Three-zone structure (PRD §7.1):
-  - Icon rail (left, 80px): navigation (online / local / my / settings / about);
-    selected state uses indigo `#4F46E5` highlight with a left indicator bar.
-  - Center: top bar (search + theme) + category tag cloud + wallpaper card grid
-    with hover quick-actions.
-  - Right detail drawer (320px, frosted glass), slides in on card click,
-    collapsible.
-  - Global bottom playback control bar (PRD §7.1, F6).
-- Tauri window chrome: header carries `app-region: drag`; interactive controls
-  (buttons, inputs, drawer handles) carry `app-region: no-drag`.
-- Responsive to high-DPI / ultra-wide; no layout break at 1280×720 minimum.
+### Requirement: Frost Light theme baseline
+The app MUST apply the Frost Light (浅色) token baseline:
+`--bg #F4F5F7`, `--surface #FFFFFF`, `--primary #4F46E5`,
+`--secondary #0891B2`, `--text #1F2329`, `--text-2 #6B7280`,
+`--border #E5E7EB`. A dark token set MUST be switchable via the same token
+structure. All colors/spacing/radius/shadow are `var(--xxx)`.
 
-## Motion system (PRD §7.2)
+#### Acceptance Criteria
+- WHEN the app renders in default theme THEN background uses `#F4F5F7`, surface
+  `#FFFFFF`, primary `#4F46E5`, text `#1F2329`. (A8)
+- WHEN the user toggles theme THEN only root token variables change; no
+  structural change occurs. (A8-switch)
 
-- Tokens (CSS variables):
-  - `--dur-fast: 150ms` (hover/press)
-  - `--dur-base: 280ms` (drawer/panel)
-  - `--dur-slow: 520ms` (entrance)
-  - `--ease: cubic-bezier(.4,0,.2,1)` (standard)
-  - `--ease-spring: cubic-bezier(.34,1.7,.5,1)` (elastic rebound)
-- Iron rule: animate only `transform` / `opacity`; never trigger reflow.
-- Behaviors:
-  - Sidebar tap: ripple at point + icon elastic rebound + through-slide
-    indicator bar.
-  - Settings gear rotates; favorites heart has heartbeat animation.
-  - Card entrance: staggered upward float (stagger) with lazy load + skeleton
-    placeholder.
-  - Drawer slide uses `--dur-base` + `--ease`.
-- Accessibility: `role` / `aria-label` / keyboard reachable; `prefers-reduced-
-  motion` universally disables entrance/transition animations (see F9).
+### Requirement: GPU-friendly motion system
+The app MUST animate using only `transform` / `opacity` (no reflow). Motion
+tokens: `--dur-fast 150ms`, `--dur-base 280ms`, `--dur-slow 520ms`,
+`--ease cubic-bezier(.4,0,.2,1)`, `--ease-spring cubic-bezier(.34,1.7,.5,1)`.
+Card entrance uses staggered upward float with skeleton placeholders.
 
-## Theme architecture (PRD §8)
-
-- All colors/spacing/radius/shadow are `var(--xxx)`; switching theme replaces
-  only a few root variables, zero structural change.
-- Frost Light (baseline, ✅ finalized) tokens:
-  - `--bg: #F4F5F7`
-  - `--surface: #FFFFFF`
-  - `--primary: #4F46E5`
-  - `--secondary: #0891B2`
-  - `--text: #1F2329`
-  - `--text-2: #6B7280`
-  - `--border: #E5E7EB`
-- Frost Dark (✅) reuses the same token structure with pressed-dark surfaces and
-  `--primary: #818CF8`.
-- Dreamy Aurora (🔜 exploration) is deferred; only token scaffolding may exist.
-- Theme switch is exposed in Settings (F8) and the top bar.
-
-## Settings entry (F8)
-
-- Settings center reachable from the icon rail; contains: autostart, fullscreen-
-  pause toggle, library path, global volume, UI click sound toggle, theme
-  switch. Full behavior specified in the `local-library` / `performance-power`
-  specs where state lives.
-
-## Multi-monitor hook (F5, architecture only)
-
-- Engine and playback interfaces must be designed so a display-assignment layer
-  (Span / Per-display / duplicate, DPI-aware) can be added in V1.0 without
-  restructuring the player. No functional multi-monitor UI in MVP.
-
-## Acceptance mapping
-
-- Covers A1 (three-zone shell), A7 (motion tokens), A8 (Frost Light tokens).
-- Sets the stage for A2–A6 via child capabilities.
+#### Acceptance Criteria
+- WHEN cards mount or the drawer opens THEN transitions use only transform/
+  opacity and durations from the 150/280/520ms token set. (A7)
+- WHEN `prefers-reduced-motion` is set THEN entrance/transition animations are
+  disabled app-wide. (A7-reduced)

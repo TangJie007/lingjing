@@ -1,7 +1,7 @@
 [package]
 name = "lingscape"
 version = "0.1.0"
-description = "灵境 LingScape — AI 动态壁纸创作工具"
+description = "灵镜 LINGJING — 动态壁纸桌面应用"
 authors = ["you"]
 edition = "2021"
 

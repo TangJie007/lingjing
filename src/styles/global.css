@@ -1,127 +1,130 @@
 @import "tailwindcss";
 
-/* ===== Frost Light 主题 Token（PRD §8.2，浅色基线）=====
-   所有颜色/间距/圆角/阴影均以 var(--xxx) 暴露，切换主题只改根变量。*/
-@theme {
-  --color-bg: #f4f5f7;
-  --color-bg-elevated: #ffffff;
-  --color-surface: #ffffff;
-  --color-border: #e5e7eb;
-  --color-text: #1f2329;
-  --color-text-dim: #6b7280;
-  --color-primary: #4f46e5;
-  --color-primary-soft: rgba(79, 70, 229, 0.12);
-  --color-secondary: #0891b2;
-  --color-secondary-soft: rgba(8, 145, 178, 0.12);
+/* ============================================================
+   灵镜 LINGJING · 设计 Token（与 lingjing-ui-design.html 1:1）
+   - 浅色 / 深色双套，覆盖颜色 / 字体 / 间距 / 圆角 / 阴影 / 动效
+   - 切换主题：只改 [data-theme] 属性，CSS 变量原地切换
+   - 铁律：所有颜色 / 间距 / 圆角 / 阴影 / 时长 / 缓动 必须 var(--xxx)
+   ============================================================ */
 
-  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-
-  /* 自定义动画（仅 transform / opacity）*/
-  --animate-fade-in: fade-in var(--dur-slow) var(--ease) both;
-  --animate-pop: pop var(--dur-fast) var(--ease) both;
-  --animate-shimmer: shimmer 2.4s linear infinite;
-  --animate-card-in: card-in var(--dur-slow) var(--ease) both;
-}
-
-/* ===== 动效 Token（GPU-friendly，仅 transform/opacity）===== */
 :root {
+  /* 浅色 · 雾银极简 */
+  --bg: #F4F5F7;
+  --surface: #FFFFFF;
+  --surface-2: #F9FAFB;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+
+  --primary: #4F46E5;
+  --primary-hover: #4338CA;
+  --primary-soft: #EEF2FF;
+  --secondary: #0891B2;
+
+  --text: #1F2329;
+  --text-2: #6B7280;
+  --text-3: #9CA3AF;
+
+  --success: #16A34A;
+  --warning: #D97706;
+  --error: #DC2626;
+  --info: #0891B2;
+
+  /* 动效 Token（仅 transform / opacity，GPU 友好）*/
   --dur-fast: 150ms;
   --dur-base: 280ms;
   --dur-slow: 520ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.7, 0.5, 1);
+
+  /* 字体 */
+  --font: "Inter", "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+
+  /* 间距 */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+  --s10: 40px;
+  --s12: 48px;
+
+  /* 圆角 */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* 阴影 */
+  --sh-sm: 0 1px 3px rgba(17, 24, 39, 0.06);
+  --sh-md: 0 4px 14px rgba(17, 24, 39, 0.08);
+  --sh-win: 0 28px 64px -18px rgba(17, 24, 39, 0.24);
+
+  /* 主题切换平滑 */
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 
-/* ===== Frost Light 浅色根变量（PRD §8.2）===== */
-:root,
-:root[data-theme="frost-light"] {
-  --bg: #f4f5f7;
-  --bg-elevated: #ffffff;
-  --surface: #ffffff;
-  --border: #e5e7eb;
-  --text: #1f2329;
-  --text-dim: #6b7280;
-  --text-2: #6b7280;
-  --primary: #4f46e5;
-  --primary-soft: rgba(79, 70, 229, 0.12);
-  --secondary: #0891b2;
-  --secondary-soft: rgba(8, 145, 178, 0.12);
-  --accent: #4f46e5;
-  --accent-soft: rgba(79, 70, 229, 0.12);
-  --radius: 12px;
-  --font: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+/* ===== 深色 · 雾银暗夜 ===== */
+:root[data-theme="dark"] {
+  --bg: #0E1014;
+  --surface: #181B22;
+  --surface-2: #20242E;
+  --border: #2A2F3A;
+  --border-strong: #3A4150;
+
+  --primary: #818CF8;
+  --primary-hover: #A5B4FC;
+  --primary-soft: #312E81;
+  --secondary: #22D3EE;
+
+  --text: #F4F5F7;
+  --text-2: #A0A8B4;
+  --text-3: #6B7280;
+
+  --success: #4ADE80;
+  --warning: #FBBF24;
+  --error: #F87171;
+  --info: #22D3EE;
+
+  --sh-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --sh-md: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --sh-win: 0 28px 64px -18px rgba(0, 0, 0, 0.7);
 }
 
-/* ===== Frost Dark 可切换（同 Token 结构，暗面）===== */
-:root[data-theme="frost-dark"] {
-  --bg: #16181d;
-  --bg-elevated: #1e2128;
-  --surface: #23272f;
-  --border: #2c313a;
-  --text: #e8e8ec;
-  --text-dim: #9aa0a8;
-  --text-2: #9aa0a8;
-  --primary: #818cf8;
-  --primary-soft: rgba(129, 140, 248, 0.16);
-  --secondary: #22d3ee;
-  --secondary-soft: rgba(34, 211, 238, 0.16);
-  --accent: #818cf8;
-  --accent-soft: rgba(129, 140, 248, 0.16);
-}
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pop {
-  0% { transform: scale(0.96); }
-  100% { transform: scale(1); }
-}
-
-@keyframes shimmer {
-  to { background-position: 200% 0; }
-}
-
-/* 卡片错峰入场（仅 transform/opacity）*/
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* 图标弹性回弹（侧栏点击）*/
-@keyframes icon-spring {
-  0% { transform: scale(0.86); }
-  60% { transform: scale(1.08); }
-  100% { transform: scale(1); }
-}
-
-/* 收藏心跳 */
-@keyframes heartbeat {
-  0%, 100% { transform: scale(1); }
-  30% { transform: scale(1.25); }
-  60% { transform: scale(0.95); }
-}
-
+/* ============================================================
+   全局基础
+   ============================================================ */
 * {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
+}
+
+* :focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
 }
 
 html,
 body,
 #app {
-  margin: 0;
   height: 100%;
   width: 100%;
 }
 
 body {
   font-family: var(--font);
-  color: var(--text);
   background: var(--bg);
+  color: var(--text);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
-  -webkit-font-smoothing: antialiased;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 
 button {
@@ -130,6 +133,12 @@ button {
   border: none;
   color: var(--text);
   background: transparent;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  color: var(--text);
 }
 
 /* 浅色滚动条 */
@@ -145,14 +154,179 @@ button {
   background: rgba(31, 35, 41, 0.32);
 }
 
-/* 降低动态偏好：全局禁用入场/过渡动画（PRD F9 / 无障碍）*/
+/* ============================================================
+   动画 Keyframes（仅 transform / opacity）
+   ============================================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 详情大图 Ken Burns 缓慢推近 */
+@keyframes kenburns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.12);
+  }
+}
+
+/* 60s 倒计时环（详情大图右下 wheel）*/
+@keyframes countdown {
+  to {
+    stroke-dashoffset: 138.23;
+  }
+}
+
+/* 侧栏导航点击涟漪 */
+@keyframes navRipple {
+  0% {
+    transform: scale(0.12);
+    opacity: 0.34;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* 侧栏图标弹性回弹 */
+@keyframes navPop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.58);
+  }
+  64% {
+    transform: scale(1.16);
+  }
+  82% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 侧栏"设置"图标 360° 旋转 */
+@keyframes gearSpin {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 侧栏"我的"图标 ❤️ 心跳 */
+@keyframes heartBeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(0.8);
+  }
+  28% {
+    transform: scale(1.2);
+  }
+  42% {
+    transform: scale(0.9);
+  }
+  56% {
+    transform: scale(1.06);
+  }
+}
+
+/* "我的"红点 badge pulse */
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.6;
+  }
+}
+
+/* 播放条 18s 流动进度 */
+@keyframes prog {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Toast 弹层进场 */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ============================================================
+   Tailwind v4 @theme 桥接（让 utility class 与原生变量统一）
+   ============================================================ */
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-info: var(--info);
+
+  --font-sans: var(--font);
+
+  --animate-fade-in: fadeIn var(--dur-slow) var(--ease) both;
+  --animate-fade-up: fadeUp var(--dur-slow) var(--ease-out) both;
+  --animate-pulse: pulse 2s var(--ease) infinite;
+}
+
+/* ============================================================
+   降低动效偏好（无障碍）：全局禁用
+   ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+    animation: none !important;
+    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }
