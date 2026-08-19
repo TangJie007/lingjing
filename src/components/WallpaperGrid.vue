@@ -120,9 +120,10 @@ function meta(item: WallpaperItem) {
 }
 .online-badge {
   left: auto;
-  right: 8px;
-  top: auto;
-  bottom: 8px;
-  background: rgba(79, 70, 229, 0.85);
+  right: 7px;
+  top: 7px;
+  bottom: auto;
+  background: rgba(79, 70, 229, 0.92);
+  color: #fff;
 }
 </style>

@@ -302,6 +302,11 @@ function openLogin() {
   loginOpen.value = true;
 }
 
+function onLoginSuccess() {
+  loginOpen.value = false;
+  if (activeNav.value === "online") void refreshOnline();
+}
+
 async function runImport(paths?: string[] | null) {
   let selected = paths ?? null;
   if (!selected) {
@@ -593,5 +598,5 @@ function onPauseWrapped() {
   </div>
 
   <Toast />
-  <LoginModal :open="loginOpen" @close="loginOpen = false" />
+  <LoginModal :open="loginOpen" @close="loginOpen = false" @success="onLoginSuccess" />
 </template>

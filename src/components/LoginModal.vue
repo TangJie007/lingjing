@@ -2,19 +2,21 @@
 import OnlineLoginPanel from "./OnlineLoginPanel.vue";
 
 defineProps<{ open: boolean }>();
-const emit = defineEmits<{ (e: "close"): void }>();
+const emit = defineEmits<{ (e: "close"): void; (e: "success"): void }>();
 </script>
 
 <template>
-  <div v-if="open" class="lm-mask" @click.self="emit('close')">
-    <div class="lm-card" role="dialog" aria-modal="true" aria-label="登录灵境社区">
-      <header>
-        <h3>登录灵境社区</h3>
-        <button type="button" class="lm-close" aria-label="关闭" @click="emit('close')">✕</button>
-      </header>
-      <OnlineLoginPanel />
+  <Teleport to="body">
+    <div v-if="open" class="lm-mask" @click.self="emit('close')">
+      <div class="lm-card" role="dialog" aria-modal="true" aria-label="登录灵境社区">
+        <header>
+          <h3>登录灵境社区</h3>
+          <button type="button" class="lm-close" aria-label="关闭" @click="emit('close')">✕</button>
+        </header>
+        <OnlineLoginPanel @success="emit('success')" />
+      </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -25,7 +27,7 @@ const emit = defineEmits<{ (e: "close"): void }>();
   backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
-  z-index: 80;
+  z-index: 1000;
 }
 .lm-card {
   width: 400px;

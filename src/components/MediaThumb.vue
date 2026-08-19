@@ -117,12 +117,15 @@ function onImgLoad() {
     <video
       v-if="showVideo && (isPreview || !posterUrl)"
       ref="videoRef"
-      class="thumb-media"
+      class="thumb-media thumb-video"
       :src="uri!"
       muted
       playsinline
       :loop="isPreview"
       :preload="isPreview ? 'auto' : 'metadata'"
+      disablePictureInPicture
+      disableremoteplayback
+      controlslist="nodownload noplaybackrate noremoteplayback"
       @loadedmetadata="onVideoMeta"
       @seeked="onThumbSeeked"
       @canplay="onPreviewCanPlay"
@@ -164,5 +167,24 @@ function onImgLoad() {
 .thumb-bg.is-video-preview .thumb-media {
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+.thumb-video {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.thumb-video::-webkit-media-controls {
+  display: none !important;
+}
+.thumb-video::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+.thumb-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+  opacity: 0;
+  pointer-events: none;
+}
+.thumb-bg:not(.has-media) .thumb-video {
+  visibility: hidden;
 }
 </style>

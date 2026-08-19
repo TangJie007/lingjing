@@ -1,26 +1,78 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import { showToast } from "../composables/useToast";
 import { useAuth } from "../composables/useAuth";
 
-const { user, isLoggedIn, authLoading, login, logout } = useAuth();
+const emit = defineEmits<{ (e: "success"): void }>();
 
-const email = ref("");
+const { user, isLoggedIn, authLoading, login, sendLoginCode, loginWithCode, logout } = useAuth();
+
+type LoginMode = "password" | "code";
+const mode = ref<LoginMode>("password");
+
+const account = ref("");
 const password = ref("");
+const email = ref("");
+const code = ref("");
+const codeCooldown = ref(0);
+let codeTimer: number | null = null;
 
 const displayName = computed(
   () => user.value?.nickname || user.value?.username || user.value?.email || "已登录",
 );
 
-async function onLogin() {
-  if (!email.value.trim() || !password.value) {
-    showToast("请输入邮箱和密码");
+function startCooldown(seconds = 60) {
+  codeCooldown.value = seconds;
+  if (codeTimer !== null) window.clearInterval(codeTimer);
+  codeTimer = window.setInterval(() => {
+    codeCooldown.value -= 1;
+    if (codeCooldown.value <= 0 && codeTimer !== null) {
+      window.clearInterval(codeTimer);
+      codeTimer = null;
+    }
+  }, 1000);
+}
+
+async function onPasswordLogin() {
+  if (!account.value.trim() || !password.value) {
+    showToast("请输入账号和密码");
     return;
   }
   try {
-    await login(email.value, password.value);
+    await login(account.value, password.value);
     password.value = "";
     showToast(`欢迎回来，${displayName.value}`);
+    emit("success");
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function onSendCode() {
+  if (!email.value.trim()) {
+    showToast("请输入邮箱");
+    return;
+  }
+  if (codeCooldown.value > 0) return;
+  try {
+    await sendLoginCode(email.value);
+    showToast("验证码已发送，请查收邮箱");
+    startCooldown();
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function onCodeLogin() {
+  if (!email.value.trim() || !code.value.trim()) {
+    showToast("请输入邮箱和验证码");
+    return;
+  }
+  try {
+    await loginWithCode(email.value, code.value);
+    code.value = "";
+    showToast(`欢迎回来，${displayName.value}`);
+    emit("success");
   } catch (e) {
     showToast(e instanceof Error ? e.message : String(e));
   }
@@ -30,6 +82,10 @@ async function onLogout() {
   await logout();
   showToast("已退出登录");
 }
+
+onUnmounted(() => {
+  if (codeTimer !== null) window.clearInterval(codeTimer);
+});
 </script>
 
 <template>
@@ -46,23 +102,83 @@ async function onLogout() {
     </template>
     <template v-else>
       <p class="hint">登录后可同步社区点赞状态；未登录也可正常浏览在线壁纸。</p>
-      <label class="field">
-        <span>邮箱</span>
-        <input v-model="email" type="email" autocomplete="username" placeholder="user@example.com" />
-      </label>
-      <label class="field">
-        <span>密码</span>
-        <input
-          v-model="password"
-          type="password"
-          autocomplete="current-password"
-          placeholder="请输入密码"
-          @keydown.enter="onLogin"
-        />
-      </label>
-      <button type="button" class="btn-in" :disabled="authLoading" @click="onLogin">
-        {{ authLoading ? "登录中…" : "登录" }}
-      </button>
+
+      <div class="tabs" role="tablist">
+        <button
+          type="button"
+          class="tab"
+          :class="{ on: mode === 'password' }"
+          role="tab"
+          :aria-selected="mode === 'password'"
+          @click="mode = 'password'"
+        >密码登录</button>
+        <button
+          type="button"
+          class="tab"
+          :class="{ on: mode === 'code' }"
+          role="tab"
+          :aria-selected="mode === 'code'"
+          @click="mode = 'code'"
+        >验证码登录</button>
+      </div>
+
+      <template v-if="mode === 'password'">
+        <label class="field">
+          <span>账号</span>
+          <input
+            v-model="account"
+            type="text"
+            autocomplete="username"
+            placeholder="邮箱或用户名"
+            @keydown.enter="onPasswordLogin"
+          />
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input
+            v-model="password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="请输入密码"
+            @keydown.enter="onPasswordLogin"
+          />
+        </label>
+        <button type="button" class="btn-in" :disabled="authLoading" @click="onPasswordLogin">
+          {{ authLoading ? "登录中…" : "登录" }}
+        </button>
+      </template>
+
+      <template v-else>
+        <label class="field">
+          <span>邮箱</span>
+          <input v-model="email" type="email" autocomplete="username" placeholder="user@example.com" />
+        </label>
+        <label class="field">
+          <span>验证码</span>
+          <div class="code-row">
+            <input
+              v-model="code"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              placeholder="6 位验证码"
+              maxlength="6"
+              @keydown.enter="onCodeLogin"
+            />
+            <button
+              type="button"
+              class="btn-code"
+              :disabled="authLoading || codeCooldown > 0"
+              @click="onSendCode"
+            >
+              {{ codeCooldown > 0 ? `${codeCooldown}s` : "获取验证码" }}
+            </button>
+          </div>
+        </label>
+        <button type="button" class="btn-in" :disabled="authLoading" @click="onCodeLogin">
+          {{ authLoading ? "登录中…" : "登录" }}
+        </button>
+      </template>
     </template>
   </div>
 </template>
@@ -72,17 +188,36 @@ async function onLogout() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 8px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
 }
 .hint {
   font-size: 12px;
   color: var(--text-2);
   line-height: 1.55;
   margin: 0;
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: calc(var(--r-md) - 2px);
+  cursor: pointer;
+}
+.tab.on {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: var(--sh-sm);
 }
 .field {
   display: flex;
@@ -104,6 +239,30 @@ async function onLogout() {
   box-shadow: 0 0 0 3px var(--primary-soft);
   outline: none;
 }
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+.code-row input {
+  flex: 1;
+  min-width: 0;
+}
+.btn-code {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-code:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .btn-in,
 .btn-out {
   border: 1px solid var(--border);
@@ -112,7 +271,6 @@ async function onLogout() {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--dur-fast) var(--ease-spring);
 }
 .btn-in {
   background: var(--primary);
