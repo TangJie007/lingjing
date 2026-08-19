@@ -190,6 +190,13 @@ impl Default for ProgressPayload {
     }
 }
 
+fn is_benign_play_error(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    m.contains("aborterror")
+        || m.contains("interrupted by a new load")
+        || m.contains("interrupted by a call to pause")
+}
+
 #[tauri::command]
 fn engine_report_progress(
     app: AppHandle,
@@ -205,8 +212,12 @@ fn engine_report_progress(
     if let Some(p) = payload.playing {
         state.playing = p;
     }
-    if payload.error.is_some() {
-        state.error = payload.error.clone();
+    if let Some(err) = payload.error.as_ref() {
+        if !is_benign_play_error(err) {
+            state.error = Some(err.clone());
+        }
+    } else if payload.duration > 0.0 || payload.playing.unwrap_or(false) {
+        state.error = None;
     }
     let snapshot = state.clone();
     drop(state);

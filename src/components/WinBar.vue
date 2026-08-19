@@ -2,7 +2,13 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 
-const emit = defineEmits<{ (e: "theme"): void }>();
+defineProps<{
+  onlineEnabled?: boolean;
+  loggedIn?: boolean;
+  userLabel?: string;
+}>();
+
+const emit = defineEmits<{ (e: "login"): void }>();
 
 async function onDrag(e: MouseEvent) {
   if (e.button === 0) await invoke("start_drag");
@@ -29,13 +35,15 @@ function close() {
     <span class="win-sub">动态壁纸</span>
     <span class="win-spacer" />
     <span
-      class="win-act theme"
+      v-if="onlineEnabled"
+      class="win-act login"
+      :class="{ 'is-logged-in': loggedIn }"
       role="button"
       tabindex="0"
-      aria-label="切换浅色或深色主题"
-      @click="emit('theme')"
-      @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('theme'); } }"
-    >◐ 主题</span>
+      :aria-label="loggedIn ? `已登录：${userLabel}` : '登录灵境社区'"
+      @click="emit('login')"
+      @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('login'); } }"
+    >{{ loggedIn ? userLabel : "登录" }}</span>
     <span class="win-act" role="button" tabindex="0" aria-label="最小化" title="最小化" @click="minimize">—</span>
     <span class="win-act" role="button" tabindex="0" aria-label="最大化" title="最大化" @click="toggleMaximize">▢</span>
     <span class="win-act close" role="button" tabindex="0" aria-label="关闭" title="关闭" @click="close">✕</span>

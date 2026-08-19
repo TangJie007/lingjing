@@ -30,6 +30,10 @@ pub struct AppSettings {
     pub library_dir_override: Option<String>,
     #[serde(default = "default_loop_mode")]
     pub loop_mode: String,
+    #[serde(default)]
+    pub online_enabled: bool,
+    #[serde(default = "default_api_base_url")]
+    pub api_base_url: String,
 }
 
 impl Default for AppSettings {
@@ -45,6 +49,8 @@ impl Default for AppSettings {
             import_copy_to_data: true,
             library_dir_override: None,
             loop_mode: default_loop_mode(),
+            online_enabled: false,
+            api_base_url: default_api_base_url(),
         }
     }
 }
@@ -57,6 +63,9 @@ fn default_volume() -> f64 {
 }
 fn default_loop_mode() -> String {
     "list".into()
+}
+fn default_api_base_url() -> String {
+    "http://localhost:3002".into()
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {

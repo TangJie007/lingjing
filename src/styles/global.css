@@ -272,6 +272,22 @@ input, textarea {
 .win-act:hover { background: var(--surface-2); color: var(--text); transform: translateY(-1px); }
 .win-act:active { transform: scale(0.95); }
 .win-act.close:hover { background: var(--error); color: #fff; border-color: var(--error); }
+.win-act.login {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.win-act.login:not(.is-logged-in) {
+  color: var(--primary);
+  border-color: var(--primary-soft);
+  background: var(--primary-soft);
+}
+.win-act.login:not(.is-logged-in):hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
 
 .app-body { display: flex; flex: 1; min-height: 0; }
 
@@ -557,7 +573,7 @@ input, textarea {
   position: absolute; inset: 0;
   transition: transform var(--dur-base) var(--ease);
 }
-.detail.open .d-prev .thumb-bg {
+.detail.open .d-prev .thumb-bg:not(.is-video-preview) {
   animation: kenburns 12s var(--ease) infinite alternate;
 }
 .wheel {
@@ -646,6 +662,13 @@ input, textarea {
 .pb-thumb {
   width: 46px; height: 32px; border-radius: 6px; flex-shrink: 0;
   box-shadow: var(--sh-sm);
+  position: relative;
+  overflow: hidden;
+  background: var(--border);
+}
+.pb-thumb .thumb-bg {
+  position: absolute;
+  inset: 0;
 }
 .pb-btns { display: flex; align-items: center; gap: 6px; }
 .pb-btn {

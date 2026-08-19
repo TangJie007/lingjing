@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { showToast } from "../composables/useToast";
+import MediaThumb from "./MediaThumb.vue";
 import type { WallpaperItem } from "../data/catalog";
 import type { EngineState } from "../composables/useEngine";
 
@@ -90,10 +91,12 @@ function doImport() {
       role="button"
       tabindex="0"
       aria-label="打开详情"
-      :style="{ background: current?.thumb ?? 'var(--border)', cursor: current ? 'pointer' : 'default' }"
+      :style="{ cursor: current ? 'pointer' : 'default' }"
       @click="current && emit('open-detail')"
       @keydown.enter="current && emit('open-detail')"
-    />
+    >
+      <MediaThumb v-if="current" :item="current" />
+    </div>
     <div class="pb-btns">
       <div class="pb-btn" role="button" tabindex="0" aria-label="上一个" @click="emit('prev')">⟨</div>
       <div

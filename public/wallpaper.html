@@ -54,6 +54,52 @@
         return /\.(mp4|webm)(\?|$)/i.test(uri || "");
       }
 
+      function isBenignPlayError(err) {
+        const name = err && err.name ? String(err.name) : "";
+        const msg = err && err.message ? String(err.message) : String(err || "");
+        const hay = (name + " " + msg).toLowerCase();
+        return hay.includes("aborterror") || hay.includes("interrupted by a new load");
+      }
+
+      function safePlay(vid, onError) {
+        const p = vid.play();
+        if (!p || !p.then) return;
+        p.then(() => {
+          if (onError) onError(null);
+        }).catch((e) => {
+          if (isBenignPlayError(e)) return;
+          if (onError) onError(e);
+        });
+      }
+
+      function loadVideo(vid, uri) {
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          const finish = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            vid.removeEventListener("canplay", onCanPlay);
+            vid.removeEventListener("error", onError);
+            fn(value);
+          };
+          const onCanPlay = () => {
+            safePlay(vid, (err) => {
+              if (err) finish(reject, err);
+              else finish(resolve);
+            });
+          };
+          const onError = () => finish(reject, new Error("视频解码失败"));
+          vid.addEventListener("canplay", onCanPlay, { once: true });
+          vid.addEventListener("error", onError, { once: true });
+          if (vid.src !== uri) {
+            vid.src = uri;
+            vid.load();
+          } else {
+            onCanPlay();
+          }
+        });
+      }
+
       function clearReport() {
         if (reportTimer) {
           clearInterval(reportTimer);
@@ -157,13 +203,11 @@
               pane.img.removeAttribute("src");
               pane.vid.classList.add("on");
               pane.vid.loop = true;
-              pane.vid.src = uri;
               pane.vid.muted = true;
               pane.vid.volume = pane.primary ? volume : 0;
               pane.vid.playbackRate = lowPower ? 0.75 : 1;
-              const p = pane.vid.play();
-              if (p && p.then) {
-                p.then(() => {
+              loadVideo(pane.vid, uri)
+                .then(() => {
                   if (pane.primary) {
                     pane.vid.muted = muted;
                     pane.vid.volume = volume;
@@ -174,12 +218,12 @@
                   if (staticPreferred) {
                     pane.vid.pause();
                   }
-                }).catch((e) => {
-                  if (pane.primary) {
-                    report({ currentTime: 0, duration: 0, error: String(e), playing: false });
+                })
+                .catch((e) => {
+                  if (pane.primary && !isBenignPlayError(e)) {
+                    report({ currentTime: 0, duration: 0, error: String(e.message || e), playing: false });
                   }
                 });
-              }
             });
             startVideoReport();
           } else {
@@ -205,8 +249,7 @@
           const vid = primaryVideo();
           if (vid && vid.classList.contains("on")) {
             panes.forEach((pane) => {
-              const p = pane.vid.play();
-              if (p && p.catch) p.catch(() => {});
+              safePlay(pane.vid);
             });
             startVideoReport();
           } else {

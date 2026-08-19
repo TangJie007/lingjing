@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import MediaThumb from "./MediaThumb.vue";
 import type { WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{
@@ -42,7 +43,7 @@ function meta(item: WallpaperItem) {
         @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('select', item); } }"
       >
         <div class="thumb">
-          <div class="thumb-bg" :style="{ background: item.thumb }" />
+          <MediaThumb :item="item" />
           <span v-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
           <div class="hover-acts">
             <span class="ha-btn preview" @click.stop="emit('select', item)">▶ 预览</span>

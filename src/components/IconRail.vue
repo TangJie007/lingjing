@@ -9,7 +9,10 @@ interface NavItem {
   badge?: boolean;
 }
 
-const props = defineProps<{ active: string }>();
+const props = withDefaults(
+  defineProps<{ active: string; onlineEnabled?: boolean }>(),
+  { onlineEnabled: false },
+);
 const emit = defineEmits<{ (e: "nav", key: string): void }>();
 
 const items: NavItem[] = [
@@ -22,6 +25,10 @@ const items: NavItem[] = [
 
 const indicator = ref<HTMLElement | null>(null);
 const rail = ref<HTMLElement | null>(null);
+
+function showItem(it: NavItem) {
+  return it.key !== "online" || props.onlineEnabled;
+}
 
 function moveIndicator(el: HTMLElement) {
   if (!indicator.value) return;
@@ -69,14 +76,16 @@ function syncIndicator() {
 
 onMounted(() => nextTick(syncIndicator));
 watch(() => props.active, () => nextTick(syncIndicator));
+watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
 </script>
 
 <template>
   <div ref="rail" class="sidebar" role="navigation" aria-label="主导航">
     <div ref="indicator" class="nav-indicator" aria-hidden="true" />
-    <template v-for="(it, idx) in items" :key="it.key">
-      <div v-if="idx === 3" class="nav-sep" />
+    <template v-for="it in items" :key="it.key">
+      <div v-if="it.key === 'settings'" class="nav-sep" />
       <div
+        v-if="showItem(it)"
         class="nav-item"
         :class="{ active: props.active === it.key }"
         :data-nav="it.label"

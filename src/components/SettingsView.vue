@@ -54,6 +54,15 @@ function flip(key: "autostart" | "hideIconsOnDoubleClick" | "pauseOnFullscreen" 
   }
 }
 
+function flipOnline() {
+  settings.value.onlineEnabled = !settings.value.onlineEnabled;
+  showToast(
+    settings.value.onlineEnabled
+      ? "已开启在线功能，可直接浏览在线壁纸"
+      : "已关闭在线功能",
+  );
+}
+
 function flipPauseReason(key: "pauseOnBattery" | "pauseOnRdp") {
   settings.value[key] = !settings.value[key];
 }
@@ -160,6 +169,26 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
           aria-label="界面点击音效"
           @click="flip('sound')"
           @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('sound'); } }"
+        />
+      </div>
+    </div>
+
+    <div class="set-group">
+      <h3>在线功能</h3>
+      <div class="set-row">
+        <div class="lead">
+          <div class="t">启用在线壁纸</div>
+          <div class="d">开启后显示「在线」导航，可直接浏览；登录后同步点赞</div>
+        </div>
+        <div
+          class="toggle"
+          :class="{ on: settings.onlineEnabled }"
+          role="switch"
+          tabindex="0"
+          :aria-checked="settings.onlineEnabled"
+          aria-label="启用在线壁纸"
+          @click="flipOnline"
+          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipOnline(); } }"
         />
       </div>
     </div>

@@ -11,6 +11,7 @@ import SettingsView from "./components/SettingsView.vue";
 import FavoritesView from "./components/FavoritesView.vue";
 import LocalLibraryView from "./components/LocalLibraryView.vue";
 import Toast from "./components/Toast.vue";
+import LoginModal from "./components/LoginModal.vue";
 import { showToast } from "./composables/useToast";
 import { soundOn } from "./composables/useAudio";
 import { CATALOG, type WallpaperItem } from "./data/catalog";
@@ -31,12 +32,13 @@ import {
   type PauseRecommendPayload,
 } from "./composables/useEngine";
 import { loadSettings, useSettings } from "./composables/useSettings";
+import { useAuth } from "./composables/useAuth";
+import { fetchOnlineWallpapers } from "./composables/useLingjingApi";
 
 const drawerItem = ref<WallpaperItem | null>(CATALOG[0] ?? null);
 const drawerOpen = ref(true);
 const selectedId = ref<string | null>(CATALOG[0]?.id ?? null);
 const current = ref<WallpaperItem | null>(CATALOG[0] ?? null);
-const theme = ref<"light" | "dark">("light");
 const localItems = ref<WallpaperItem[]>([]);
 const engine = ref<EngineState | null>(null);
 const loopMode = ref<LoopMode>("list");
@@ -46,9 +48,36 @@ const sort = ref("最热");
 provide("topbarSearch", search);
 provide("topbarSort", sort);
 
-const activeNav = ref("online");
+const activeNav = ref("local");
+const loginOpen = ref(false);
 
 const settings = useSettings();
+const { isLoggedIn, refreshMe, user } = useAuth();
+
+const userLabel = computed(
+  () => user.value?.nickname || user.value?.username || user.value?.email || "已登录",
+);
+
+const onlineItems = ref<WallpaperItem[]>([]);
+const onlineLoading = ref(false);
+const onlineFetchError = ref("");
+
+const onlineGridItems = computed(() => {
+  if (!settings.value.onlineEnabled) {
+    return CATALOG.filter((i) => !!i.mediaSrc);
+  }
+  return onlineItems.value;
+});
+
+const onlineGridLoading = computed(
+  () => settings.value.onlineEnabled && onlineLoading.value,
+);
+
+const onlineEmptyText = computed(() => {
+  if (!settings.value.onlineEnabled) return "没有匹配的壁纸";
+  if (onlineFetchError.value) return onlineFetchError.value;
+  return "暂无在线壁纸，请确认 API 服务已启动";
+});
 
 function syncLoopModeFromSettings() {
   const m = settings.value.loopMode;
@@ -80,24 +109,70 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => settings.value.onlineEnabled,
+  (enabled) => {
+    if (!enabled && activeNav.value === "online") {
+      activeNav.value = "local";
+    }
+  },
+);
+
 const playQueue = computed(() => {
   const locals = localItems.value;
-  const samples = CATALOG.filter((i) => !!i.mediaSrc);
+  const samples = settings.value.onlineEnabled
+    ? onlineItems.value.filter((i) => !!i.mediaSrc)
+    : CATALOG.filter((i) => !!i.mediaSrc);
   if (activeNav.value === "local") return locals.length ? locals : samples;
   return [...samples, ...locals];
 });
 
 const favoriteItems = computed(() => {
   const out: WallpaperItem[] = [];
-  for (const i of CATALOG) if (i.favorite) out.push(i);
+  if (settings.value.onlineEnabled) {
+    for (const i of onlineItems.value) if (i.favorite) out.push(i);
+  } else {
+    for (const i of CATALOG) if (i.favorite) out.push(i);
+  }
   for (const i of localItems.value) if (i.favorite) out.push(i);
   return out;
 });
 
 async function applyFavorites(ids: string[]) {
   const set = new Set(ids);
-  for (const i of CATALOG) i.favorite = set.has(String(i.id));
+  if (settings.value.onlineEnabled) {
+    for (const i of onlineItems.value) i.favorite = set.has(String(i.id));
+  } else {
+    for (const i of CATALOG) i.favorite = set.has(String(i.id));
+  }
   for (const i of localItems.value) i.favorite = set.has(String(i.id));
+}
+
+async function refreshOnline() {
+  if (activeNav.value !== "online" || !settings.value.onlineEnabled) {
+    if (!settings.value.onlineEnabled) {
+      onlineItems.value = [];
+      onlineFetchError.value = "";
+    }
+    return;
+  }
+  onlineLoading.value = true;
+  onlineFetchError.value = "";
+  try {
+    const { items } = await fetchOnlineWallpapers({ pageSize: 48 });
+    onlineItems.value = items;
+    const { ids } = await loadFavoriteIds();
+    for (const i of onlineItems.value) {
+      i.favorite = ids.includes(String(i.id));
+    }
+  } catch (e) {
+    onlineItems.value = [];
+    const msg = e instanceof Error ? e.message : String(e);
+    onlineFetchError.value = msg;
+    if (activeNav.value === "online") showToast(msg);
+  } finally {
+    onlineLoading.value = false;
+  }
 }
 
 async function refreshLibrary() {
@@ -211,7 +286,11 @@ async function onRemoveLocal(item: WallpaperItem) {
 }
 
 function onNav(key: string) {
+  if (key === "online" && !settings.value.onlineEnabled) return;
   activeNav.value = key;
+  if (key === "online") {
+    void refreshOnline();
+  }
   if (key === "online" || key === "favorite" || key === "local") {
     if (drawerItem.value) drawerOpen.value = true;
   } else {
@@ -219,8 +298,8 @@ function onNav(key: string) {
   }
 }
 
-function toggleTheme() {
-  theme.value = theme.value === "light" ? "dark" : "light";
+function openLogin() {
+  loginOpen.value = true;
 }
 
 async function runImport(paths?: string[] | null) {
@@ -334,6 +413,18 @@ function openDetail() {
 
 let unlisten: (() => void) | undefined;
 let unlistenPause: (() => void) | undefined;
+let lastEngineErrorToast = "";
+
+function isBenignEngineError(msg: string) {
+  const m = msg.toLowerCase();
+  return m.includes("aborterror") || m.includes("interrupted by a new load");
+}
+
+function toastEngineError(msg: string) {
+  if (!msg || isBenignEngineError(msg) || msg === lastEngineErrorToast) return;
+  lastEngineErrorToast = msg;
+  showToast(msg);
+}
 let lastRecommend = { reason: "", at: 0 };
 let lastUserAction = 0;
 
@@ -362,13 +453,26 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
   }
 }
 
+watch(
+  () => [settings.value.onlineEnabled, settings.value.apiBaseUrl, isLoggedIn.value] as const,
+  ([enabled]) => {
+    if (enabled && activeNav.value === "online") void refreshOnline();
+  },
+);
+
 onMounted(async () => {
+  document.documentElement.setAttribute("data-theme", "light");
   await loadSettings();
+  if (!settings.value.onlineEnabled && activeNav.value === "online") {
+    activeNav.value = "local";
+  }
   syncLoopModeFromSettings();
+  await refreshMe().catch(() => undefined);
   await refreshLibrary();
   unlisten = await onEngineState((s) => {
     engine.value = s;
-    if (s.error) showToast(s.error);
+    if (s.error) toastEngineError(s.error);
+    else lastEngineErrorToast = "";
     if (
       s.duration > 0 &&
       s.currentTime >= s.duration - 0.35 &&
@@ -402,8 +506,6 @@ onUnmounted(() => {
   unlistenPause?.();
 });
 
-watch(theme, (v) => document.documentElement.setAttribute("data-theme", v), { immediate: true });
-
 function onPlayWrapped() {
   lastUserAction = Date.now();
   return onPlay();
@@ -420,14 +522,22 @@ function onPauseWrapped() {
     @dragover.prevent
     @drop="onDrop"
   >
-    <WinBar @theme="toggleTheme" />
+    <WinBar
+      :online-enabled="settings.onlineEnabled"
+      :logged-in="isLoggedIn"
+      :user-label="userLabel"
+      @login="openLogin"
+    />
 
     <div class="app-body">
-      <IconRail :active="activeNav" @nav="onNav" />
+      <IconRail :active="activeNav" :online-enabled="settings.onlineEnabled" @nav="onNav" />
 
       <WallpaperGrid
         v-if="activeNav === 'online'"
         :selected-id="selectedId"
+        :items="onlineGridItems"
+        :loading="onlineGridLoading"
+        :empty-text="onlineEmptyText"
         @select="onSelect"
         @set="onSet"
       />
@@ -483,4 +593,5 @@ function onPauseWrapped() {
   </div>
 
   <Toast />
+  <LoginModal :open="loginOpen" @close="loginOpen = false" />
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import MediaThumb from "./MediaThumb.vue";
 import type { WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{
@@ -59,7 +60,7 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
         @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('select', item); } }"
       >
         <div class="thumb">
-          <div class="thumb-bg" :style="{ background: item.thumb }" />
+          <MediaThumb :item="item" />
           <span v-if="item.missing" class="badge missing-badge">缺失</span>
           <span v-else-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
           <span class="vol">{{ item.size }}</span>

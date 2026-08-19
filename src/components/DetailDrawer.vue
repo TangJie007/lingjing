@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import MediaThumb from "./MediaThumb.vue";
 import type { WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{ item: WallpaperItem | null; open: boolean }>();
@@ -55,7 +56,7 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
   <div class="detail" :class="{ open: open && item, closed: !(open && item) }">
     <div v-if="item" class="detail-inner">
       <div class="d-prev">
-        <div class="thumb-bg" :style="{ background: item.thumb }" />
+        <MediaThumb :item="item" mode="preview" />
         <div class="wheel" :class="{ run: wheelRun }">
           <svg class="wheel-svg" viewBox="0 0 50 50" aria-hidden="true">
             <circle class="wheel-bg" cx="25" cy="25" r="22" />

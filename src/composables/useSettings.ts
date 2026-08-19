@@ -12,6 +12,8 @@ export interface AppSettings {
   importCopyToData: boolean;
   libraryDirOverride: string | null;
   loopMode: "list" | "single" | "random";
+  onlineEnabled: boolean;
+  apiBaseUrl: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -25,6 +27,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   importCopyToData: true,
   libraryDirOverride: null,
   loopMode: "list",
+  onlineEnabled: false,
+  apiBaseUrl: "http://localhost:3002",
 };
 
 const settings = ref<AppSettings>({ ...DEFAULT_SETTINGS });

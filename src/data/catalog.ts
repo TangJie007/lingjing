@@ -13,7 +13,7 @@ export interface WallpaperItem {
   tags: string[];
   /** Public path or absolute filesystem path */
   mediaSrc?: string;
-  source?: "catalog" | "local";
+  source?: "catalog" | "local" | "online";
   /** Local library: source file missing (reference import) */
   missing?: boolean;
 }
