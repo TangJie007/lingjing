@@ -11,6 +11,7 @@ export interface AppSettings {
   defaultVolume: number;
   importCopyToData: boolean;
   libraryDirOverride: string | null;
+  loopMode: "list" | "single" | "random";
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultVolume: 0.8,
   importCopyToData: true,
   libraryDirOverride: null,
+  loopMode: "list",
 };
 
 const settings = ref<AppSettings>({ ...DEFAULT_SETTINGS });

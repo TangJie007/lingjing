@@ -20,6 +20,8 @@ pub struct LibraryItem {
     pub tags: Vec<String>,
     pub media_src: String,
     pub path: String,
+    #[serde(default, skip_serializing)]
+    pub missing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -95,7 +97,11 @@ pub struct ImportResult {
 }
 
 pub fn list_items(app: &AppHandle) -> Result<Vec<LibraryItem>, String> {
-    Ok(load_library(app)?.items)
+    let mut items = load_library(app)?.items;
+    for item in &mut items {
+        item.missing = !std::path::Path::new(&item.path).is_file();
+    }
+    Ok(items)
 }
 
 pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult, String> {
@@ -163,6 +169,7 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
             tags: vec!["#本地".into()],
             media_src: path_str,
             path: stored,
+            missing: false,
         };
         lib.items.insert(0, item.clone());
         imported.push(item);

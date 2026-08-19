@@ -11,7 +11,8 @@ mod win {
         GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetSystemMetrics, GetWindowRect, SM_REMOTESESSION,
+        GetForegroundWindow, GetSystemMetrics, GetWindowLongW, GetWindowRect, GWL_STYLE,
+        SM_REMOTESESSION, WS_MAXIMIZE, WS_POPUP,
     };
 
     pub fn is_remote_session() -> bool {
@@ -45,10 +46,18 @@ mod win {
                 return false;
             }
             let mr = mi.rcMonitor;
-            rect.left >= mr.left
+            let covers_monitor = rect.left >= mr.left
                 && rect.top >= mr.top
                 && rect.right <= mr.right
-                && rect.bottom <= mr.bottom
+                && rect.bottom <= mr.bottom;
+            if !covers_monitor {
+                return false;
+            }
+            let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+            let maximized = style & WS_MAXIMIZE != 0;
+            let popup = style & WS_POPUP != 0;
+            // 普通最大化窗口（浏览器、资源管理器等）不触发暂停
+            !(maximized && !popup)
         }
     }
 }

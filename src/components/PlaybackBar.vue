@@ -8,6 +8,7 @@ const props = defineProps<{
   current: WallpaperItem | null;
   engine: EngineState | null;
   queue: WallpaperItem[];
+  loopMode: LoopMode;
 }>();
 const emit = defineEmits<{
   (e: "import"): void;
@@ -22,7 +23,6 @@ const emit = defineEmits<{
 
 export type LoopMode = "list" | "single" | "random";
 
-const loopMode = ref<LoopMode>("list");
 const volOpen = ref(false);
 const volume = ref(0.8);
 const muted = ref(false);
@@ -38,8 +38,8 @@ const progress = computed(() => {
 const hasDuration = computed(() => (props.engine?.duration ?? 0) > 0);
 
 const loopLabel = computed(() => {
-  if (loopMode.value === "single") return "🔂";
-  if (loopMode.value === "random") return "🔀";
+  if (props.loopMode === "single") return "🔂";
+  if (props.loopMode === "random") return "🔀";
   return "🔁";
 });
 
@@ -60,12 +60,10 @@ function togglePlay() {
 
 function cycleLoop() {
   const order: LoopMode[] = ["list", "single", "random"];
-  const i = order.indexOf(loopMode.value);
-  loopMode.value = order[(i + 1) % order.length]!;
-  emit("loop", loopMode.value);
-  showToast(
-    loopMode.value === "list" ? "列表循环" : loopMode.value === "single" ? "单曲循环" : "随机播放",
-  );
+  const i = order.indexOf(props.loopMode);
+  const next = order[(i + 1) % order.length]!;
+  emit("loop", next);
+  showToast(next === "list" ? "列表循环" : next === "single" ? "单曲循环" : "随机播放");
 }
 
 function onVolInput(e: Event) {

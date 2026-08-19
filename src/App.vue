@@ -49,6 +49,28 @@ const activeNav = ref("online");
 
 const settings = useSettings();
 
+function syncLoopModeFromSettings() {
+  const m = settings.value.loopMode;
+  if (m === "list" || m === "single" || m === "random") {
+    loopMode.value = m;
+  }
+}
+
+watch(
+  () => settings.value.loopMode,
+  (m) => {
+    if (m === "list" || m === "single" || m === "random") {
+      loopMode.value = m;
+    }
+  },
+);
+
+watch(loopMode, (m) => {
+  if (settings.value.loopMode !== m) {
+    settings.value.loopMode = m;
+  }
+});
+
 watch(
   () => settings.value.soundOn,
   (v) => {
@@ -103,6 +125,10 @@ function onSelect(item: WallpaperItem) {
 }
 
 async function onSet(item: WallpaperItem) {
+  if (item.missing) {
+    showToast("源文件已缺失，请重新导入或删除该项");
+    return;
+  }
   if (!item.mediaSrc) {
     showToast("该资源暂无可用媒体");
     return;
@@ -308,6 +334,7 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
 
 onMounted(async () => {
   await loadSettings();
+  syncLoopModeFromSettings();
   await refreshLibrary();
   unlisten = await onEngineState((s) => {
     engine.value = s;
@@ -411,6 +438,7 @@ function onPauseWrapped() {
       :current="current"
       :engine="engine"
       :queue="playQueue"
+      :loop-mode="loopMode"
       @import="runImport()"
       @open-detail="openDetail"
       @play="onPlayWrapped"

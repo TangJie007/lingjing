@@ -16,6 +16,7 @@ const emit = defineEmits<{
 const empty = computed(() => props.items.length === 0);
 
 function meta(item: WallpaperItem) {
+  if (item.missing) return "源文件缺失";
   return `${item.category} · ${item.size}`;
 }
 
@@ -49,7 +50,7 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
         v-for="(item, idx) in items"
         :key="item.id"
         class="card"
-        :class="{ selected: props.selectedId === item.id }"
+        :class="{ selected: props.selectedId === item.id, missing: item.missing }"
         :style="{ animationDelay: `${Math.min(idx, 5) * 60}ms` }"
         role="button"
         tabindex="0"
@@ -59,7 +60,8 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
       >
         <div class="thumb">
           <div class="thumb-bg" :style="{ background: item.thumb }" />
-          <span v-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
+          <span v-if="item.missing" class="badge missing-badge">缺失</span>
+          <span v-else-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
           <span class="vol">{{ item.size }}</span>
           <span
             class="del"
@@ -71,7 +73,12 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
           >🗑</span>
           <div class="hover-acts">
             <span class="ha-btn preview" @click.stop="emit('select', item)">▶ 预览</span>
-            <span class="ha-btn apply" @click.stop="emit('set', item)">设为壁纸</span>
+            <span
+              v-if="!item.missing"
+              class="ha-btn apply"
+              @click.stop="emit('set', item)"
+            >设为壁纸</span>
+            <span v-else class="ha-btn apply disabled" title="源文件已缺失">无法设壁纸</span>
           </div>
         </div>
         <div class="info">
@@ -110,4 +117,12 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
   opacity: 1;
 }
 .del:hover { transform: scale(1.05); background: var(--error); }
+.card.missing .thumb-bg { opacity: 0.45; filter: grayscale(0.85); }
+.card.missing .t { color: var(--text-3); }
+.missing-badge { background: var(--error) !important; }
+.ha-btn.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 </style>

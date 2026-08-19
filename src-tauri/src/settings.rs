@@ -28,6 +28,8 @@ pub struct AppSettings {
     pub import_copy_to_data: bool,
     #[serde(default)]
     pub library_dir_override: Option<String>,
+    #[serde(default = "default_loop_mode")]
+    pub loop_mode: String,
 }
 
 impl Default for AppSettings {
@@ -42,6 +44,7 @@ impl Default for AppSettings {
             default_volume: 0.8,
             import_copy_to_data: true,
             library_dir_override: None,
+            loop_mode: default_loop_mode(),
         }
     }
 }
@@ -51,6 +54,9 @@ fn default_true() -> bool {
 }
 fn default_volume() -> f64 {
     0.8
+}
+fn default_loop_mode() -> String {
+    "list".into()
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {

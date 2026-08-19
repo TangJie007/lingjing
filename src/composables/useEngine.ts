@@ -90,6 +90,7 @@ export interface LibraryDto {
   tags: string[];
   mediaSrc: string;
   path: string;
+  missing?: boolean;
 }
 
 export function libraryToItem(dto: LibraryDto): WallpaperItem {
@@ -106,6 +107,7 @@ export function libraryToItem(dto: LibraryDto): WallpaperItem {
     tags: dto.tags ?? ["#本地"],
     mediaSrc: dto.mediaSrc || dto.path,
     source: "local",
+    missing: !!dto.missing,
   };
 }
 
