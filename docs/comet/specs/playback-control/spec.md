@@ -1,23 +1,52 @@
-# Playback Control Bar (F6)
+# playback-control
 
-This spec describes the complete global bottom playback control bar after
-Archive (飞火 paradigm + mainstream player controls, PRD §6 F6).
+全局播放条真实驱动（F6）：在保留 `ui-redesign` 播放条视觉的前提下，播放/暂停、上一首/下一首、音量/静音、循环模式与 wallpaper-engine 状态同步；导入入口接通本地库；缩略图回详情。
 
-## Controls
+## 范围
 
-- Current wallpaper thumbnail: click returns to the detail drawer.
-- Previous / Next: switch the play queue.
-- Play / Pause: `❚❚ ↔ ▶` toggle; progress flow syncs with pause state.
-- Volume: slider with mute toggle.
-- Loop mode: single / list / random.
-- Import: quick-open local import (see local-library).
+- `PlaybackBar.vue` 与 `App.vue`（或 composable）接线引擎状态。
+- 可播放队列：当前上下文（发现示例 + 本地库，或「当前列表」约定）支持 prev/next。
+- 音量 UI：在现有 pill 上扩展为可调滑块或等价控件（可 popover），满足可观察调节。
+- 进度：有 duration 用真实进度；无 duration 用代理态。
 
-## Behavior
+## 条款
 
-- Bar is globally visible across rail navigation; reflects current engine state
-  from wallpaper-engine.
-- Pause state visually consistent with performance-power auto-pause (F9).
+### 播放传输
 
-## Acceptance mapping
+- MUST：播放/暂停切换同时更新桌面 worker 与条上 ▶/❚❚ 与进度暂停态。
+- MUST：无当前媒体时控件安全 no-op 或禁用，文案保持「未选择壁纸」。
+- MUST：缩略图或标题点击打开/聚焦该条目的详情抽屉（与现有 select 行为一致）。
 
-- Part of A1 (global bottom bar present) and supports A2/A5 playback state.
+### 队列
+
+- MUST：上一首/下一首按当前循环模式在可播放队列中切换，并调用 set/load 更新桌面画面与条上标题/缩略图。
+- MUST：循环模式顺序：列表 → 单曲 → 随机，对应 🔁 / 🔂 / 🔀。
+- MUST：列表模式在队列边界按列表循环；单曲模式媒体结束后重播同一项；随机模式下一首均匀随机（可排除当前项）。
+
+### 音量
+
+- MUST：提供音量调节与静音；变更传到引擎 `<video>.volume` / `muted`。
+- MUST：无音轨或静图时调节不抛未捕获错误。
+
+### 进度
+
+- MUST：当引擎提供 duration 与 currentTime 时，进度条反映真实比例（可用 transform scaleX）。
+- MUST：无 duration 时使用明确代理态（满格或慢脉冲），暂停时静止。
+- MUST：动画仍只使用 transform/opacity。
+
+### 导入
+
+- MUST：「＋ 导入」触发与本地库相同的导入流程。
+
+## 验收
+
+| ID | 条款 | 验证方式 |
+|----|------|----------|
+| PC-1 | play/pause 与桌面同步 | 手动 |
+| PC-2 | prev/next 切换画面与标题 | 手动 |
+| PC-3 | 循环三模式行为可观察 | 手动 |
+| PC-4 | 音量/静音影响有声视频 | 手动 |
+| PC-5 | 真实进度或代理态符合条款 | 手动 + 静态 |
+| PC-6 | 导入 pill 接通本地导入 | 静态读 + 手动 |
+| PC-7 | 缩略图/标题回详情抽屉 | 手动 |
+| PC-8 | 无媒体时安全无崩溃 | 手动 |

@@ -1,31 +1,45 @@
-# Local Resource Management & Favorites (F3, F7)
+# local-library
 
-This spec describes the complete local library experience after Archive,
-including local-only favorites (F7). Login/cloud sync is V2 and out of MVP.
+本地资源管理（F3）：侧栏「本地」为真实本地库网格；支持文件选择器与主窗口拖放导入；文件落入应用数据目录并写入本地库索引；可设为壁纸。不做文件夹批量、列表双视图与高级筛选。
 
-## Import
+## 范围
 
-- Sources: drag-and-drop, file picker, folder batch import.
-- Accepted formats: mp4 / WebM / GIF / image.
-- Per-file progress bar with completion state; failed files are retryable.
+- 新增/替换本地库视图组件（如 `LocalLibraryView.vue`），`App.vue` 在 `active === 'local'` 时显示。
+- 导入：`tauri-plugin-dialog` 文件选择 + 主窗口 drag-and-drop。
+- 应用数据目录存储媒体副本或稳定引用 + `library.json`（或等价）索引。
+- 播放条「＋ 导入」与本地库导入入口共用同一流程。
 
-## File list
+## 条款
 
-- Grid / list dual view; filter by type / size / time.
-- Same detail drawer as online catalog (see detail-preview).
+### 页面
 
-## Local favorites (F7)
+- MUST：侧栏「本地」不再显示「该页面将在 Phase 2/3 接入」占位。
+- MUST：本地库为网格布局，卡片视觉复用发现页 `.card` / `.thumb` / `.info` / `.hover-acts` 结构。
+- MUST：空态有可读提示（例如「拖放或点击导入壁纸」类文案）。
+- MUST：不做列表双视图；不做类型/大小/时间筛选控件。
 
-- Pure local favorites, no login gate (product differentiation).
-- Persisted to local storage; shows "已收藏 N 张 · 本地保存" hint.
-- Favorite grid present under "我的 / 收藏" rail entry.
+### 导入
 
-## Storage path setting
+- MUST：接受扩展名至少覆盖：`.mp4` `.webm` `.gif` `.webp` `.jpg` `.jpeg` `.png`（大小写不敏感）。
+- MUST：提供文件选择器导入（可多选）；提供主窗口拖放导入。
+- MUST：不实现文件夹批量导入入口。
+- MUST：导入成功后项立即出现在本地库网格；失败项有可感知错误（toast 或行级提示），不中断整批中其它成功项（多选时）。
+- MUST：媒体文件落到应用数据目录约定库路径；设置页「更改路径」本阶段可保持占位。
 
-- Custom wallpaper library root directory; migration / cleanup tooling.
-- Editable in Settings (F8); changing path migrates existing files.
+### 与引擎 / 播放条
 
-## Acceptance mapping
+- MUST：本地项可「设为壁纸」并驱动 wallpaper-engine。
+- MUST：播放条「＋ 导入」与本地库导入触发同一逻辑。
 
-- Covers A2 (import → local library → set live) and A4 (local favorites
-  persistence + hint).
+## 验收
+
+| ID | 条款 | 验证方式 |
+|----|------|----------|
+| LL-1 | `local` 路由渲染本地库而非占位文案 | 静态读 + 手动 |
+| LL-2 | 网格复用卡片结构 | 静态读 |
+| LL-3 | 文件选择器导入可用 | 手动 |
+| LL-4 | 拖放导入可用 | 手动 |
+| LL-5 | 支持约定扩展名 | 静态读 + 手动 |
+| LL-6 | 无文件夹批量入口 | 静态读 |
+| LL-7 | 播放条导入与本地库导入等价 | 静态读 + 手动 |
+| LL-8 | 索引持久化在应用数据目录 | 静态读 + 重启抽检 |
