@@ -20,6 +20,7 @@
   --animate-fade-in: fade-in var(--dur-slow) var(--ease) both;
   --animate-pop: pop var(--dur-fast) var(--ease) both;
   --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-card-in: card-in var(--dur-slow) var(--ease) both;
 }
 
 /* ===== 动效 Token（GPU-friendly，仅 transform/opacity）===== */

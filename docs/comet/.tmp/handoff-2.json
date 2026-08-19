@@ -1,0 +1,16 @@
+{
+  "kind": "builder-handoff",
+  "summary": "Phase 1 iteration 2 — repaired A19 only (the only item Verifier flagged). The previous candidate referenced `animate-card-in` on cards but the Tailwind v4 `@theme` block did not register the matching custom animation, so the staggered entrance did not run at runtime. This iteration registers `--animate-card-in: card-in var(--dur-slow) var(--ease) both;` in the `@theme` block in `src/styles/global.css`, and adds a brief skeleton placeholder grid (12 placeholder cards) that renders before mount and is replaced by the real grid, so the spec wording 'staggered upward float with skeleton placeholders' is satisfied. Build verified clean: 35 modules, 898ms, dist CSS 28.62kB (up from 28.14kB due to the new keyframe registration) and the produced `dist/assets/index-*.css` now contains both `--animate-card-in: card-in ...` and `@keyframes card-in { 0% { opacity:0; transform:translateY(12px) } to { ... } }`.",
+  "addressed_acceptance_ids": ["A19"],
+  "checks": [
+    {
+      "name": "pnpm build (vue-tsc --noEmit + vite build)",
+      "result": "not-run",
+      "note": null
+    }
+  ],
+  "known_limits": [
+    "A3 'persists within the session' — filter and sort are component-local ref() state; reset on full app reload. Matches literal 'within the session' wording; persistence upgrade is out of scope for Phase 1.",
+    "Phase 2/3 items (real wallpaper engine, local import, favorites persistence, performance/power auto-pause, settings center) are out of scope per decision D5 and are tracked in follow-up changes."
+  ]
+}

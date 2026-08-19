@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, inject, nextTick, onMounted, ref, type Ref } from "vue";
 import { CATALOG, CATEGORIES, SORTS, type WallpaperItem } from "../data/catalog";
 
 const activeCat = ref<string>("全部");
 const sort = ref<string>("最热");
-const search = ref("");
+// Top-bar search input drives this filter (A4). Falls back to local ref when
+// App does not provide (e.g. unit tests).
+const search = inject<Ref<string>>("topbarSearch", ref(""));
+
+// Skeleton placeholders (A19) — render a brief grid of placeholder cards while
+// the real list mounts, then swap them out. Combined with the staggered
+// `animate-card-in` on real cards this produces the "staggered upward float
+// with skeleton placeholders" entrance the spec calls for.
+const ready = ref(false);
+onMounted(() => nextTick(() => (ready.value = true)));
 
 const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
@@ -67,8 +76,24 @@ function onContext(item: WallpaperItem, e: MouseEvent) {
     <!-- 卡片网格 -->
     <div class="grid min-h-0 flex-1 content-start gap-3.5 overflow-y-auto px-4 pb-4"
       style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr))">
+      <!-- A19: skeleton placeholders while the catalog mounts -->
+      <template v-if="!ready">
+        <div
+          v-for="i in 12"
+          :key="`sk-${i}`"
+          class="skeleton-card overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
+        >
+          <div class="aspect-[16/10] w-full bg-[var(--border)]" />
+          <div class="flex items-center justify-between gap-2 px-2.5 py-2">
+            <span class="h-3 w-2/3 rounded-full bg-[var(--border)]" />
+            <span class="h-2.5 w-8 rounded-full bg-[var(--border)]" />
+          </div>
+        </div>
+      </template>
+
       <div
         v-for="(item, idx) in list"
+        v-else
         :key="item.id"
         class="card group relative cursor-pointer overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm transition-transform duration-[var(--dur-base)] hover:-translate-y-1 hover:shadow-md animate-card-in"
         :style="{ animationDelay: idx * 28 + 'ms' }"
@@ -104,7 +129,7 @@ function onContext(item: WallpaperItem, e: MouseEvent) {
         </div>
       </div>
 
-      <p v-if="list.length === 0" class="col-span-full py-10 text-center text-sm text-[var(--text-dim)]">
+      <p v-if="ready && list.length === 0" class="col-span-full py-10 text-center text-sm text-[var(--text-dim)]">
         没有匹配的壁纸
       </p>
     </div>

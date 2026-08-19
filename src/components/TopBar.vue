@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { ref } from "vue";
+import { inject, ref, type Ref } from "vue";
 
 const emit = defineEmits<{ (e: "theme"): void }>();
 
-const search = ref("");
+// The top-bar search input drives the grid filter. App provides a shared ref;
+// we read & write to the same instance here.
+const search = inject<Ref<string>>("topbarSearch", ref(""));
 
 async function onDrag(e: MouseEvent) {
   if (e.button === 0) await invoke("start_drag");

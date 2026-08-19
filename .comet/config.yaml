@@ -5,6 +5,7 @@ default_workflow: native
 # Workflows enabled in this project: native, classic, or both.
 workflows:
   - native
+  - classic
 # Enables automatic recovery through the read-only Ambient Resume probe for both Native and Classic. Set false to disable it.
 # ambient_resume: true | false
 ambient_resume: true
@@ -14,7 +15,7 @@ native:
   artifact_root: docs
   # Artifact language used by Native workflow documents.
   # language: en | zh-CN
-  language: en
+  language: zh-CN
   # Controls how Native asks clarifying questions: batch asks every currently answerable question per round (default), sequential asks one at a time.
   # clarification_mode: batch | sequential
   clarification_mode: batch
@@ -23,3 +24,8 @@ native:
   archive_confirmation: automatic
   # Maximum failed Verify outcomes allowed for one confirmed acceptance target before Native stops the completion loop.
   max_verify_failures: 5
+# Classic workflow settings. They do not change Native state or behavior.
+classic:
+  # Artifact language used by Classic workflow documents (OpenSpec / Superpowers artifacts).
+  # language: en | zh-CN
+  language: zh-CN

@@ -24,6 +24,13 @@ function startCountdown() {
     }
   }, 1000);
 }
+// Public — bound to the 取消 button. Stops the auto-collapse timer and freezes
+// the ring at its current value; the drawer stays open so the user can keep
+// inspecting the wallpaper or trigger an action.
+function cancelAutoClose() {
+  stopCountdown();
+  remain.value = 0;
+}
 function stopCountdown() {
   if (timer !== null) {
     clearInterval(timer);
@@ -82,10 +89,18 @@ function fav() {
             stroke-linecap="round" :stroke-dasharray="dash" :stroke-dashoffset="offset()"
           />
         </svg>
-        <div class="text-[11px] leading-tight text-[var(--text-dim)]">
+        <div class="flex-1 text-[11px] leading-tight text-[var(--text-dim)]">
           <div>预览将在</div>
           <div class="text-[var(--text)]">{{ remain }}s 后自动收起</div>
         </div>
+        <button
+          v-if="remain > 0"
+          class="cancel-btn rounded-lg px-2 py-1 text-[11px] text-[var(--text-dim)] hover:bg-black/5 hover:text-[var(--text)]"
+          title="取消自动收起"
+          @click="cancelAutoClose"
+        >
+          取消
+        </button>
       </div>
 
       <div class="mt-1 flex gap-2 px-4 pb-4">

@@ -70,14 +70,19 @@ D3. MVP scope = PRD F1–F9, decomposed into the seven capability specs from the
     archived requirements-analysis change. Confirmed earlier.
 D4. Theme baseline = Frost Light (浅色); dark token set switchable. Confirmed
     earlier.
+D5. Phase 1 baseline = the current `v1.1.0` working tree (three-zone shell,
+    Frost Light tokens, motion tokens, placeholder catalog, 60s drawer
+    countdown, right-click context menu) is accepted as the starting point.
+    Phase 1 work in this change is limited to补缺 that bring acceptance items
+    A1–A21 to a fully-satisfied state; no new dependencies, no UI rewrite, no
+    design-token migration. Phase 2 (real wallpaper engine, local import,
+    favorites persistence) and Phase 3 (performance/power auto-pause,
+    settings center) are tracked in separate follow-up changes.
 
 # Open questions
 
-- [blocking] CONFIRM: MVP implementation of PRD F1–F9 using the phased plan
-  above; engine = Win32 worker-window-below-desktop; theme baseline = Frost
-  Light; cadence = Phase 1 (UI+theme+motion+fake-data) → Phase 2
-  (engine+import+favorites+playback) → Phase 3 (performance+settings). Proceed
-  to Build starting with Phase 1?
+Resolved. All open questions are now recorded as Decisions D1–D5 above. The
+change is unblocked to enter Build with the Phase 1 scope defined in D5.
 
 # Verification expectations
 
@@ -85,3 +90,6 @@ D4. Theme baseline = Frost Light (浅色); dark token set switchable. Confirmed
 - Tauri dev build launches; manual acceptance A1–A8 demonstrable.
 - Frost Light tokens and motion tokens applied per spec.
 - No forced login; offline flow works.
+- 60s drawer countdown can be cancelled without closing the drawer (A7).
+- Right-click context menu is keyboard reachable (↑↓ navigate, Enter activate,
+  Esc dismiss) per A8.
