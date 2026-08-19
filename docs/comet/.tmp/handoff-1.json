@@ -1,0 +1,21 @@
+{
+  "kind": "builder-handoff",
+  "summary": "Phase 1 candidate (iteration 1). Reviewed all 21 acceptance items against the current v1.1.0 tree and implemented three small补缺: (1) A4 — wired TopBar's search input to the grid filter via a provide/inject shared ref so the top-bar search now drives the grid results and empty state. (2) A7 — added an explicit 取消 button next to the 60s countdown ring that stops the auto-collapse timer and freezes the ring at its current value, while keeping the drawer open. (3) A8 — refactored the right-click context menu in App.vue to be keyboard-reachable: first item auto-focuses on open, ↑↓ wraps inside the menu, Enter activates via runMenuAction dispatcher, Esc dismisses. The remaining 18 items (A1–A3, A5–A6, A9–A21) were already implemented in the current tree and required no changes.",
+  "addressed_acceptance_ids": ["A4", "A7", "A8"],
+  "checks": [
+    {
+      "name": "pnpm build (vue-tsc --noEmit + vite build)",
+      "result": "not-run",
+      "note": null
+    },
+    {
+      "name": "Static review — A1–A21 mapped to source locations",
+      "result": "not-run",
+      "note": null
+    }
+  ],
+  "known_limits": [
+    "A3 'persists within the session' — the filter and sort are component-local ref() state; they reset on full app reload. This matches the literal 'within the session' wording in the spec. A persistence upgrade is out of scope for Phase 1.",
+    "Phase 2/3 items (real wallpaper engine, local import, favorites persistence, performance/power auto-pause, settings center) are out of scope per decision D5 and are tracked in follow-up changes."
+  ]
+}

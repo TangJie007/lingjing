@@ -1,0 +1,28 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "request-checks",
+    "iteration": 1,
+    "attempt": 1,
+    "checks": [
+      {
+        "id": "pnpm-build",
+        "name": "pnpm build",
+        "executable": "pnpm",
+        "argv": ["build"],
+        "cwdRef": ".",
+        "timeoutMs": 180000,
+        "repeatable": true
+      },
+      {
+        "id": "cargo-check",
+        "name": "cargo check",
+        "executable": "cargo",
+        "argv": ["check"],
+        "cwdRef": "src-tauri",
+        "timeoutMs": 300000,
+        "repeatable": true
+      }
+    ]
+  }
+}

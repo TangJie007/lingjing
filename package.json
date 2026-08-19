@@ -1,52 +1,30 @@
 {
   "name": "lingscape",
-  "version": "1.0.0-dev",
-  "description": "灵境 LingScape — AI 动态桌面创作工具",
+  "private": true,
+  "version": "0.1.0",
   "type": "module",
-  "main": "index.js",
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
     "dev": "vite",
-    "dev:tauri": "tauri dev",
-    "setup:mpv": "powershell -ExecutionPolicy Bypass -File scripts/setup-mpv.ps1",
-    "build": "vue-tsc -b && vite build",
-    "build:tauri": "tauri build",
+    "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:unit": "vitest run",
-    "test:watch": "vitest",
-    "docs:dev": "vitepress dev",
-    "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
-  },
-  "author": "",
-  "license": "ISC",
-  "engines": {
-    "node": ">=10",
-    "pnpm": ">=3"
-  },
-  "packageManager": "pnpm@9.0.5",
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.3.0",
-    "@tauri-apps/cli": "^2.11.2",
-    "@vitejs/plugin-vue": "^6.0.7",
-    "@vue/test-utils": "^2.4.11",
-    "@wetspace/wetspec-cli": "^1.2.2",
-    "jsdom": "^29.1.1",
-    "tailwindcss": "^4.3.0",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8",
-    "vue-tsc": "^3.3.4"
+    "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@vueuse/core": "^14.3.0",
-    "pinia": "^3.0.4",
-    "vue": "^3.5.38",
-    "vue-i18n": "10",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-autostart": "2",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-opener": "2.5.4",
+    "@tauri-apps/plugin-os": "2",
+    "vue": "^3.5.13",
     "vue-router": "4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@tauri-apps/cli": "2.11.4",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "tailwindcss": "^4",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "vue-tsc": "^2.1.10"
   }
 }

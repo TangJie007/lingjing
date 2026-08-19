@@ -6,12 +6,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.tmp
 
 node_modules
 dist
 dist-ssr
 *.local
-cache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,10 +23,8 @@ cache
 *.njsproj
 *.sln
 *.sw?
-
-dist
-dist-node
-release
-out/
-.cache/
-src-tauri/bin/mpv/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<

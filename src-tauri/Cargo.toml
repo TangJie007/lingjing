@@ -1,41 +1,32 @@
 [package]
 name = "lingscape"
-version = "1.0.0"
-description = "灵境 LingScape — AI 动态桌面创作工具"
-authors = ["灵构科技"]
-license = "ISC"
+version = "0.1.0"
+description = "灵镜 LINGJING — 动态壁纸桌面应用"
+authors = ["you"]
 edition = "2021"
-rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "app_lib"
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "lingscape_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6.2", features = [] }
+tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tauri = { version = "2.11.2", features = ["protocol-asset", "tray-icon"] }
-tauri-plugin-log = "2"
+tauri = { version = "=2.11.5", features = ["protocol-asset", "tray-icon", "image-png"], package = "tauri" }
+tauri-plugin-opener = "=2.5.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-dialog = "2.7.2"
 tauri-plugin-autostart = "2"
-tauri-plugin-dialog = "2"
-windows = { version = "0.61", features = [
-  "Win32_UI_WindowsAndMessaging",
-  "Win32_Graphics_Gdi",
-  "Win32_System_Registry",
-  "Win32_Foundation",
-] }
-windows-core = "0.61"
-dirs = "5"
+tauri-plugin-os = "2"
+uuid = { version = "1.24.1", features = ["v4"] }
+chrono = { version = "0.4.45", features = ["clock"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_System_Power", "Win32_System_LibraryLoader", "Win32_System_SystemInformation"] }
+tokio = { version = "1.53.1", features = ["time", "rt-multi-thread", "macros", "sync"] }
 
-ring = "0.17"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-open = "5"
-
-# Pin time ≤ 0.3.36 — Rust 1.96 的 time 0.3.37+ HourBase From impl
-# 与 cookie 0.18 / tauri-utils 的 blanket From<T> impl 冲突
-# cookie / tauri-utils 发版修复后可移除此 pin
-time = ">=0.3.35, <0.3.37"

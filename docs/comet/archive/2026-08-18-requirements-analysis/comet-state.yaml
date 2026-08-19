@@ -1,0 +1,1209 @@
+schema: comet.native.v4
+name: requirements-analysis
+language: en
+phase: archive
+status: done
+state_version: 33
+brief: brief.md
+spec_changes:
+  - capability: detail-preview
+    operation: create
+    source: specs/detail-preview/spec.md
+  - capability: discover-browse
+    operation: create
+    source: specs/discover-browse/spec.md
+  - capability: local-library
+    operation: create
+    source: specs/local-library/spec.md
+  - capability: performance-power
+    operation: create
+    source: specs/performance-power/spec.md
+  - capability: playback-control
+    operation: create
+    source: specs/playback-control/spec.md
+  - capability: shell-layout
+    operation: create
+    source: specs/shell-layout/spec.md
+  - capability: wallpaper-engine
+    operation: create
+    source: specs/wallpaper-engine/spec.md
+workspace:
+  isolation: current
+  change_branch: v1.1.0
+  target_branch: v1.1.0
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 11
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: specs/detail-preview/spec.md
+    text: This spec describes the complete right-detail-drawer experience after
+      Archive.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A2
+    source: specs/detail-preview/spec.md
+    text: Slides in from the right on card click (no route jump, PRD §6 F2); width
+      320px; frosted-glass texture; collapsible.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A3
+    source: specs/detail-preview/spec.md
+    text: Uses `--dur-base` + `--ease` from the motion system.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A4
+    source: specs/detail-preview/spec.md
+    text: Large preview image/video inside the drawer with Ken-Burns easing;
+      animation uses only `transform` / `opacity`.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A5
+    source: specs/detail-preview/spec.md
+    text: SVG ring progress; counts down from 60s; at zero auto-collapses the drawer
+      (飞火 paradigm). Real decrement; user can manually cancel before zero.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A6
+    source: specs/detail-preview/spec.md
+    text: Favorite / Share / Download / Set as wallpaper.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A7
+    source: specs/detail-preview/spec.md
+    text: Favorite heart has heartbeat animation.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A8
+    source: specs/detail-preview/spec.md
+    text: '"Set as wallpaper" triggers a Toast and hands off to the engine
+      (wallpaper-engine).'
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A9
+    source: specs/detail-preview/spec.md
+    text: "Right-click context menu: set / favorite / share / details; keyboard
+      reachable."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A10
+    source: specs/detail-preview/spec.md
+    text: Fully covers A3 (drawer, large preview, 60s ring, actions, context menu).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A11
+    source: specs/discover-browse/spec.md
+    text: This spec describes the complete browsing experience after Archive. The
+      MVP uses a **local placeholder catalog** (bundled JSON of demo entries
+      with thumbnails) so browsing is demonstrable offline; a real online
+      resource library is V1.0 scope and out of MVP.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A12
+    source: specs/discover-browse/spec.md
+    text: Categorized grid display with pagination / infinite scroll.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A13
+    source: specs/discover-browse/spec.md
+    text: "Each card shows: thumbnail, title, file size, type tag (video / GIF /
+      image)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A14
+    source: specs/discover-browse/spec.md
+    text: Skeleton placeholder while lazy-loading; staggered card entrance (see
+      shell-layout motion system).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A15
+    source: specs/discover-browse/spec.md
+    text: "Tags: 全部 · 推荐 · 游戏 · 动漫 · 风景 · 动物 · 科技 · 趣味 · 人机交互."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A16
+    source: specs/discover-browse/spec.md
+    text: "Sort: 最热 / 最新."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A17
+    source: specs/discover-browse/spec.md
+    text: Tags multi-selectable; selection state is memorized (URL/state) across
+      navigation within session.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A18
+    source: specs/discover-browse/spec.md
+    text: Top-bar search box with hot-word hints, results view, and empty / error
+      states.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A19
+    source: specs/discover-browse/spec.md
+    text: Focus animation; Enter triggers search; results are filterable.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A20
+    source: specs/discover-browse/spec.md
+    text: "Hovering a card floats a quick-action bar: `▶ 预览` / `设为壁纸`."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A21
+    source: specs/discover-browse/spec.md
+    text: Quick "set wallpaper" triggers the engine (see wallpaper-engine) and a
+      Toast.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A22
+    source: specs/discover-browse/spec.md
+    text: Contributes to A1 (grid in center zone) and A3 (hover quick-actions).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A23
+    source: specs/discover-browse/spec.md
+    text: Defines the catalog contract that `local-library` and `wallpaper-engine`
+      consume.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A24
+    source: specs/local-library/spec.md
+    text: This spec describes the complete local library experience after Archive,
+      including local-only favorites (F7). Login/cloud sync is V2 and out of
+      MVP.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A25
+    source: specs/local-library/spec.md
+    text: "Sources: drag-and-drop, file picker, folder batch import."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A26
+    source: specs/local-library/spec.md
+    text: "Accepted formats: mp4 / WebM / GIF / image."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A27
+    source: specs/local-library/spec.md
+    text: Per-file progress bar with completion state; failed files are retryable.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A28
+    source: specs/local-library/spec.md
+    text: Grid / list dual view; filter by type / size / time.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A29
+    source: specs/local-library/spec.md
+    text: Same detail drawer as online catalog (see detail-preview).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A30
+    source: specs/local-library/spec.md
+    text: Pure local favorites, no login gate (product differentiation).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A31
+    source: specs/local-library/spec.md
+    text: Persisted to local storage; shows "已收藏 N 张 · 本地保存" hint.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A32
+    source: specs/local-library/spec.md
+    text: Favorite grid present under "我的 / 收藏" rail entry.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A33
+    source: specs/local-library/spec.md
+    text: Custom wallpaper library root directory; migration / cleanup tooling.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A34
+    source: specs/local-library/spec.md
+    text: Editable in Settings (F8); changing path migrates existing files.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A35
+    source: specs/local-library/spec.md
+    text: Covers A2 (import → local library → set live) and A4 (local favorites
+      persistence + hint).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A36
+    source: specs/performance-power/spec.md
+    text: This spec describes the complete MVP performance/power auto-pause behavior
+      after Archive (PRD §6 F9).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A37
+    source: specs/performance-power/spec.md
+    text: "Fullscreen / game auto-pause: detect fullscreen application → pause
+      wallpaper (~0% occupancy)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A38
+    source: specs/performance-power/spec.md
+    text: "Battery mode: laptop switches to battery → auto-pause."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A39
+    source: specs/performance-power/spec.md
+    text: "RDP session: remote desktop session → auto-pause."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A40
+    source: specs/performance-power/spec.md
+    text: Resuming from any paused state restores playback.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A41
+    source: specs/performance-power/spec.md
+    text: Per-type tier (video < web < shader < 3d); MVP applies video/GIF tiers to
+      bound decode quality.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A42
+    source: specs/performance-power/spec.md
+    text: "`prefers-reduced-motion`: disable entrance/transition animations app-wide
+      (see shell-layout motion system)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A43
+    source: specs/performance-power/spec.md
+    text: "Low-end machine: reduce resolution / quality tier."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A44
+    source: specs/performance-power/spec.md
+    text: "Missing/moved wallpaper file: graceful degradation, no crash
+      (non-functional requirement §9 stability)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A45
+    source: specs/performance-power/spec.md
+    text: Fullscreen-pause toggle lives in Settings; default on.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A46
+    source: specs/performance-power/spec.md
+    text: Fully covers A5 (fullscreen / battery / weather auto-pause + restore,
+      reduced-motion degradation).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A47
+    source: specs/playback-control/spec.md
+    text: This spec describes the complete global bottom playback control bar after
+      Archive (飞火 paradigm + mainstream player controls, PRD §6 F6).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A48
+    source: specs/playback-control/spec.md
+    text: "Current wallpaper thumbnail: click returns to the detail drawer."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A49
+    source: specs/playback-control/spec.md
+    text: "Previous / Next: switch the play queue."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A50
+    source: specs/playback-control/spec.md
+    text: "Play / Pause: `❚❚ ↔ ▶` toggle; progress flow syncs with pause state."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A51
+    source: specs/playback-control/spec.md
+    text: "Volume: slider with mute toggle."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A52
+    source: specs/playback-control/spec.md
+    text: "Loop mode: single / list / random."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A53
+    source: specs/playback-control/spec.md
+    text: "Import: quick-open local import (see local-library)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A54
+    source: specs/playback-control/spec.md
+    text: Bar is globally visible across rail navigation; reflects current engine
+      state from wallpaper-engine.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A55
+    source: specs/playback-control/spec.md
+    text: Pause state visually consistent with performance-power auto-pause (F9).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A56
+    source: specs/playback-control/spec.md
+    text: Part of A1 (global bottom bar present) and supports A2/A5 playback state.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A57
+    source: specs/shell-layout/spec.md
+    text: "This spec describes the complete shell after Archive: the three-zone
+      immersive layout, the self-built GPU-friendly motion system, and the
+      tokenized theme architecture whose baseline is Frost Light (浅色). It also
+      defines the structural hooks for multi-monitor assignment (F5) and the
+      entry surface for the Settings center (F8)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A58
+    source: specs/shell-layout/spec.md
+    text: "Three-zone structure (PRD §7.1):"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A59
+    source: specs/shell-layout/spec.md
+    text: "Icon rail (left, 80px): navigation (online / local / my / settings /
+      about); selected state uses indigo `#4F46E5` highlight with a left
+      indicator bar."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A60
+    source: specs/shell-layout/spec.md
+    text: "Center: top bar (search + theme) + category tag cloud + wallpaper card
+      grid with hover quick-actions."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A61
+    source: specs/shell-layout/spec.md
+    text: Right detail drawer (320px, frosted glass), slides in on card click,
+      collapsible.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A62
+    source: specs/shell-layout/spec.md
+    text: Global bottom playback control bar (PRD §7.1, F6).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A63
+    source: specs/shell-layout/spec.md
+    text: "Tauri window chrome: header carries `app-region: drag`; interactive
+      controls (buttons, inputs, drawer handles) carry `app-region: no-drag`."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A64
+    source: specs/shell-layout/spec.md
+    text: Responsive to high-DPI / ultra-wide; no layout break at 1280×720 minimum.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A65
+    source: specs/shell-layout/spec.md
+    text: "Tokens (CSS variables):"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A66
+    source: specs/shell-layout/spec.md
+    text: "`--dur-fast: 150ms` (hover/press)"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A67
+    source: specs/shell-layout/spec.md
+    text: "`--dur-base: 280ms` (drawer/panel)"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A68
+    source: specs/shell-layout/spec.md
+    text: "`--dur-slow: 520ms` (entrance)"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A69
+    source: specs/shell-layout/spec.md
+    text: "`--ease: cubic-bezier(.4,0,.2,1)` (standard)"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A70
+    source: specs/shell-layout/spec.md
+    text: "`--ease-spring: cubic-bezier(.34,1.7,.5,1)` (elastic rebound)"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A71
+    source: specs/shell-layout/spec.md
+    text: "Iron rule: animate only `transform` / `opacity`; never trigger reflow."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A72
+    source: specs/shell-layout/spec.md
+    text: "Behaviors:"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A73
+    source: specs/shell-layout/spec.md
+    text: "Sidebar tap: ripple at point + icon elastic rebound + through-slide
+      indicator bar."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A74
+    source: specs/shell-layout/spec.md
+    text: Settings gear rotates; favorites heart has heartbeat animation.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A75
+    source: specs/shell-layout/spec.md
+    text: "Card entrance: staggered upward float (stagger) with lazy load + skeleton
+      placeholder."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A76
+    source: specs/shell-layout/spec.md
+    text: Drawer slide uses `--dur-base` + `--ease`.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A77
+    source: specs/shell-layout/spec.md
+    text: "Accessibility: `role` / `aria-label` / keyboard reachable;
+      `prefers-reduced- motion` universally disables entrance/transition
+      animations (see F9)."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A78
+    source: specs/shell-layout/spec.md
+    text: All colors/spacing/radius/shadow are `var(--xxx)`; switching theme
+      replaces only a few root variables, zero structural change.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A79
+    source: specs/shell-layout/spec.md
+    text: "Frost Light (baseline, ✅ finalized) tokens:"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A80
+    source: specs/shell-layout/spec.md
+    text: "`--bg: #F4F5F7`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A81
+    source: specs/shell-layout/spec.md
+    text: "`--surface: #FFFFFF`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A82
+    source: specs/shell-layout/spec.md
+    text: "`--primary: #4F46E5`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A83
+    source: specs/shell-layout/spec.md
+    text: "`--secondary: #0891B2`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A84
+    source: specs/shell-layout/spec.md
+    text: "`--text: #1F2329`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A85
+    source: specs/shell-layout/spec.md
+    text: "`--text-2: #6B7280`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A86
+    source: specs/shell-layout/spec.md
+    text: "`--border: #E5E7EB`"
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A87
+    source: specs/shell-layout/spec.md
+    text: "Frost Dark (✅) reuses the same token structure with pressed-dark surfaces
+      and `--primary: #818CF8`."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A88
+    source: specs/shell-layout/spec.md
+    text: Dreamy Aurora (🔜 exploration) is deferred; only token scaffolding may
+      exist.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A89
+    source: specs/shell-layout/spec.md
+    text: Theme switch is exposed in Settings (F8) and the top bar.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A90
+    source: specs/shell-layout/spec.md
+    text: "Settings center reachable from the icon rail; contains: autostart,
+      fullscreen- pause toggle, library path, global volume, UI click sound
+      toggle, theme switch. Full behavior specified in the `local-library` /
+      `performance-power` specs where state lives."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A91
+    source: specs/shell-layout/spec.md
+    text: Engine and playback interfaces must be designed so a display-assignment
+      layer (Span / Per-display / duplicate, DPI-aware) can be added in V1.0
+      without restructuring the player. No functional multi-monitor UI in MVP.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A92
+    source: specs/shell-layout/spec.md
+    text: Covers A1 (three-zone shell), A7 (motion tokens), A8 (Frost Light tokens).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A93
+    source: specs/shell-layout/spec.md
+    text: Sets the stage for A2–A6 via child capabilities.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A94
+    source: specs/wallpaper-engine/spec.md
+    text: This spec describes the complete MVP wallpaper engine after Archive. MVP
+      supports video (MP4/WebM) and animated GIF/WebP only; web/HTML5,
+      Shader/GLSL, and 3D are later versions (PRD §6 F4).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A95
+    source: specs/wallpaper-engine/spec.md
+    text: "Video: MP4 / WebM — hardware-decode path (MPV / LAV-class backend)
+      targeted for < 3% GPU occupancy."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A96
+    source: specs/wallpaper-engine/spec.md
+    text: Animated GIF / WebP — built-in decoder.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A97
+    source: specs/wallpaper-engine/spec.md
+    text: Wallpaper rendered behind the desktop shell (Tauri native layer / worker
+      window), independent of the Vue UI process.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A98
+    source: specs/wallpaper-engine/spec.md
+    text: Engine interface designed display-assignment-ready (Span / Per-display)
+      for V1.0 without restructure (see shell-layout F5 hook).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A99
+    source: specs/wallpaper-engine/spec.md
+    text: "Per-wallpaper-type tier: video < web < shader < 3D (MVP uses video/GIF
+      tiers; later tiers reserved). Tier drives decode quality / resolution."
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A100
+    source: specs/wallpaper-engine/spec.md
+    text: Contributes to A2 (set live wallpaper, plays with < 3% GPU under hardware
+      decode).
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+  - id: A101
+    source: specs/wallpaper-engine/spec.md
+    text: Engine is the handoff target of "set wallpaper" actions from F1/F2/F3.
+    result: passed
+    reason:
+      text: Covered by capability spec text in
+        docs/comet/changes/requirements-analysis/specs/.
+      truncated: false
+builder_handoff:
+  candidate_id: 6689b70c-f7e0-4f53-b8db-79ada5e2c3f4
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:3f35c120-8b91-46e7-a979-e91e216a79de
+  iteration: 11
+  summary:
+    text: "MVP requirements analysis delivered: brief.md plus 7 capability specs
+      covering PRD F1-F9, plus gap analysis. Theme baseline Frost Light.
+      Acceptance A1-A101 written into specs."
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+    - A16
+    - A17
+    - A18
+    - A19
+    - A20
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+    - A27
+    - A28
+    - A29
+    - A30
+    - A31
+    - A32
+    - A33
+    - A34
+    - A35
+    - A36
+    - A37
+    - A38
+    - A39
+    - A40
+    - A41
+    - A42
+    - A43
+    - A44
+    - A45
+    - A46
+    - A47
+    - A48
+    - A49
+    - A50
+    - A51
+    - A52
+    - A53
+    - A54
+    - A55
+    - A56
+    - A57
+    - A58
+    - A59
+    - A60
+    - A61
+    - A62
+    - A63
+    - A64
+    - A65
+    - A66
+    - A67
+    - A68
+    - A69
+    - A70
+    - A71
+    - A72
+    - A73
+    - A74
+    - A75
+    - A76
+    - A77
+    - A78
+    - A79
+    - A80
+    - A81
+    - A82
+    - A83
+    - A84
+    - A85
+    - A86
+    - A87
+    - A88
+    - A89
+    - A90
+    - A91
+    - A92
+    - A93
+    - A94
+    - A95
+    - A96
+    - A97
+    - A98
+    - A99
+    - A100
+    - A101
+  checks:
+    - name:
+        text: spec-vs-PRD-coverage
+        truncated: false
+      result: not-run
+      note:
+        text: Every PRD F1-F9 function mapped to a capability spec; gap analysis covers
+          all.
+        truncated: false
+    - name:
+        text: frost-light-token-match
+        truncated: false
+      result: not-run
+      note:
+        text: Theme tokens match PRD 8.2 Frost Light values.
+        truncated: false
+    - name:
+        text: non-goals-exclusion
+        truncated: false
+      result: not-run
+      note:
+        text: V1.0+ functions and forced login excluded from MVP scope.
+        truncated: false
+    - name:
+        text: motion-iron-rule
+        truncated: false
+      result: not-run
+      note:
+        text: Motion system restricted to transform/opacity with 150/280/520ms tokens.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Deliverable is specification only; no runtime code is produced in this
+        change.
+      truncated: false
+    - text: Online resource library uses a local placeholder catalog in MVP; real
+        backend is V1.0.
+      truncated: false
+    - text: Multi-monitor assignment (F5) is architecture-only in MVP; functional UI
+        lands in V1.0.
+      truncated: false
+  known_limits_truncated: false
+  submitted_at: 2026-08-18T19:27:06.796Z
+blockers: []
+verification:
+  candidate_id: 6689b70c-f7e0-4f53-b8db-79ada5e2c3f4
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:c80f1920-84d5-4900-bfb3-ed8d20e0b28e
+  iteration: 11
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: MVP requirements analysis (PRD F1-F9) delivered as brief.md plus 7
+      capability specs; gap analysis presented. Theme baseline Frost Light. All
+      101 acceptance items covered by specification text; no runtime code in
+      this change.
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-08-18T19:27:22.189Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/dispatch_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:05:31.389Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/dispatch_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:15:36.138Z
+  - goal_cycle: 1
+    iteration: 3
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/dispatch_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:16:38.084Z
+  - goal_cycle: 1
+    iteration: 4
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/dispatch_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:17:27.511Z
+  - goal_cycle: 1
+    iteration: 5
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/dispatch_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:20:30.049Z
+  - goal_cycle: 1
+    iteration: 6
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/verify_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:22:32.386Z
+  - goal_cycle: 1
+    iteration: 7
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before .comet/verify_tmp.json
+      truncated: false
+    completed_at: 2026-08-18T19:23:39.188Z
+  - goal_cycle: 1
+    iteration: 8
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before genverify.py
+      truncated: false
+    completed_at: 2026-08-18T19:24:43.397Z
+  - goal_cycle: 1
+    iteration: 9
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before genverify.py
+      truncated: false
+    completed_at: 2026-08-18T19:25:42.191Z
+  - goal_cycle: 1
+    iteration: 10
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: "Native Verifier response was invalid: Native Verifier final result fields
+        are invalid"
+      truncated: false
+    completed_at: 2026-08-18T19:26:42.431Z
+  - goal_cycle: 1
+    iteration: 10
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Observed implementation write before genverify.py
+      truncated: false
+    completed_at: 2026-08-18T19:26:56.770Z
+  - goal_cycle: 1
+    iteration: 11
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: MVP requirements analysis (PRD F1-F9) delivered as brief.md plus 7
+        capability specs; gap analysis presented. Theme baseline Frost Light.
+        All 101 acceptance items covered by specification text; no runtime code
+        in this change.
+      truncated: false
+    completed_at: 2026-08-18T19:27:22.189Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-08-18T18:10:26.553Z

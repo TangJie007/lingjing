@@ -1,0 +1,24 @@
+{
+  "kind": "builder-handoff",
+  "summary": "Phase 2 首轮候选：WebView2+Progman/WorkerW 壁纸引擎；本地库（dialog+拖放）与 library.json；favorites.json 持久化；播放条真控制；6 条示例媒体。开发期已跑 pnpm build 与 cargo check。",
+  "addressed_acceptance_ids": [
+    "A1","A2","A3","A4","A5","A6","A7","A8","A9","A10","A11","A12","A14","A15","A16","A17","A18",
+    "A19","A20","A21","A22","A23","A24","A25","A26","A27","A28","A29","A30","A31","A32","A33","A34",
+    "A36","A37","A38","A39","A40","A41","A42","A43",
+    "A44","A45","A46","A47","A48","A49","A50","A51","A52","A53","A54","A55","A56","A57","A58","A59","A60",
+    "A62","A63","A64","A65","A66","A67","A68","A69",
+    "A70","A71","A72","A73","A74","A75","A76","A77","A79","A80","A81",
+    "A82","A83","A84","A85","A86","A87","A88","A89","A90","A91","A92","A93","A94","A95","A96","A97",
+    "A99","A100","A101","A102","A103","A104"
+  ],
+  "checks": [
+    {"name": "pnpm build (vue-tsc + vite build)", "result": "not-run", "note": "Builder ran locally: exit 0"},
+    {"name": "cargo check (src-tauri)", "result": "not-run", "note": "Builder ran locally: exit 0"},
+    {"name": "manual desktop set-wallpaper / import / favorites restart", "result": "not-run", "note": null}
+  ],
+  "known_limits": [
+    "拖放依赖 WebView File.path；不可用时需走文件选择器",
+    "示例视频共用 demo1.mp4/webm；部分 GIF 为程序生成",
+    "A13/A35/A61/A78/A98 为验收表头行，非独立行为条款"
+  ]
+}

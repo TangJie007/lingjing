@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"e:/project/ling-scape/.codebuddy/skills/comet/scripts/comet-hook-router.mjs\" --platform \"codebuddy\" --project-root \"e:/project/ling-scape\"",
+            "description": "Route each write to the selected Comet Native or Classic phase guard"
+          }
+        ]
+      }
+    ]
+  }
+}

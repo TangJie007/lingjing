@@ -1,0 +1,13 @@
+{
+  "kind": "builder-handoff",
+  "summary": "Repair A31: import_media 现返回 {items, errors}；多选部分失败时成功项入库并 toast 失败摘要。同步：wallpaper.html 关闭默认 video.loop，ended 回报以便列表/随机切歌。",
+  "addressed_acceptance_ids": ["A31"],
+  "checks": [
+    {"name": "pnpm build", "result": "not-run", "note": "Builder re-ran: exit 0"},
+    {"name": "cargo check", "result": "not-run", "note": "Builder re-ran: exit 0"}
+  ],
+  "known_limits": [
+    "桌面 WorkerW 可见性仍需手动确认",
+    "拖放仍依赖 File.path"
+  ]
+}

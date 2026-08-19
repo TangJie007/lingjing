@@ -1,7 +1,0 @@
-{
-  "change_name": "lingscape-v1-design",
-  "main_specs": "specs",
-  "affected_specs": [],
-  "rules": "本目录仅允许存放 affected_specs 中的 Spec YAML，禁止全量复制主 specs",
-  "created_at": "2026-06-12T12:42:11.393Z"
-}

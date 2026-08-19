@@ -1,0 +1,125 @@
+{
+  "kind": "verifier-response",
+  "response": {
+    "kind": "final-result",
+    "result": {
+      "iteration": 1,
+      "attempt": 1,
+      "verdict": "fail",
+      "acceptance": [
+        {
+          "id": "A1",
+          "result": "passed",
+          "reason": "src/data/catalog.ts:14-24 defines all 9 categories (全部·推荐·游戏·动漫·风景·动物·科技·趣味·人机交互); SORTS 最热/最新 (line 26); 24 placeholder entries (line 39). TopBar.vue:38-43 has the search input; WallpaperGrid.vue:42-66 renders the tag cloud and sort controls."
+        },
+        {
+          "id": "A2",
+          "result": "passed",
+          "reason": "WallpaperGrid.vue:72-87 renders each card with thumb (line 80 background gradient), title (line 82), size (line 85-87), and type tag (line 83 uppercase)."
+        },
+        {
+          "id": "A3",
+          "result": "passed",
+          "reason": "WallpaperGrid.vue:5-6 activeCat/sort are reactive refs; the list computed (line 17-25) filters by activeCat and search; the tag cloud (line 42-66) toggles activeCat on click. Within a SPA session the refs persist; reset on full reload is consistent with the spec text 'within the session'."
+        },
+        {
+          "id": "A4",
+          "result": "passed",
+          "reason": "App.vue:18-19 provides topbarSearch ref; TopBar.vue:10 injects and binds via v-model (line 39); WallpaperGrid.vue:9 injects the same ref and uses it in the computed list (line 20-23). Empty state '没有匹配的壁纸' renders at WallpaperGrid.vue:109-111 when list is empty."
+        },
+        {
+          "id": "A5",
+          "result": "passed",
+          "reason": "Hover quick-action bar: WallpaperGrid.vue:91-106 (translate-y-full → group-hover:translate-y-0 with ▶ 预览 and 设为壁纸). Drawer 320px: DetailDrawer.vue:64 ('w-80' = 320px, bg-[var(--bg-elevated)]/80 backdrop-blur-xl frosted). 60s SVG ring: DetailDrawer.vue:85-91 with auto-close at remain<=0 (line 19-25). Cancellable via 取消 button (line 96-103). Action area: 设为壁纸/❤️/⤓/↗ (line 107-128). Right-click context menu: App.vue:127-130 with set/favorite/share/details."
+        },
+        {
+          "id": "A6",
+          "result": "passed",
+          "reason": "WallpaperGrid.vue:91-106: .quick-actions div with 'translate-y-full ... group-hover:translate-y-0' reveals the bar on card hover with ▶ 预览 and 设为壁纸."
+        },
+        {
+          "id": "A7",
+          "result": "passed",
+          "reason": "DetailDrawer.vue:96-103 取消 button bound to cancelAutoClose (line 30-33), which calls stopCountdown to stop the auto-close timer. The drawer stays open (no emit('close') is called). Note: the implementation sets remain.value=0 (freezes the ring at 0 rather than its current value), but the cancellable requirement is met."
+        },
+        {
+          "id": "A8",
+          "result": "passed",
+          "reason": "App.vue:117-131: role=menu container with role=menuitem buttons. onContext (line 37-45) auto-focuses first item via nextTick+querySelector. onMenuKey (line 49-63) handles ArrowUp/ArrowDown with modulo wrap, Escape to close. Enter activates via default button click + runMenuAction dispatcher (line 64-82)."
+        },
+        {
+          "id": "A9",
+          "result": "passed",
+          "reason": "App.vue:92-114 renders the three-zone immersive layout: left IconRail (line 97), center TopBar+WallpaperGrid (line 98-105), right DetailDrawer (line 106-112), bottom PlaybackBar (line 114)."
+        },
+        {
+          "id": "A10",
+          "result": "passed",
+          "reason": "IconRail.vue:28-30 aside is 'w-20' (80px). Nav entries online/local/favorite/settings/about (line 10-16). Selected state: line 39-43 (bg-[var(--primary-soft)] text-[var(--primary)]) and line 51-54 left indicator bar (absolute left-0 ... bg-[var(--primary)])."
+        },
+        {
+          "id": "A11",
+          "result": "passed",
+          "reason": "TopBar.vue:38-43 search input; TopBar.vue:47-53 theme toggle button. WallpaperGrid.vue:42-55 category tag cloud; WallpaperGrid.vue:70-112 grid."
+        },
+        {
+          "id": "A12",
+          "result": "passed",
+          "reason": "DetailDrawer.vue:64 'w-80 flex-shrink-0' (320px) with 'bg-[var(--bg-elevated)]/80 backdrop-blur-xl' frosted glass. Collapsible via X button (line 68) and 取消 button; slides in via Vue <transition name='drawer'> (line 61) with transform/opacity (line 135-143)."
+        },
+        {
+          "id": "A13",
+          "result": "passed",
+          "reason": "PlaybackBar.vue:23-74 renders the global bottom playback bar (footer h-14). TopBar.vue:62-66 .topbar has app-region: drag; .actions has app-region: no-drag."
+        },
+        {
+          "id": "A14",
+          "result": "passed",
+          "reason": "main.ts:5 mounts App. App.vue:92-114 renders the three-zone shell (IconRail 80px + TopBar/WallpaperGrid + DetailDrawer + PlaybackBar) on launch."
+        },
+        {
+          "id": "A15",
+          "result": "passed",
+          "reason": "TopBar.vue:62-66: .topbar { app-region: drag } and .actions { app-region: no-drag }. IconRail.vue:60-62 .rail-btn { app-region: no-drag }. WallpaperGrid.vue:117-122 .card and .quick-actions { app-region: no-drag }."
+        },
+        {
+          "id": "A16",
+          "result": "passed",
+          "reason": "global.css:35-52 :root and :root[data-theme=frost-light] set --bg:#f4f5f7, --surface:#ffffff, --primary:#4f46e5, --secondary:#0891b2, --text:#1f2329, --text-2:#6b7280, --border:#e5e7eb. Frost Dark variant at lines 55-69 uses the same token structure with --primary:#818cf8."
+        },
+        {
+          "id": "A17",
+          "result": "passed",
+          "reason": "App.vue:14 initializes theme to 'frost-light'. global.css:35-52 selector applies Frost Light tokens to :root unconditionally (the bare :root matches with no data-theme set), so the default theme uses --bg #F4F5F7, --surface #FFFFFF, --primary #4F46E5, --text #1F2329."
+        },
+        {
+          "id": "A18",
+          "result": "passed",
+          "reason": "App.vue:83-86 toggleTheme() only changes theme.value and document.documentElement.setAttribute('data-theme', theme.value). No structural DOM changes; only root token variables differ between the frost-light and frost-dark blocks in global.css."
+        },
+        {
+          "id": "A19",
+          "result": "failed",
+          "reason": "Motion tokens exist (global.css:26-32: --dur-fast 150ms, --dur-base 280ms, --dur-slow 520ms, --ease, --ease-spring) and the keyframe card-in (line 86-89) is defined using only opacity/transform. However, the 'animate-card-in' class referenced on each card (WallpaperGrid.vue:75) is NOT registered as a Tailwind v4 custom animation — only --animate-fade-in, --animate-pop, --animate-shimmer are declared in @theme (global.css:20-22). The generated production CSS (dist/assets/index-Dhq9M7RF.css) contains no .animate-card-in rule, so the staggered upward float entrance does not actually run at runtime — cards mount instantly. Stagger delay is set inline (WallpaperGrid.vue:76) but no animation is bound to consume it. Skeleton placeholder is also absent. The 'transform/opacity only' and 'motion tokens' portions pass; the 'staggered card entrance' portion is unimplemented at runtime."
+        },
+        {
+          "id": "A20",
+          "result": "passed",
+          "reason": "WallpaperGrid.vue:75 'transition-transform duration-[var(--dur-base)] hover:-translate-y-1 hover:shadow-md' uses transform only on hover. DetailDrawer.vue:135-143 .drawer-enter/leave transitions use only 'transform' and 'opacity' with var(--dur-base) and var(--ease)."
+        },
+        {
+          "id": "A21",
+          "result": "passed",
+          "reason": "global.css:148-157 @media (prefers-reduced-motion: reduce) sets animation-duration: 0.001ms !important, animation-iteration-count: 1 !important, transition-duration: 0.001ms !important, scroll-behavior: auto !important, applied globally to *, *::before, *::after."
+        }
+      ],
+      "risks": [
+        "A19: 'animate-card-in' Tailwind class is not registered in @theme (only --animate-fade-in, --animate-pop, --animate-shimmer are). The keyframe @keyframes card-in is defined in global.css but the production CSS contains no .animate-card-in rule, so the staggered card entrance animation is silently non-functional at runtime. Cards appear instantly without fade-in. The inline animationDelay is set but unused.",
+        "A19: A skeleton placeholder for lazy-loaded cards is not implemented in WallpaperGrid; the spec calls for one alongside the staggered entrance.",
+        "A7: cancelAutoClose sets remain.value=0 (line 32) instead of freezing the ring at its current value — the visual collapses the ring even though the drawer itself stays open. Spec A7 only requires the timer be cancellable, which is satisfied, but a 'freeze at current value' interpretation of the behavior is not implemented.",
+        "A3: 'persists within the session' is satisfied via component-local ref() (activeCat, sort) which survive navigation within the SPA but reset on full app reload. This is consistent with the spec wording."
+      ],
+      "summary": "Build (vue-tsc + vite build) passes cleanly (exit 0). 20 of 21 acceptance items are independently verified against source. A19 fails because the spec's required 'staggered card entrance' is not actually functional at runtime: WallpaperGrid.vue references an 'animate-card-in' Tailwind class that is not registered in @theme and therefore not generated in the production CSS, so the @keyframes card-in rule never fires and cards mount instantly. All other items (A1–A18, A20, A21) pass with concrete file:line evidence. Verdict: fail."
+    }
+  }
+}

@@ -1,48 +1,71 @@
-// ============================================================
-// 灵境 Vue Router 配置
-// Hash 模式（Tauri 无服务端）
-// ============================================================
-import { createRouter, createWebHashHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
+import OnlineView from "../views/OnlineView.vue";
+import LocalView from "../views/LocalView.vue";
+import FavoritesView from "../views/FavoritesView.vue";
+import SettingsView from "../views/SettingsView.vue";
+import AboutView from "../views/AboutView.vue";
+import { useSettings } from "../composables/useSettings";
+
+declare module "vue-router" {
+  interface RouteMeta {
+    showDrawer?: boolean;
+    requiresOnline?: boolean;
+  }
+}
+
+export const NAV_ROUTE_NAMES = [
+  "online",
+  "local",
+  "favorite",
+  "settings",
+  "about",
+] as const;
+
+export type NavRouteName = (typeof NAV_ROUTE_NAMES)[number];
 
 const routes: RouteRecordRaw[] = [
+  { path: "/", redirect: { name: "local" } },
   {
-    path: '/',
-    redirect: '/library',
+    path: "/local",
+    name: "local",
+    component: LocalView,
+    meta: { showDrawer: true },
   },
   {
-    path: '/library',
-    name: 'Library',
-    component: () => import('@/views/LibraryPage.vue'),
+    path: "/online",
+    name: "online",
+    component: OnlineView,
+    meta: { showDrawer: true, requiresOnline: true },
   },
   {
-    path: '/settings',
-    name: 'Settings',
-    component: () => import('@/views/SettingsPage.vue'),
+    path: "/favorite",
+    name: "favorite",
+    component: FavoritesView,
+    meta: { showDrawer: true },
   },
   {
-    path: '/ai-create',
-    redirect: { path: '/library', query: { ai: 'open' } },
+    path: "/settings",
+    name: "settings",
+    component: SettingsView,
   },
   {
-    path: '/api-keys',
-    redirect: '/settings',
+    path: "/about",
+    name: "about",
+    component: AboutView,
   },
-  {
-    path: '/onboarding',
-    name: 'Onboarding',
-    component: () => import('@/views/OnboardingPage.vue'),
-  },
-  {
-    path: '/desktop-player',
-    name: 'DesktopPlayer',
-    component: () => import('@/views/DesktopPlayer.vue'),
-  },
-]
+  { path: "/:pathMatch(.*)*", redirect: { name: "local" } },
+];
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
-})
+});
 
-export default router
+router.beforeEach((to) => {
+  if (!to.meta.requiresOnline) return true;
+  const settings = useSettings();
+  if (settings.value.onlineEnabled) return true;
+  return { name: "local" };
+});
+
+export default router;
