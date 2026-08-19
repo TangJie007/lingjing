@@ -62,7 +62,18 @@ export async function engineGetState() {
 }
 
 export function onEngineState(cb: (s: EngineState) => void): Promise<UnlistenFn> {
-  return listen<EngineState>("engine-state", (e) => cb(e.payload));
+  return listen<EngineState>("engine-state", (ev) => cb(ev.payload));
+}
+
+export interface PauseRecommendPayload {
+  action: "pause" | "play";
+  reason: string;
+}
+
+export function onPauseRecommend(
+  cb: (p: PauseRecommendPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<PauseRecommendPayload>("engine-pause-recommend", (ev) => cb(ev.payload));
 }
 
 export interface LibraryDto {
@@ -112,6 +123,10 @@ export async function importMedia(
     items: (result.items ?? []).map(libraryToItem),
     errors: result.errors ?? [],
   };
+}
+
+export async function removeLibraryItem(id: string): Promise<void> {
+  await invoke("remove_library_item", { id });
 }
 
 export async function loadFavoriteIds(): Promise<{ ids: string[]; isNew: boolean }> {

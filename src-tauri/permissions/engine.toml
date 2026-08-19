@@ -1,6 +1,6 @@
 [[permission]]
 identifier = "allow-engine"
-description = "Wallpaper engine, library, and favorites commands"
+description = "Wallpaper engine, library, favorites, settings, and system commands"
 commands.allow = [
   "greet",
   "start_drag",
@@ -12,7 +12,13 @@ commands.allow = [
   "engine_report_progress",
   "list_library",
   "import_media",
+  "remove_library_item",
   "load_favorites",
   "set_favorite",
-  "get_app_paths"
+  "get_app_paths",
+  "load_settings",
+  "save_settings",
+  "set_library_dir",
+  "migrate_library",
+  "get_last_wallpaper"
 ]

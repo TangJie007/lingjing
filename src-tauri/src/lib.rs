@@ -1,20 +1,19 @@
 mod favorites;
 mod library;
+mod paths;
+mod power;
+pub mod settings;
 mod wallpaper;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{
+    image::Image,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, State,
+};
+use tauri_plugin_autostart::ManagerExt;
 use wallpaper::{EngineHandle, EngineState, SetWallpaperPayload};
-
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {name}! You've been greeted from Rust!")
-}
-
-#[tauri::command]
-fn start_drag(window: tauri::Window) {
-    let _ = window.start_dragging();
-}
 
 #[tauri::command]
 fn set_wallpaper(
@@ -33,10 +32,10 @@ fn set_wallpaper(
         .state
         .lock()
         .map_err(|_| "引擎状态锁失败".to_string())?;
-    state.media_id = Some(payload.id);
-    state.title = Some(payload.title);
-    state.media_type = Some(payload.media_type);
-    state.uri = Some(payload.uri);
+    state.media_id = Some(payload.id.clone());
+    state.title = Some(payload.title.clone());
+    state.media_type = Some(payload.media_type.clone());
+    state.uri = Some(payload.uri.clone());
     state.playing = true;
     state.error = None;
     state.current_time = 0.0;
@@ -45,6 +44,16 @@ fn set_wallpaper(
     drop(state);
     wallpaper::push_command(&app, "set", &snapshot)?;
     wallpaper::push_state(&app, &snapshot);
+    let _ = settings::save_last_wallpaper(
+        &app,
+        &settings::LastWallpaper {
+            id: payload.id,
+            title: payload.title,
+            media_type: payload.media_type,
+            uri: payload.uri,
+            source: "engine".into(),
+        },
+    );
     eprintln!(
         "[engine] set push_command ok media_id={:?}",
         snapshot.media_id
@@ -117,11 +126,23 @@ fn engine_get_state(engine: State<'_, EngineHandle>) -> Result<EngineState, Stri
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 struct ProgressPayload {
     current_time: f64,
     duration: f64,
     playing: Option<bool>,
     error: Option<String>,
+}
+
+impl Default for ProgressPayload {
+    fn default() -> Self {
+        Self {
+            current_time: 0.0,
+            duration: 0.0,
+            playing: None,
+            error: None,
+        }
+    }
 }
 
 #[tauri::command]
@@ -159,6 +180,11 @@ fn import_media(app: AppHandle, paths: Vec<String>) -> Result<library::ImportRes
 }
 
 #[tauri::command]
+fn remove_library_item(app: AppHandle, id: String) -> Result<(), String> {
+    library::remove_item(&app, &id)
+}
+
+#[tauri::command]
 fn load_favorites(app: AppHandle) -> Result<serde_json::Value, String> {
     let (file, is_new) = favorites::load(&app)?;
     Ok(serde_json::json!({
@@ -192,10 +218,176 @@ fn get_app_paths(app: AppHandle) -> Result<AppPaths, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法解析应用数据目录: {e}"))?;
+    let library_dir = settings::library_root(&app)?;
     Ok(AppPaths {
         app_data_dir: app_data.to_string_lossy().to_string(),
-        library_dir: app_data.join("library").to_string_lossy().to_string(),
+        library_dir: library_dir.to_string_lossy().to_string(),
     })
+}
+
+#[tauri::command]
+fn load_settings(app: AppHandle) -> Result<settings::AppSettings, String> {
+    settings::load_settings(&app)
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, payload: settings::AppSettings) -> Result<(), String> {
+    let prev = settings::load_settings(&app).unwrap_or_default();
+    settings::save_settings(&app, &payload)?;
+    if prev.autostart != payload.autostart {
+        let mgr = app.autolaunch();
+        if payload.autostart {
+            let _ = mgr.enable();
+        } else {
+            let _ = mgr.disable();
+        }
+    }
+    let _ = app.emit("settings-updated", &payload);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_library_dir(app: AppHandle, new_dir: String) -> Result<paths::MigrationPlan, String> {
+    paths::set_library_dir(&app, new_dir)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct MigratePayload {
+    keep_originals: bool,
+}
+
+impl Default for MigratePayload {
+    fn default() -> Self {
+        Self {
+            keep_originals: true,
+        }
+    }
+}
+
+#[tauri::command]
+fn migrate_library(
+    app: AppHandle,
+    payload: MigratePayload,
+) -> Result<paths::MigrationReport, String> {
+    paths::migrate_library(&app, payload.keep_originals)
+}
+
+#[tauri::command]
+fn get_last_wallpaper(app: AppHandle) -> Result<Option<settings::LastWallpaper>, String> {
+    settings::load_last_wallpaper(&app)
+}
+
+fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show_item = MenuItem::with_id(app, "show", "显示灵镜", true, None::<&str>)?;
+    let pause_item = MenuItem::with_id(app, "pause", "暂停壁纸", true, None::<&str>)?;
+    let play_item = MenuItem::with_id(app, "play", "恢复壁纸", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[&show_item, &pause_item, &play_item, &quit_item],
+    )?;
+    let icon: Image = app
+        .default_window_icon()
+        .cloned()
+        .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?;
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .icon(icon)
+        .menu(&menu)
+        .show_menu_on_left_click(false);
+    builder = builder.on_menu_event(|app, event| match event.id.as_ref() {
+        "show" => {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }
+        "pause" => {
+            let app_clone = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(state) = app_clone.try_state::<EngineHandle>() {
+                    if let Ok(mut s) = state.state.lock() {
+                        s.playing = false;
+                        let snap = s.clone();
+                        drop(s);
+                        let _ = wallpaper::push_command(&app_clone, "pause", &snap);
+                        let _ = app_clone.emit("engine-state", &snap);
+                    }
+                }
+            });
+        }
+        "play" => {
+            let app_clone = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(state) = app_clone.try_state::<EngineHandle>() {
+                    if let Ok(mut s) = state.state.lock() {
+                        s.playing = true;
+                        let snap = s.clone();
+                        drop(s);
+                        let _ = wallpaper::push_command(&app_clone, "play", &snap);
+                        let _ = app_clone.emit("engine-state", &snap);
+                    }
+                }
+            });
+        }
+        "quit" => {
+            app.exit(0);
+        }
+        _ => {}
+    });
+    builder = builder.on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        } = event
+        {
+            let app = tray.app_handle();
+            if let Some(win) = app.get_webview_window("main") {
+                let visible = win.is_visible().unwrap_or(false);
+                if visible {
+                    let _ = win.hide();
+                } else {
+                    let _ = win.show();
+                    let _ = win.unminimize();
+                    let _ = win.set_focus();
+                }
+            }
+        }
+    });
+    builder.build(app)?;
+    Ok(())
+}
+
+fn restore_last_wallpaper(app: &AppHandle) {
+    let app_for_task = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        let last = match settings::load_last_wallpaper(&app_for_task) {
+            Ok(Some(l)) => l,
+            _ => return,
+        };
+        let _ = wallpaper::push_command(
+            &app_for_task,
+            "set",
+            &EngineState {
+                media_id: Some(last.id.clone()),
+                title: Some(last.title.clone()),
+                media_type: Some(last.media_type.clone()),
+                uri: Some(last.uri.clone()),
+                playing: true,
+                volume: settings::load_settings(&app_for_task)
+                    .map(|s| s.default_volume)
+                    .unwrap_or(0.8),
+                muted: false,
+                current_time: 0.0,
+                duration: 0.0,
+                error: None,
+            },
+        );
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -203,20 +395,52 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
+        .plugin(tauri_plugin_os::init())
         .manage(EngineHandle::default())
+        .manage(power::PowerWatcher::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
+        })
         .setup(|app| {
-            // Try to attach the pre-registered wallpaper window to WorkerW so it renders
-            // beneath the desktop icons. If Progman/WorkerW aren't available (rare on
-            // modern Windows desktops), the worker window will simply not be shown
-            // and the user can still get a preview inside the main app shell.
             let handle = app.handle().clone();
+            let handle_for_attach = handle.clone();
+            let handle_for_settings = handle.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(800));
-                match wallpaper::attach_existing(&handle) {
+                match wallpaper::attach_existing(&handle_for_attach) {
                     Ok(()) => eprintln!("[wallpaper] startup attach ok"),
                     Err(e) => eprintln!("[wallpaper] startup attach skipped: {e}"),
                 }
             });
+
+            if let Ok(s) = settings::load_settings(&handle_for_settings) {
+                let mgr = handle.autolaunch();
+                if s.autostart {
+                    let _ = mgr.enable();
+                } else {
+                    let _ = mgr.disable();
+                }
+            }
+
+            if let Err(e) = build_tray(&handle) {
+                eprintln!("[tray] build failed: {e}");
+            }
+
+            let app_for_power = handle.clone();
+            power::start_watcher(app_for_power);
+
+            let app_for_restore = handle.clone();
+            std::thread::spawn(move || restore_last_wallpaper(&app_for_restore));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -230,10 +454,26 @@ pub fn run() {
             engine_report_progress,
             list_library,
             import_media,
+            remove_library_item,
             load_favorites,
             set_favorite,
-            get_app_paths
+            get_app_paths,
+            load_settings,
+            save_settings,
+            set_library_dir,
+            migrate_library,
+            get_last_wallpaper
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn greet(name: &str) -> String {
+    format!("Hello, {name}! You've been greeted from Rust!")
+}
+
+#[tauri::command]
+fn start_drag(window: tauri::Window) {
+    let _ = window.start_dragging();
 }

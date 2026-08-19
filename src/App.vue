@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import WinBar from "./components/WinBar.vue";
 import IconRail from "./components/IconRail.vue";
 import WallpaperGrid from "./components/WallpaperGrid.vue";
@@ -11,6 +12,7 @@ import FavoritesView from "./components/FavoritesView.vue";
 import LocalLibraryView from "./components/LocalLibraryView.vue";
 import Toast from "./components/Toast.vue";
 import { showToast } from "./composables/useToast";
+import { soundOn } from "./composables/useAudio";
 import { CATALOG, type WallpaperItem } from "./data/catalog";
 import {
   enginePause,
@@ -20,10 +22,14 @@ import {
   listLibrary,
   loadFavoriteIds,
   onEngineState,
+  onPauseRecommend,
+  removeLibraryItem,
   setFavoriteRemote,
   setWallpaper,
   type EngineState,
+  type PauseRecommendPayload,
 } from "./composables/useEngine";
+import { loadSettings, useSettings } from "./composables/useSettings";
 
 const drawerItem = ref<WallpaperItem | null>(CATALOG[0] ?? null);
 const drawerOpen = ref(true);
@@ -41,10 +47,19 @@ provide("topbarSort", sort);
 
 const activeNav = ref("online");
 
+const settings = useSettings();
+
+watch(
+  () => settings.value.soundOn,
+  (v) => {
+    soundOn.value = v;
+  },
+  { immediate: true },
+);
+
 const playQueue = computed(() => {
   const locals = localItems.value;
   const samples = CATALOG.filter((i) => !!i.mediaSrc);
-  // Prefer current context: local page → local only; else samples + local
   if (activeNav.value === "local") return locals.length ? locals : samples;
   return [...samples, ...locals];
 });
@@ -113,6 +128,19 @@ async function onFavorite(item: WallpaperItem) {
     showToast(next ? "已收藏" : "已取消收藏");
   } catch (e) {
     item.favorite = !next;
+    showToast(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function onRemoveLocal(item: WallpaperItem) {
+  try {
+    await removeLibraryItem(item.id);
+    localItems.value = localItems.value.filter((i) => i.id !== item.id);
+    if (current.value?.id === item.id) {
+      current.value = localItems.value[0] ?? CATALOG[0] ?? null;
+    }
+    showToast(`已从本地库移除「${item.name}」`);
+  } catch (e) {
     showToast(e instanceof Error ? e.message : String(e));
   }
 }
@@ -191,9 +219,6 @@ function pickNext(dir: 1 | -1) {
     while (next === idx) next = Math.floor(Math.random() * q.length);
     return q[next]!;
   }
-  if (loopMode.value === "single" && dir === 1 && current.value) {
-    // next button still advances; ended-media handled separately
-  }
   const nextIdx = (idx + dir + q.length) % q.length;
   return q[nextIdx]!;
 }
@@ -208,6 +233,7 @@ async function onNext() {
 }
 
 async function onPlay() {
+  lastUserAction = Date.now();
   try {
     engine.value = await enginePlay();
   } catch (e) {
@@ -215,6 +241,7 @@ async function onPlay() {
   }
 }
 async function onPause() {
+  lastUserAction = Date.now();
   try {
     engine.value = await enginePause();
   } catch (e) {
@@ -241,14 +268,40 @@ function openDetail() {
 }
 
 let unlisten: (() => void) | undefined;
-let endedWatch: number | undefined;
+let unlistenPause: (() => void) | undefined;
+let lastRecommend = { reason: "", at: 0 };
+let lastUserAction = 0;
+
+async function applyPauseRecommend(p: PauseRecommendPayload) {
+  const now = Date.now();
+  if (p.reason === lastRecommend.reason && now - lastRecommend.at < 1500) return;
+  lastRecommend = { reason: p.reason, at: now };
+  if (p.action === "pause") {
+    if (now - lastUserAction < 1200) return;
+    try {
+      engine.value = await enginePause();
+      const label = p.reason === "fullscreen" ? "全屏应用" : p.reason === "battery" ? "电池模式" : p.reason === "rdp" ? "远程桌面" : "自动";
+      showToast(`已自动暂停：${label}`);
+    } catch {
+      /* ignore */
+    }
+  } else if (p.action === "play") {
+    if (!engine.value?.mediaId) return;
+    try {
+      engine.value = await enginePlay();
+      showToast("已自动恢复播放");
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 onMounted(async () => {
+  await loadSettings();
   await refreshLibrary();
   unlisten = await onEngineState((s) => {
     engine.value = s;
     if (s.error) showToast(s.error);
-    // auto-advance on natural end for list/random
     if (
       s.duration > 0 &&
       s.currentTime >= s.duration - 0.35 &&
@@ -266,14 +319,32 @@ onMounted(async () => {
       void onSet(current.value);
     }
   });
+  unlistenPause = await onPauseRecommend(applyPauseRecommend);
+
+  // Optional: open hidden on launch
+  try {
+    const args = (await getCurrentWindow().listen("tauri://launched", () => {})) as unknown;
+    void args;
+  } catch {
+    /* ignore */
+  }
 });
 
 onUnmounted(() => {
   unlisten?.();
-  if (endedWatch) window.clearInterval(endedWatch);
+  unlistenPause?.();
 });
 
 watch(theme, (v) => document.documentElement.setAttribute("data-theme", v), { immediate: true });
+
+function onPlayWrapped() {
+  lastUserAction = Date.now();
+  return onPlay();
+}
+function onPauseWrapped() {
+  lastUserAction = Date.now();
+  return onPause();
+}
 </script>
 
 <template>
@@ -307,12 +378,13 @@ watch(theme, (v) => document.documentElement.setAttribute("data-theme", v), { im
         @select="onSelect"
         @set="onSet"
         @import="runImport()"
+        @remove="onRemoveLocal"
       />
       <SettingsView v-else-if="activeNav === 'settings'" />
       <div v-else class="main">
         <div class="placeholder">
           <h3>关于灵镜</h3>
-          <p>动态壁纸客户端 · Phase 2 引擎已接入</p>
+          <p>动态壁纸客户端 · Phase 3 引擎已接入</p>
         </div>
       </div>
 
@@ -331,8 +403,8 @@ watch(theme, (v) => document.documentElement.setAttribute("data-theme", v), { im
       :queue="playQueue"
       @import="runImport()"
       @open-detail="openDetail"
-      @play="onPlay"
-      @pause="onPause"
+      @play="onPlayWrapped"
+      @pause="onPauseWrapped"
       @prev="onPrev"
       @next="onNext"
       @volume="onVolume"

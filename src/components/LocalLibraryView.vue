@@ -10,12 +10,20 @@ const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
   (e: "import"): void;
+  (e: "remove", item: WallpaperItem): void;
 }>();
 
 const empty = computed(() => props.items.length === 0);
 
 function meta(item: WallpaperItem) {
   return `${item.category} · ${item.size}`;
+}
+
+function confirmRemove(item: WallpaperItem, ev: Event) {
+  ev.stopPropagation();
+  if (window.confirm(`从本地库移除「${item.name}」？物理文件也会被删除。`)) {
+    emit("remove", item);
+  }
 }
 </script>
 
@@ -53,6 +61,14 @@ function meta(item: WallpaperItem) {
           <div class="thumb-bg" :style="{ background: item.thumb }" />
           <span v-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
           <span class="vol">{{ item.size }}</span>
+          <span
+            class="del"
+            role="button"
+            tabindex="0"
+            aria-label="删除本地项"
+            @click.stop="confirmRemove(item, $event)"
+            @keydown.stop="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); confirmRemove(item, e); } }"
+          >🗑</span>
           <div class="hover-acts">
             <span class="ha-btn preview" @click.stop="emit('select', item)">▶ 预览</span>
             <span class="ha-btn apply" @click.stop="emit('set', item)">设为壁纸</span>
@@ -66,3 +82,32 @@ function meta(item: WallpaperItem) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.thumb {
+  position: relative;
+}
+.del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(15, 17, 24, 0.65);
+  color: #fff;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  z-index: 4;
+}
+.card:hover .del,
+.card:focus-within .del,
+.del:focus-visible {
+  opacity: 1;
+}
+.del:hover { transform: scale(1.05); background: var(--error); }
+</style>

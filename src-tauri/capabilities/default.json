@@ -14,8 +14,13 @@
     "core:window:allow-set-size",
     "core:window:allow-set-position",
     "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "core:tray:default",
     "opener:default",
     "dialog:default",
+    "autostart:default",
+    "os:default",
     "allow-engine"
   ]
 }

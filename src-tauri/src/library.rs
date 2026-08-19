@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -28,20 +28,12 @@ struct LibraryFile {
     items: Vec<LibraryItem>,
 }
 
-fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|e| format!("无法解析应用数据目录: {e}"))
-}
-
-fn library_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app_data_dir(app)?.join("library");
-    fs::create_dir_all(&dir).map_err(|e| format!("创建库目录失败: {e}"))?;
-    Ok(dir)
+fn library_root(app: &AppHandle) -> Result<PathBuf, String> {
+    crate::settings::library_root(app)
 }
 
 fn library_index_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app_data_dir(app)?.join("library.json"))
+    Ok(library_root(app)?.join("library.json"))
 }
 
 fn load_library(app: &AppHandle) -> Result<LibraryFile, String> {
@@ -108,7 +100,13 @@ pub fn list_items(app: &AppHandle) -> Result<Vec<LibraryItem>, String> {
 
 pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult, String> {
     let mut lib = load_library(app)?;
-    let dir = library_dir(app)?;
+    let copy_to_data = crate::settings::load_settings(app)
+        .map(|s| s.import_copy_to_data)
+        .unwrap_or(true);
+    let dir = library_root(app)?;
+    if copy_to_data {
+        fs::create_dir_all(&dir).map_err(|e| format!("创建库目录失败: {e}"))?;
+    }
     let mut imported = Vec::new();
     let mut errors = Vec::new();
 
@@ -134,16 +132,24 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
             .and_then(|s| s.to_str())
             .unwrap_or("未命名")
             .to_string();
-        let dest_name = format!("{id}.{ext}");
-        let dest = dir.join(&dest_name);
-        if let Err(e) = fs::copy(&src_path, &dest) {
-            errors.push(format!("复制失败 {name}: {e}"));
-            continue;
-        }
-        let meta = fs::metadata(&dest).ok();
-        let size = meta.map(|m| format_size(m.len())).unwrap_or_else(|| "?".into());
+        let meta = fs::metadata(&src_path).ok();
+        let size = meta
+            .as_ref()
+            .map(|m| format_size(m.len()))
+            .unwrap_or_else(|| "?".into());
         let kind = media_kind(&ext).to_string();
-        let path_str = dest.to_string_lossy().to_string();
+        let (path_str, stored) = if copy_to_data {
+            let dest_name = format!("{id}.{ext}");
+            let dest = dir.join(&dest_name);
+            if let Err(e) = fs::copy(&src_path, &dest) {
+                errors.push(format!("复制失败 {name}: {e}"));
+                continue;
+            }
+            let p = dest.to_string_lossy().to_string();
+            (p.clone(), p)
+        } else {
+            (src_path.to_string_lossy().to_string(), src_path.to_string_lossy().to_string())
+        };
         let item = LibraryItem {
             id: id.clone(),
             name,
@@ -155,14 +161,16 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
             heat: "本地".into(),
             favorite: false,
             tags: vec!["#本地".into()],
-            media_src: path_str.clone(),
-            path: path_str,
+            media_src: path_str,
+            path: stored,
         };
         lib.items.insert(0, item.clone());
         imported.push(item);
     }
 
-    save_library(app, &lib)?;
+    if !imported.is_empty() {
+        save_library(app, &lib)?;
+    }
     if imported.is_empty() && !errors.is_empty() {
         return Err(errors.join("; "));
     }
@@ -185,7 +193,10 @@ pub fn remove_item(app: &AppHandle, id: &str) -> Result<(), String> {
     let mut lib = load_library(app)?;
     if let Some(pos) = lib.items.iter().position(|i| i.id == id) {
         let item = lib.items.remove(pos);
-        let _ = fs::remove_file(Path::new(&item.path));
+        let path = std::path::Path::new(&item.path);
+        if path.exists() && path.is_file() {
+            let _ = fs::remove_file(path);
+        }
         save_library(app, &lib)?;
     }
     Ok(())
