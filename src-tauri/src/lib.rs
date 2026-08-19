@@ -28,6 +28,9 @@ fn set_wallpaper(
     if payload.uri.trim().is_empty() {
         return Err("该资源暂无可用媒体".into());
     }
+    let default_volume = settings::load_settings(&app)
+        .map(|s| s.default_volume.clamp(0.0, 1.0))
+        .unwrap_or(0.8);
     let mut state = engine
         .state
         .lock()
@@ -37,6 +40,9 @@ fn set_wallpaper(
     state.media_type = Some(payload.media_type.clone());
     state.uri = Some(payload.uri.clone());
     state.playing = true;
+    state.volume = default_volume;
+    state.muted = false;
+    state.user_paused = false;
     state.error = None;
     state.current_time = 0.0;
     state.duration = 0.0;
@@ -68,6 +74,7 @@ fn engine_play(app: AppHandle, engine: State<'_, EngineHandle>) -> Result<Engine
         .lock()
         .map_err(|_| "引擎状态锁失败".to_string())?;
     state.playing = true;
+    state.user_paused = false;
     let snapshot = state.clone();
     drop(state);
     wallpaper::push_command(&app, "play", &snapshot)?;
@@ -75,12 +82,31 @@ fn engine_play(app: AppHandle, engine: State<'_, EngineHandle>) -> Result<Engine
     Ok(snapshot)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PausePayload {
+    #[serde(default = "default_true")]
+    manual: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[tauri::command]
-fn engine_pause(app: AppHandle, engine: State<'_, EngineHandle>) -> Result<EngineState, String> {
+fn engine_pause(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    payload: Option<PausePayload>,
+) -> Result<EngineState, String> {
+    let manual = payload.map(|p| p.manual).unwrap_or(true);
     let mut state = engine
         .state
         .lock()
         .map_err(|_| "引擎状态锁失败".to_string())?;
+    if manual {
+        state.user_paused = true;
+    }
     state.playing = false;
     let snapshot = state.clone();
     drop(state);
@@ -180,8 +206,50 @@ fn import_media(app: AppHandle, paths: Vec<String>) -> Result<library::ImportRes
 }
 
 #[tauri::command]
-fn remove_library_item(app: AppHandle, id: String) -> Result<(), String> {
-    library::remove_item(&app, &id)
+fn remove_library_item(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    id: String,
+) -> Result<EngineState, String> {
+    let was_current = engine
+        .state
+        .lock()
+        .map(|s| s.media_id.as_deref() == Some(id.as_str()))
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+
+    library::remove_item(&app, &id)?;
+
+    if was_current {
+        clear_engine_wallpaper(&app, &engine)
+    } else {
+        engine
+            .state
+            .lock()
+            .map(|s| s.clone())
+            .map_err(|_| "引擎状态锁失败".into())
+    }
+}
+
+fn clear_engine_wallpaper(app: &AppHandle, engine: &EngineHandle) -> Result<EngineState, String> {
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    state.media_id = None;
+    state.title = None;
+    state.media_type = None;
+    state.uri = None;
+    state.playing = false;
+    state.current_time = 0.0;
+    state.duration = 0.0;
+    state.error = None;
+    state.user_paused = false;
+    let snapshot = state.clone();
+    drop(state);
+    wallpaper::push_command(app, "clear", &snapshot)?;
+    wallpaper::push_state(app, &snapshot);
+    let _ = settings::clear_last_wallpaper(app);
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -233,7 +301,7 @@ fn load_settings(app: AppHandle) -> Result<settings::AppSettings, String> {
 #[tauri::command]
 fn save_settings(app: AppHandle, payload: settings::AppSettings) -> Result<(), String> {
     let prev = settings::load_settings(&app).unwrap_or_default();
-    settings::save_settings(&app, &payload)?;
+    settings::persist_and_notify(&app, &payload)?;
     if prev.autostart != payload.autostart {
         let mgr = app.autolaunch();
         if payload.autostart {
@@ -242,7 +310,6 @@ fn save_settings(app: AppHandle, payload: settings::AppSettings) -> Result<(), S
             let _ = mgr.disable();
         }
     }
-    let _ = app.emit("settings-updated", &payload);
     Ok(())
 }
 
@@ -310,6 +377,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 if let Some(state) = app_clone.try_state::<EngineHandle>() {
                     if let Ok(mut s) = state.state.lock() {
                         s.playing = false;
+                        s.user_paused = true;
                         let snap = s.clone();
                         drop(s);
                         let _ = wallpaper::push_command(&app_clone, "pause", &snap);
@@ -324,6 +392,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 if let Some(state) = app_clone.try_state::<EngineHandle>() {
                     if let Ok(mut s) = state.state.lock() {
                         s.playing = true;
+                        s.user_paused = false;
                         let snap = s.clone();
                         drop(s);
                         let _ = wallpaper::push_command(&app_clone, "play", &snap);
@@ -382,6 +451,7 @@ fn restore_last_wallpaper(app: &AppHandle) {
                     .map(|s| s.default_volume)
                     .unwrap_or(0.8),
                 muted: false,
+                user_paused: false,
                 current_time: 0.0,
                 duration: 0.0,
                 error: None,
@@ -433,6 +503,13 @@ pub fn run() {
 
             if let Err(e) = build_tray(&handle) {
                 eprintln!("[tray] build failed: {e}");
+            }
+
+            let start_minimized = std::env::args().any(|a| a == "--minimized");
+            if start_minimized {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.hide();
+                }
             }
 
             let app_for_power = handle.clone();

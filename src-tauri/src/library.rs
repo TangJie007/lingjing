@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,6 +198,7 @@ pub fn remove_item(app: &AppHandle, id: &str) -> Result<(), String> {
             let _ = fs::remove_file(path);
         }
         save_library(app, &lib)?;
+        let _ = crate::favorites::set_favorite(app, id.to_string(), false);
     }
     Ok(())
 }

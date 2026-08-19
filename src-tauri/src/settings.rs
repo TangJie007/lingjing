@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 const SETTINGS_FILE: &str = "settings.json";
 const LAST_WALLPAPER_FILE: &str = "last_wallpaper.json";
@@ -88,6 +88,12 @@ pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), Stri
     fs::write(&path, raw).map_err(|e| format!("写入 settings.json 失败: {e}"))
 }
 
+pub fn persist_and_notify(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
+    save_settings(app, settings)?;
+    let _ = app.emit("settings-updated", settings);
+    Ok(())
+}
+
 pub fn library_root(app: &AppHandle) -> Result<PathBuf, String> {
     let settings = load_settings(app)?;
     if let Some(custom) = settings.library_dir_override {
@@ -126,4 +132,12 @@ pub fn load_last_wallpaper(app: &AppHandle) -> Result<Option<LastWallpaper>, Str
     let value: LastWallpaper =
         serde_json::from_str(&raw).map_err(|e| format!("解析 last_wallpaper.json 失败: {e}"))?;
     Ok(Some(value))
+}
+
+pub fn clear_last_wallpaper(app: &AppHandle) -> Result<(), String> {
+    let path = last_wallpaper_path(app)?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("删除 last_wallpaper.json 失败: {e}"))?;
+    }
+    Ok(())
 }

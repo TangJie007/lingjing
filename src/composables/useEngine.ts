@@ -13,6 +13,7 @@ export interface EngineState {
   currentTime: number;
   duration: number;
   error: string | null;
+  userPaused?: boolean;
 }
 
 export function resolveMediaUri(item: WallpaperItem): string | null {
@@ -47,8 +48,8 @@ export async function enginePlay() {
   return invoke<EngineState>("engine_play");
 }
 
-export async function enginePause() {
-  return invoke<EngineState>("engine_pause");
+export async function enginePause(manual = true) {
+  return invoke<EngineState>("engine_pause", { payload: { manual } });
 }
 
 export async function engineSetVolume(volume: number, muted: boolean) {
@@ -125,8 +126,8 @@ export async function importMedia(
   };
 }
 
-export async function removeLibraryItem(id: string): Promise<void> {
-  await invoke("remove_library_item", { id });
+export async function removeLibraryItem(id: string): Promise<EngineState> {
+  return invoke<EngineState>("remove_library_item", { id });
 }
 
 export async function loadFavoriteIds(): Promise<{ ids: string[]; isNew: boolean }> {

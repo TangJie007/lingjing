@@ -28,6 +28,8 @@ pub struct MigrationReport {
     pub skipped: u32,
     pub failed: u32,
     pub errors: Vec<String>,
+    #[serde(default)]
+    pub cleaned_stale: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -110,6 +112,44 @@ fn plan_migration(app: &AppHandle, to_dir: &str) -> Result<MigrationPlan, String
     })
 }
 
+fn cleanup_stale_app_data_library(app: &AppHandle) -> u32 {
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return 0;
+    };
+    let Ok(settings) = settings::load_settings(app) else {
+        return 0;
+    };
+    if settings.library_dir_override.is_none() {
+        return 0;
+    }
+    let mut cleaned = 0u32;
+    let stale_index = data_dir.join("library.json");
+    if stale_index.is_file() {
+        if fs::remove_file(&stale_index).is_ok() {
+            cleaned += 1;
+        }
+    }
+    let legacy_library = data_dir.join("library");
+    if legacy_library.is_dir() {
+        if let Ok(entries) = fs::read_dir(&legacy_library) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && fs::remove_file(&path).is_ok() {
+                    cleaned += 1;
+                }
+            }
+        }
+        if fs::read_dir(&legacy_library)
+            .map(|mut it| it.next().is_none())
+            .unwrap_or(false)
+            && fs::remove_dir(&legacy_library).is_ok()
+        {
+            cleaned += 1;
+        }
+    }
+    cleaned
+}
+
 pub fn set_library_dir(app: &AppHandle, new_dir: String) -> Result<MigrationPlan, String> {
     if new_dir.trim().is_empty() {
         return Err("路径不能为空".into());
@@ -121,12 +161,12 @@ pub fn set_library_dir(app: &AppHandle, new_dir: String) -> Result<MigrationPlan
     }
     let old_override = settings.library_dir_override.clone();
     settings.library_dir_override = Some(trimmed.clone());
-    settings::save_settings(app, &settings)?;
+    settings::persist_and_notify(app, &settings)?;
     let plan = match plan_migration(app, &trimmed) {
         Ok(plan) => plan,
         Err(e) => {
             settings.library_dir_override = old_override;
-            let _ = settings::save_settings(app, &settings);
+            let _ = settings::persist_and_notify(app, &settings);
             return Err(e);
         }
     };
@@ -194,7 +234,10 @@ pub fn migrate_library(
     if report.copied > 0 {
         s.library_dir_override = Some(to_dir);
         s.import_copy_to_data = true;
-        let _ = settings::save_settings(app, &s);
+        let _ = settings::persist_and_notify(app, &s);
+        if !keep_originals {
+            report.cleaned_stale = cleanup_stale_app_data_library(app);
+        }
     }
     Ok(report)
 }

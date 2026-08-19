@@ -223,6 +223,19 @@
           return;
         }
 
+        if (cmd === "clear") {
+          clearReport();
+          panes.forEach((pane) => {
+            pane.vid.pause();
+            pane.vid.removeAttribute("src");
+            pane.vid.classList.remove("on");
+            pane.img.removeAttribute("src");
+            pane.img.classList.remove("on");
+          });
+          report({ currentTime: 0, duration: 0, playing: false });
+          return;
+        }
+
         if (cmd === "volume") {
           panes.forEach((pane) => {
             if (!pane.vid.classList.contains("on")) return;

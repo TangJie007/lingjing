@@ -1,7 +1,8 @@
 use crate::settings;
 use serde::Serialize;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Listener};
 
 #[cfg(windows)]
 mod win {
@@ -94,16 +95,34 @@ impl From<settings::AppSettings> for Flags {
     }
 }
 
+fn spawn_settings_listener(app: AppHandle, flags: Arc<RwLock<Flags>>) {
+    let flags_for_listen = flags.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = app.listen("settings-updated", move |event| {
+            if let Ok(next) = serde_json::from_str::<settings::AppSettings>(event.payload()) {
+                if let Ok(mut guard) = flags_for_listen.write() {
+                    *guard = Flags::from(next);
+                }
+            }
+        });
+        std::future::pending::<()>().await;
+    });
+}
+
 pub fn start_watcher(app: AppHandle) {
-    let app_for_task = app.clone();
+    let flags = Arc::new(RwLock::new(
+        settings::load_settings(&app)
+            .map(Flags::from)
+            .unwrap_or_default(),
+    ));
+    spawn_settings_listener(app.clone(), flags.clone());
+
     tauri::async_runtime::spawn(async move {
         let mut last_fullscreen = false;
         let mut last_remote = false;
         let mut last_battery_state: Option<bool> = None;
         loop {
-            let flags: Flags = settings::load_settings(&app_for_task)
-                .map(Into::into)
-                .unwrap_or_default();
+            let flags = flags.read().map(|g| *g).unwrap_or_default();
             if flags.pause_on_fullscreen {
                 let fs = win::is_foreground_fullscreen();
                 if fs != last_fullscreen {
@@ -112,7 +131,7 @@ pub fn start_watcher(app: AppHandle) {
                         action: if fs { "pause" } else { "play" },
                         reason: "fullscreen",
                     };
-                    let _ = app_for_task.emit("engine-pause-recommend", &payload);
+                    let _ = app.emit("engine-pause-recommend", &payload);
                 }
             }
             if flags.pause_on_rdp {
@@ -123,7 +142,7 @@ pub fn start_watcher(app: AppHandle) {
                         action: if remote { "pause" } else { "play" },
                         reason: "rdp",
                     };
-                    let _ = app_for_task.emit("engine-pause-recommend", &payload);
+                    let _ = app.emit("engine-pause-recommend", &payload);
                 }
             }
             if flags.pause_on_battery {
@@ -134,7 +153,7 @@ pub fn start_watcher(app: AppHandle) {
                         action: if on_battery { "pause" } else { "play" },
                         reason: if on_battery { "battery" } else { "power" },
                     };
-                    let _ = app_for_task.emit("engine-pause-recommend", &payload);
+                    let _ = app.emit("engine-pause-recommend", &payload);
                 }
             }
             tokio::time::sleep(Duration::from_millis(500)).await;

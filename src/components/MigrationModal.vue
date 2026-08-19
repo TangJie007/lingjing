@@ -13,12 +13,12 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   (e: "close"): void;
-  (e: "done", report: { copied: number; skipped: number; failed: number; errors: string[] }): void;
+  (e: "done", report: { copied: number; skipped: number; failed: number; errors: string[]; cleanedStale?: number }): void;
 }>();
 
 const busy = ref(false);
 const progress = ref<MigrationProgress>({ done: 0, total: props.plan.files.length, relPath: "" });
-const lastReport = ref<{ copied: number; skipped: number; failed: number; errors: string[] } | null>(null);
+const lastReport = ref<{ copied: number; skipped: number; failed: number; errors: string[]; cleanedStale?: number } | null>(null);
 let unlisten: UnlistenFn | undefined;
 
 onMounted(async () => {
@@ -55,8 +55,13 @@ async function migrate(keepOriginals: boolean) {
     <div class="mm-card" role="dialog" aria-modal="true" aria-label="迁移壁纸路径">
       <header>
         <h3>迁移到新路径</h3>
-        <p>将本地库与持久化文件复制到下方目标位置，原文件可选择保留或迁移后删除。</p>
+        <p>将本地库索引与媒体文件复制到目标位置。原文件可选择保留或迁移后删除。</p>
       </header>
+      <ul class="mm-notes">
+        <li><strong>会迁移</strong>：library.json、library/ 下的媒体文件</li>
+        <li><strong>不会迁移</strong>：settings.json、favorites.json、last_wallpaper.json（仍留在应用数据目录）</li>
+        <li>选择「迁移」（不保留原文件）时，还会清理应用数据目录中的旧 library 副本</li>
+      </ul>
       <div class="mm-paths">
         <div>
           <span class="lab">原路径</span>
@@ -74,6 +79,7 @@ async function migrate(keepOriginals: boolean) {
         <div v-if="lastReport.copied">已迁移 {{ lastReport.copied }} 个</div>
         <div v-if="lastReport.skipped">跳过 {{ lastReport.skipped }} 个（目标已存在）</div>
         <div v-if="lastReport.failed">失败 {{ lastReport.failed }} 个：{{ lastReport.errors.slice(0, 3).join("；") }}</div>
+        <div v-if="lastReport.cleanedStale">已清理旧目录 {{ lastReport.cleanedStale }} 项</div>
       </div>
       <div class="mm-progress" v-else>
         <div class="bar" :style="{ transform: `scaleX(${ratio})` }" />
@@ -112,6 +118,17 @@ async function migrate(keepOriginals: boolean) {
 }
 header h3 { font-size: 16px; font-weight: 700; }
 header p { font-size: 12.5px; color: var(--text-2); margin-top: 6px; }
+.mm-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mm-notes strong { color: var(--text); font-weight: 600; }
 .mm-paths { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
 .mm-paths .lab { color: var(--text-3); margin-right: 8px; }
 .mm-paths code {

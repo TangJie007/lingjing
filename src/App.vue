@@ -134,12 +134,21 @@ async function onFavorite(item: WallpaperItem) {
 
 async function onRemoveLocal(item: WallpaperItem) {
   try {
-    await removeLibraryItem(item.id);
+    const wasCurrent = current.value?.id === item.id || engine.value?.mediaId === item.id;
+    const newState = await removeLibraryItem(item.id);
+    engine.value = newState;
     localItems.value = localItems.value.filter((i) => i.id !== item.id);
-    if (current.value?.id === item.id) {
+    const { ids } = await loadFavoriteIds();
+    await applyFavorites(ids);
+    if (wasCurrent) {
       current.value = localItems.value[0] ?? CATALOG[0] ?? null;
+      showToast(`已移除并停止桌面壁纸「${item.name}」`);
+    } else {
+      if (current.value?.id === item.id) {
+        current.value = localItems.value[0] ?? CATALOG[0] ?? null;
+      }
+      showToast(`已从本地库移除「${item.name}」`);
     }
-    showToast(`已从本地库移除「${item.name}」`);
   } catch (e) {
     showToast(e instanceof Error ? e.message : String(e));
   }
@@ -279,7 +288,7 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
   if (p.action === "pause") {
     if (now - lastUserAction < 1200) return;
     try {
-      engine.value = await enginePause();
+      engine.value = await enginePause(false);
       const label = p.reason === "fullscreen" ? "全屏应用" : p.reason === "battery" ? "电池模式" : p.reason === "rdp" ? "远程桌面" : "自动";
       showToast(`已自动暂停：${label}`);
     } catch {
@@ -287,6 +296,7 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
     }
   } else if (p.action === "play") {
     if (!engine.value?.mediaId) return;
+    if (engine.value?.userPaused) return;
     try {
       engine.value = await enginePlay();
       showToast("已自动恢复播放");

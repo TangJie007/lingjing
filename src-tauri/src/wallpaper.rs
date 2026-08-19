@@ -16,6 +16,8 @@ pub struct EngineState {
     pub current_time: f64,
     pub duration: f64,
     pub error: Option<String>,
+    #[serde(default)]
+    pub user_paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

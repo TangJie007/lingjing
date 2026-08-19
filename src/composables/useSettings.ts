@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ref, watch } from "vue";
-import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 
 export interface AppSettings {
   autostart: boolean;
@@ -67,26 +66,6 @@ async function persistSettings(next: AppSettings) {
   }
 }
 
-export async function applyAutostart(enabled: boolean) {
-  try {
-    if (enabled) {
-      await enable();
-    } else {
-      await disable();
-    }
-  } catch (e) {
-    console.warn("autostart toggle failed", e);
-  }
-}
-
-export async function readAutostartState(): Promise<boolean> {
-  try {
-    return await isEnabled();
-  } catch {
-    return false;
-  }
-}
-
 export interface MigrationPlan {
   fromDir: string;
   toDir: string;
@@ -98,6 +77,7 @@ export interface MigrationReport {
   skipped: number;
   failed: number;
   errors: string[];
+  cleanedStale?: number;
 }
 
 export interface MigrationProgress {

@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { showToast } from "../composables/useToast";
 import {
-  applyAutostart,
   getAppPaths,
   loadSettings,
   setLibraryDir,
@@ -26,14 +25,6 @@ onMounted(async () => {
   await loadSettings();
   paths.value = await getAppPaths();
 });
-
-watch(
-  () => settings.value.autostart,
-  async (v, prev) => {
-    if (prev === undefined) return;
-    await applyAutostart(v);
-  },
-);
 
 watch(volPct, async (v) => {
   if (suppressVol) return;
@@ -87,11 +78,12 @@ function closeMigration() {
   migration.value = null;
 }
 
-function onMigrated(report: { copied: number; skipped: number; failed: number; errors: string[] }) {
+function onMigrated(report: { copied: number; skipped: number; failed: number; errors: string[]; cleanedStale?: number }) {
   const parts: string[] = [];
   if (report.copied) parts.push(`迁移 ${report.copied}`);
   if (report.skipped) parts.push(`跳过 ${report.skipped}`);
   if (report.failed) parts.push(`失败 ${report.failed}`);
+  if (report.cleanedStale) parts.push(`清理旧目录 ${report.cleanedStale} 项`);
   showToast(parts.length ? `已完成：${parts.join("，")}` : "迁移已取消");
   migration.value = null;
   paths.value = null;
@@ -208,6 +200,10 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
 
     <div class="set-group">
       <h3>壁纸路径</h3>
+      <p class="path-note">
+        更改路径后，<strong>library.json 与媒体文件</strong>会迁移到新目录。
+        <strong>settings / favorites / last_wallpaper</strong> 仍保存在系统应用数据目录，不会被迁移。
+      </p>
       <div class="path-ctrl">
         <input
           :value="paths?.libraryDir ?? '加载中…'"
@@ -274,6 +270,16 @@ footer-note {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.path-note {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.55;
+  margin-bottom: 10px;
+}
+.path-note strong {
+  color: var(--text);
+  font-weight: 600;
 }
 .path-ctrl input {
   flex: 1;
