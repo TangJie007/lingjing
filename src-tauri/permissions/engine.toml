@@ -20,5 +20,6 @@ commands.allow = [
   "save_settings",
   "set_library_dir",
   "migrate_library",
-  "get_last_wallpaper"
+  "get_last_wallpaper",
+  "export_wallpaper"
 ]

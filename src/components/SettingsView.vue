@@ -39,9 +39,11 @@ function flip(key: "autostart" | "hideIconsOnDoubleClick" | "pauseOnFullscreen" 
   if (key === "autostart") settings.value.autostart = !settings.value.autostart;
   if (key === "hideIconsOnDoubleClick") {
     settings.value.hideIconsOnDoubleClick = !settings.value.hideIconsOnDoubleClick;
-    if (settings.value.hideIconsOnDoubleClick) {
-      showToast("双击桌面隐藏图标将依赖后续系统接入");
-    }
+    showToast(
+      settings.value.hideIconsOnDoubleClick
+        ? "已开启：双击桌面空白处可隐藏/显示图标"
+        : "已关闭双击隐藏桌面图标",
+    );
   }
   if (key === "pauseOnFullscreen") {
     settings.value.pauseOnFullscreen = !settings.value.pauseOnFullscreen;

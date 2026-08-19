@@ -216,7 +216,7 @@ flowchart TB
 | OPT-P2-02 | prefers-reduced-motion | CSS `@media (prefers-reduced-motion)` + 壁纸降帧/静态 | `performance-power/spec.md` |
 | OPT-P2-03 | 低端机降级 | 检测内存/CPU tier → 禁 GIF / 降帧 / 静态回退 | `performance-power/spec.md` |
 | OPT-P2-04 | 分享 / 下载 | DetailDrawer 按钮接真实逻辑（导出文件 / 复制链接） | `detail-drawer/spec.md` |
-| OPT-P2-05 | 文件夹批量导入 | `open({ directory: true })` + 递归扫描允许扩展名 | `local-library/spec.md` |
+| OPT-P2-05 | 文件夹批量导入 | ~~`open({ directory: true })` + 递归扫描~~ **不做** | `local-library/spec.md` |
 | OPT-P2-06 | 在线壁纸服务 | 需后端 API；当前 `catalog.ts` 为离线占位 | `discover-browse/spec.md` |
 | OPT-P2-07 | 循环模式持久化 | `settings.json` 增加 `loopMode` 字段 | `playback-control/spec.md` |
 | OPT-P2-08 | README 更新 | 记录 Phase 2/3 功能、数据目录结构、开发/构建说明 | — |
@@ -283,12 +283,17 @@ flowchart TB
 11. OPT-P2-07 循环模式持久化  
 12. OPT-P2-08 README  
 
-### 阶段 D — 大功能（单独立项）
+### 阶段 D — 大功能 ✅ 部分完成（2026-08-19）
 
-- OPT-P2-01 双击隐藏图标  
-- OPT-P2-05 文件夹批量导入  
-- OPT-P2-06 在线壁纸 API  
-- OPT-P2-02 / OPT-P2-03 性能降级  
+| ID | 项 | 状态 |
+|----|-----|------|
+| OPT-P2-01 | 双击隐藏桌面图标 | ✅ WH_MOUSE_LL + SysListView32 ShowWindow |
+| OPT-P2-02 | prefers-reduced-motion | ✅ UI CSS + 壁纸静态首帧 |
+| OPT-P2-03 | 低端机降级 | ✅ <6GB RAM 自动 lowPower（降 playbackRate + 静态偏好） |
+| OPT-P2-04 | 分享 / 下载 | ✅ 复制剪贴板 + 导出对话框 |
+| OPT-P2-05 | 文件夹批量导入 | ❌ **不做**（产品决定） |
+| OPT-P2-06 | 在线壁纸 API | ⏸ 不在当前范围（需后端） |
+| OPT-P3-04 | 缺失媒体恢复跳过 | ✅ |
 
 ---
 
@@ -323,6 +328,7 @@ flowchart TB
 | 2026-08-19 | Agent | 实施阶段 A：P0 四项全部落地 |
 | 2026-08-19 | Agent | 实施阶段 B：P1-01/02/03/06 全部落地 |
 | 2026-08-19 | Agent | 实施阶段 C：P1-04/05、P2-07/08 全部落地 |
+| 2026-08-19 | Agent | 实施阶段 D：P2-01~04、P3-04；P2-05 明确不做 |
 
 ---
 

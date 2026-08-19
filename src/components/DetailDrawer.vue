@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { showToast } from "../composables/useToast";
 import type { WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{ item: WallpaperItem | null; open: boolean }>();
@@ -8,6 +7,8 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "set", item: WallpaperItem): void;
   (e: "favorite", item: WallpaperItem): void;
+  (e: "share", item: WallpaperItem): void;
+  (e: "download", item: WallpaperItem): void;
 }>();
 
 const COUNTDOWN = 60;
@@ -95,8 +96,8 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
             :aria-label="item.favorite ? '已收藏' : '收藏'"
             @click="emit('favorite', item)"
           >{{ item.favorite ? "♥ 收藏" : "♡ 收藏" }}</div>
-          <div class="btn-ghost" role="button" tabindex="0" aria-label="分享" @click="showToast('分享面板开发中')">↗ 分享</div>
-          <div class="btn-ghost" role="button" tabindex="0" aria-label="下载" @click="showToast('下载功能开发中')">↓ 下载</div>
+          <div class="btn-ghost" role="button" tabindex="0" aria-label="分享" @click="emit('share', item)">↗ 分享</div>
+          <div class="btn-ghost" role="button" tabindex="0" aria-label="下载" @click="emit('download', item)">↓ 下载</div>
         </div>
         <div class="btn-apply" role="button" tabindex="0" aria-label="设为壁纸" @click="emit('set', item)">设为壁纸</div>
         <div class="d-note">60 秒未操作将自动收起预览</div>

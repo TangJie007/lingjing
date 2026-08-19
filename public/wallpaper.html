@@ -145,10 +145,13 @@
         const mediaType = state.mediaType || "";
         const volume = typeof state.volume === "number" ? state.volume : 0.8;
         const muted = !!state.muted;
+        const lowPower = !!state.lowPower;
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const staticPreferred = lowPower || reduceMotion;
         if (!panes.length) applyLayout(null);
 
         if (cmd === "set" || cmd === undefined || cmd === null) {
-          if (isVideo(mediaType, uri)) {
+          if (isVideo(mediaType, uri) && !(staticPreferred && mediaType.toLowerCase() === "gif")) {
             panes.forEach((pane, i) => {
               pane.img.classList.remove("on");
               pane.img.removeAttribute("src");
@@ -157,6 +160,7 @@
               pane.vid.src = uri;
               pane.vid.muted = true;
               pane.vid.volume = pane.primary ? volume : 0;
+              pane.vid.playbackRate = lowPower ? 0.75 : 1;
               const p = pane.vid.play();
               if (p && p.then) {
                 p.then(() => {
@@ -166,6 +170,9 @@
                   } else {
                     pane.vid.muted = true;
                     pane.vid.volume = 0;
+                  }
+                  if (staticPreferred) {
+                    pane.vid.pause();
                   }
                 }).catch((e) => {
                   if (pane.primary) {

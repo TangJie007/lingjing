@@ -1,10 +1,13 @@
+mod desktop;
 mod favorites;
 mod library;
 mod paths;
 mod power;
 pub mod settings;
+mod system;
 mod wallpaper;
 
+use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{
     image::Image,
@@ -13,7 +16,22 @@ use tauri::{
     AppHandle, Emitter, Manager, State,
 };
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
 use wallpaper::{EngineHandle, EngineState, SetWallpaperPayload};
+
+struct RuntimeProfile {
+    low_power: bool,
+}
+
+fn runtime_low_power(app: &AppHandle) -> bool {
+    app.try_state::<RuntimeProfile>()
+        .map(|p| p.low_power)
+        .unwrap_or(false)
+}
+
+fn apply_engine_runtime(state: &mut EngineState, app: &AppHandle) {
+    state.low_power = runtime_low_power(app);
+}
 
 #[tauri::command]
 fn set_wallpaper(
@@ -46,6 +64,7 @@ fn set_wallpaper(
     state.error = None;
     state.current_time = 0.0;
     state.duration = 0.0;
+    apply_engine_runtime(&mut state, &app);
     let snapshot = state.clone();
     drop(state);
     wallpaper::push_command(&app, "set", &snapshot)?;
@@ -310,6 +329,9 @@ fn save_settings(app: AppHandle, payload: settings::AppSettings) -> Result<(), S
             let _ = mgr.disable();
         }
     }
+    if prev.hide_icons_on_double_click != payload.hide_icons_on_double_click {
+        desktop::set_double_click_enabled(payload.hide_icons_on_double_click);
+    }
     Ok(())
 }
 
@@ -438,26 +460,72 @@ fn restore_last_wallpaper(app: &AppHandle) {
             Ok(Some(l)) => l,
             _ => return,
         };
-        let _ = wallpaper::push_command(
-            &app_for_task,
-            "set",
-            &EngineState {
-                media_id: Some(last.id.clone()),
-                title: Some(last.title.clone()),
-                media_type: Some(last.media_type.clone()),
-                uri: Some(last.uri.clone()),
-                playing: true,
-                volume: settings::load_settings(&app_for_task)
-                    .map(|s| s.default_volume)
-                    .unwrap_or(0.8),
-                muted: false,
-                user_paused: false,
-                current_time: 0.0,
-                duration: 0.0,
-                error: None,
-            },
-        );
+        if !system::media_path_exists(&last.uri) {
+            eprintln!(
+                "[engine] skip restore: media missing uri={}",
+                last.uri
+            );
+            let _ = settings::clear_last_wallpaper(&app_for_task);
+            return;
+        }
+        let mut state = EngineState {
+            media_id: Some(last.id.clone()),
+            title: Some(last.title.clone()),
+            media_type: Some(last.media_type.clone()),
+            uri: Some(last.uri.clone()),
+            playing: true,
+            volume: settings::load_settings(&app_for_task)
+                .map(|s| s.default_volume)
+                .unwrap_or(0.8),
+            muted: false,
+            user_paused: false,
+            current_time: 0.0,
+            duration: 0.0,
+            error: None,
+            low_power: false,
+        };
+        apply_engine_runtime(&mut state, &app_for_task);
+        let _ = wallpaper::push_command(&app_for_task, "set", &state);
     });
+}
+
+fn resolve_export_source(app: &AppHandle, uri: &str) -> Option<PathBuf> {
+    let trimmed = uri.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let direct = Path::new(trimmed);
+    if direct.is_file() {
+        return Some(direct.to_path_buf());
+    }
+    if trimmed.starts_with('/') {
+        if let Ok(res) = app.path().resource_dir() {
+            let candidate = res.join(trimmed.trim_start_matches('/'));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn export_wallpaper(app: AppHandle, uri: String, file_name: String) -> Result<Option<String>, String> {
+    let src = resolve_export_source(&app, &uri)
+        .ok_or_else(|| "找不到可导出的源文件".to_string())?;
+    let dest = app
+        .dialog()
+        .file()
+        .set_file_name(&file_name)
+        .blocking_save_file();
+    match dest {
+        Some(path) => {
+            let dest_str = path.to_string();
+            std::fs::copy(&src, &dest_str).map_err(|e| format!("复制失败: {e}"))?;
+            Ok(Some(dest_str))
+        }
+        None => Ok(None),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -481,6 +549,12 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            let low_power = system::detect_low_power_mode();
+            if low_power {
+                eprintln!("[system] low power mode enabled (< 6GB RAM)");
+            }
+            app.manage(RuntimeProfile { low_power });
+
             let handle = app.handle().clone();
             let handle_for_attach = handle.clone();
             let handle_for_settings = handle.clone();
@@ -499,6 +573,7 @@ pub fn run() {
                 } else {
                     let _ = mgr.disable();
                 }
+                desktop::set_double_click_enabled(s.hide_icons_on_double_click);
             }
 
             if let Err(e) = build_tray(&handle) {
@@ -539,7 +614,8 @@ pub fn run() {
             save_settings,
             set_library_dir,
             migrate_library,
-            get_last_wallpaper
+            get_last_wallpaper,
+            export_wallpaper
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

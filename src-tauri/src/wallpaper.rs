@@ -18,6 +18,8 @@ pub struct EngineState {
     pub error: Option<String>,
     #[serde(default)]
     pub user_paused: bool,
+    #[serde(default)]
+    pub low_power: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

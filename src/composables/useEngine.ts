@@ -14,6 +14,7 @@ export interface EngineState {
   duration: number;
   error: string | null;
   userPaused?: boolean;
+  lowPower?: boolean;
 }
 
 export function resolveMediaUri(item: WallpaperItem): string | null {
@@ -29,6 +30,10 @@ export function resolveMediaUri(item: WallpaperItem): string | null {
   } catch {
     return path;
   }
+}
+
+export async function exportWallpaper(uri: string, fileName: string): Promise<string | null> {
+  return invoke<string | null>("export_wallpaper", { uri, fileName });
 }
 
 export async function setWallpaper(item: WallpaperItem): Promise<EngineState> {

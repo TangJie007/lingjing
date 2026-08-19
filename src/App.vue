@@ -25,6 +25,7 @@ import {
   onPauseRecommend,
   removeLibraryItem,
   setFavoriteRemote,
+  exportWallpaper,
   setWallpaper,
   type EngineState,
   type PauseRecommendPayload,
@@ -142,6 +143,35 @@ async function onSet(item: WallpaperItem) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     showToast(`设壁纸失败：${msg}`);
+  }
+}
+
+async function onShare(item: WallpaperItem) {
+  const text = [item.name, item.author ? `by ${item.author}` : "", item.mediaSrc ?? ""]
+    .filter(Boolean)
+    .join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("已复制到剪贴板");
+  } catch {
+    showToast("复制失败，请检查剪贴板权限");
+  }
+}
+
+async function onDownload(item: WallpaperItem) {
+  if (!item.mediaSrc) {
+    showToast("该资源无法下载");
+    return;
+  }
+  const raw = item.mediaSrc.split("?")[0] ?? item.mediaSrc;
+  const ext = raw.includes(".") ? raw.split(".").pop() ?? "bin" : "bin";
+  const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_");
+  try {
+    const saved = await exportWallpaper(item.mediaSrc, `${safeName}.${ext}`);
+    if (saved) showToast(`已保存：${saved}`);
+    else showToast("已取消保存");
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -431,6 +461,8 @@ function onPauseWrapped() {
         @close="drawerOpen = false"
         @set="onSet"
         @favorite="onFavorite"
+        @share="onShare"
+        @download="onDownload"
       />
     </div>
 
