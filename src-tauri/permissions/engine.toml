@@ -4,6 +4,8 @@ description = "Wallpaper engine, library, favorites, settings, and system comman
 commands.allow = [
   "greet",
   "start_drag",
+  "minimize_main",
+  "hide_main",
   "set_wallpaper",
   "engine_play",
   "engine_pause",

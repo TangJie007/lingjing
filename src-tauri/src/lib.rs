@@ -609,6 +609,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             start_drag,
+            minimize_main,
+            hide_main,
             set_wallpaper,
             engine_play,
             engine_pause,
@@ -640,4 +642,30 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 fn start_drag(window: tauri::Window) {
     let _ = window.start_dragging();
+}
+
+#[tauri::command]
+fn minimize_main(app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MINIMIZE};
+        let hwnd = win.hwnd().map_err(|e| e.to_string())?;
+        unsafe {
+            ShowWindow(hwnd.0 as _, SW_MINIMIZE);
+        }
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    win.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn hide_main(app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    win.hide().map_err(|e| e.to_string())
 }

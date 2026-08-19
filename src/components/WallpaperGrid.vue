@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, type Ref } from "vue";
 import TopBar from "./TopBar.vue";
-import MediaThumb from "./MediaThumb.vue";
+import WallpaperCardGrid from "./WallpaperCardGrid.vue";
 import { CATALOG, type WallpaperItem } from "../data/catalog";
 
 const props = withDefaults(
@@ -13,7 +13,7 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
-    emptyText: "没有匹配的壁纸",
+    emptyText: "暂无在线壁纸，请确认 API 服务已启动",
   },
 );
 
@@ -51,19 +51,19 @@ const list = computed(() => {
   return r;
 });
 
-function meta(item: WallpaperItem) {
-  if (item.source === "online") {
-    return `${item.category} · ${item.size}`;
-  }
-  const res = item.type === "image" && item.size === "740K" ? "2K" : "4K";
-  return `${item.category} · ${res}`;
-}
+const totalCount = computed(() => (props.items ?? CATALOG).length);
 </script>
 
 <template>
   <div class="main">
+    <div class="fav-title">在线壁纸</div>
+    <div class="fav-sub">
+      已加载 {{ totalCount }} 张 · 浏览灵境社区动态壁纸 · 登录后同步点赞
+    </div>
+
     <TopBar />
-    <div class="cats">
+
+    <div v-if="categories.length > 1" class="cats">
       <span
         v-for="c in categories"
         :key="c"
@@ -75,55 +75,19 @@ function meta(item: WallpaperItem) {
         @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activeCat = c; } }"
       >{{ c }}</span>
     </div>
-    <p v-if="loading" class="grid-status">正在加载在线壁纸…</p>
-    <div v-else class="grid">
-      <div
-        v-for="(item, idx) in list"
-        :key="item.id"
-        class="card"
-        :class="{ selected: props.selectedId === item.id }"
-        :style="{ animationDelay: `${Math.min(idx, 5) * 60}ms` }"
-        role="button"
-        tabindex="0"
-        :aria-label="`${item.name}，设为壁纸`"
-        @click="emit('select', item)"
-        @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('select', item); } }"
-      >
-        <div class="thumb">
-          <MediaThumb :item="item" />
-          <span v-if="item.type === 'video' || item.type === 'gif'" class="badge">LIVE</span>
-          <span v-if="item.source === 'online'" class="badge online-badge">在线</span>
-          <span class="vol">{{ item.size }}</span>
-          <div class="hover-acts">
-            <span class="ha-btn preview" @click.stop="emit('select', item)">▶ 预览</span>
-            <span class="ha-btn apply" @click.stop="emit('set', item)">设为壁纸</span>
-          </div>
-        </div>
-        <div class="info">
-          <div class="t">{{ item.name }}</div>
-          <div class="m">{{ meta(item) }}</div>
-        </div>
-      </div>
-      <p v-if="list.length === 0" class="grid-empty">{{ emptyText }}</p>
+
+    <div v-if="loading" class="placeholder">
+      <p>正在加载在线壁纸…</p>
     </div>
+    <div v-else-if="list.length === 0" class="placeholder">
+      <p>{{ emptyText }}</p>
+    </div>
+    <WallpaperCardGrid
+      v-else
+      :items="list"
+      :selected-id="selectedId"
+      @select="emit('select', $event)"
+      @set="emit('set', $event)"
+    />
   </div>
 </template>
-
-<style scoped>
-.grid-status,
-.grid-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: var(--text-3);
-  padding: 40px 0;
-  font-size: 13px;
-}
-.online-badge {
-  left: auto;
-  right: 7px;
-  top: 7px;
-  bottom: auto;
-  background: rgba(79, 70, 229, 0.92);
-  color: #fff;
-}
-</style>

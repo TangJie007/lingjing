@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import AppLogo from "./AppLogo.vue";
+import { showToast } from "../composables/useToast";
 
 defineProps<{
   onlineEnabled?: boolean;
@@ -14,18 +14,25 @@ const emit = defineEmits<{ (e: "login"): void }>();
 async function onDrag(e: MouseEvent) {
   if (e.button !== 0) return;
   const target = e.target as HTMLElement | null;
-  // no-drag 区域仍会冒泡到 win-bar；跳过按钮，否则 start_drag 会吞掉 click
   if (target?.closest(".win-act, .app-logo")) return;
   await invoke("start_drag");
 }
-function minimize() {
-  getCurrentWindow().minimize();
+
+async function minimize() {
+  try {
+    await invoke("minimize_main");
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
+  }
 }
-function toggleMaximize() {
-  getCurrentWindow().toggleMaximize();
-}
-function close() {
-  getCurrentWindow().close();
+
+async function hideToTray() {
+  try {
+    await invoke("hide_main");
+    showToast("已隐藏到系统托盘，点击托盘图标可恢复");
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
+  }
 }
 </script>
 
@@ -46,8 +53,23 @@ function close() {
       @click.stop="emit('login')"
       @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('login'); } }"
     >{{ loggedIn ? userLabel : "登录" }}</span>
-    <span class="win-act" role="button" tabindex="0" aria-label="最小化" title="最小化" @mousedown.stop @click="minimize">—</span>
-    <span class="win-act" role="button" tabindex="0" aria-label="最大化" title="最大化" @mousedown.stop @click="toggleMaximize">▢</span>
-    <span class="win-act close" role="button" tabindex="0" aria-label="关闭" title="关闭" @mousedown.stop @click="close">✕</span>
+    <span
+      class="win-act"
+      role="button"
+      tabindex="0"
+      aria-label="最小化"
+      title="最小化"
+      @mousedown.stop
+      @click.stop="minimize"
+    >—</span>
+    <span
+      class="win-act close"
+      role="button"
+      tabindex="0"
+      aria-label="隐藏到托盘"
+      title="隐藏到托盘"
+      @mousedown.stop
+      @click.stop="hideToTray"
+    >✕</span>
   </div>
 </template>
