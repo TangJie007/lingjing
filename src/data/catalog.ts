@@ -1,7 +1,7 @@
 export type WallpaperType = "video" | "gif" | "image";
 
 export interface WallpaperItem {
-  id: number;
+  id: string;
   name: string;
   thumb: string;
   type: WallpaperType;
@@ -11,6 +11,9 @@ export interface WallpaperItem {
   heat: string;
   favorite: boolean;
   tags: string[];
+  /** Public path or absolute filesystem path */
+  mediaSrc?: string;
+  source?: "catalog" | "local";
 }
 
 export const CATEGORIES = [
@@ -27,10 +30,10 @@ export const CATEGORIES = [
 
 export const SORTS = ["最热", "最新"] as const;
 
-/** 与 lingjing-ui-design.html 主界面网格完全一致 */
+/** 与 lingjing-ui-design.html 主界面网格一致；前 6 条绑定示例媒体 */
 export const CATALOG: WallpaperItem[] = [
   {
-    id: 1,
+    id: "1",
     name: "极光幻境 Aurora",
     thumb: "linear-gradient(135deg,#c7d2fe,#4f46e5)",
     type: "video",
@@ -40,9 +43,11 @@ export const CATALOG: WallpaperItem[] = [
     heat: "🔥 3.4k",
     favorite: true,
     tags: ["#科技", "#极光", "#4K"],
+    mediaSrc: "/samples/demo1.mp4",
+    source: "catalog",
   },
   {
-    id: 2,
+    id: "2",
     name: "深海蓝调",
     thumb: "linear-gradient(135deg,#a5f3fc,#0891b2)",
     type: "image",
@@ -52,9 +57,11 @@ export const CATALOG: WallpaperItem[] = [
     heat: "🔥 2.1k",
     favorite: true,
     tags: ["#风景", "#海洋", "#4K"],
+    mediaSrc: "/samples/ocean.png",
+    source: "catalog",
   },
   {
-    id: 3,
+    id: "3",
     name: "霓虹少女",
     thumb: "linear-gradient(135deg,#fbcfe8,#db2777)",
     type: "video",
@@ -64,9 +71,11 @@ export const CATALOG: WallpaperItem[] = [
     heat: "🔥 5.0k",
     favorite: true,
     tags: ["#动漫", "#霓虹", "#4K"],
+    mediaSrc: "/samples/demo1.webm",
+    source: "catalog",
   },
   {
-    id: 4,
+    id: "4",
     name: "黄昏列车",
     thumb: "linear-gradient(135deg,#fde68a,#d97706)",
     type: "image",
@@ -76,9 +85,11 @@ export const CATALOG: WallpaperItem[] = [
     heat: "🔥 1.6k",
     favorite: false,
     tags: ["#风景", "#列车", "#2K"],
+    mediaSrc: "/samples/dusk.png",
+    source: "catalog",
   },
   {
-    id: 5,
+    id: "5",
     name: "赛博城市",
     thumb: "linear-gradient(135deg,#bfdbfe,#2563eb)",
     type: "gif",
@@ -88,9 +99,11 @@ export const CATALOG: WallpaperItem[] = [
     heat: "🔥 4.2k",
     favorite: false,
     tags: ["#科技", "#赛博", "#4K"],
+    mediaSrc: "/samples/cyber.gif",
+    source: "catalog",
   },
   {
-    id: 6,
+    id: "6",
     name: "森林晨雾",
     thumb: "linear-gradient(135deg,#d9f99d,#65a30d)",
     type: "video",
@@ -100,5 +113,7 @@ export const CATALOG: WallpaperItem[] = [
     heat: "🔥 2.8k",
     favorite: false,
     tags: ["#风景", "#森林", "#4K"],
+    mediaSrc: "/samples/demo1.mp4",
+    source: "catalog",
   },
 ];

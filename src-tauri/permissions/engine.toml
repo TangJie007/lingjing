@@ -1,0 +1,18 @@
+[[permission]]
+identifier = "allow-engine"
+description = "Wallpaper engine, library, and favorites commands"
+commands.allow = [
+  "greet",
+  "start_drag",
+  "set_wallpaper",
+  "engine_play",
+  "engine_pause",
+  "engine_set_volume",
+  "engine_get_state",
+  "engine_report_progress",
+  "list_library",
+  "import_media",
+  "load_favorites",
+  "set_favorite",
+  "get_app_paths"
+]

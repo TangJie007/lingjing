@@ -3,7 +3,7 @@ import { computed, inject, ref, type Ref } from "vue";
 import TopBar from "./TopBar.vue";
 import { CATALOG, CATEGORIES, type WallpaperItem } from "../data/catalog";
 
-const props = defineProps<{ selectedId?: number | null }>();
+const props = defineProps<{ selectedId?: string | null }>();
 const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
