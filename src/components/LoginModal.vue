@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import OnlineLoginPanel from "./OnlineLoginPanel.vue";
+import AppLogo from "./AppLogo.vue";
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "success"): void }>();
@@ -10,7 +11,10 @@ const emit = defineEmits<{ (e: "close"): void; (e: "success"): void }>();
     <div v-if="open" class="lm-mask" @click.self="emit('close')">
       <div class="lm-card" role="dialog" aria-modal="true" aria-label="登录灵境社区">
         <header>
-          <h3>登录灵境社区</h3>
+          <div class="lm-title">
+            <AppLogo :size="28" decorative />
+            <h3>登录灵境社区</h3>
+          </div>
           <button type="button" class="lm-close" aria-label="关闭" @click="emit('close')">✕</button>
         </header>
         <OnlineLoginPanel @success="emit('success')" />
@@ -43,6 +47,12 @@ header {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
+}
+.lm-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 header h3 {
   font-size: 16px;

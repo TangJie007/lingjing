@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import AppLogo from "./AppLogo.vue";
 
 defineProps<{
   onlineEnabled?: boolean;
@@ -14,7 +15,7 @@ async function onDrag(e: MouseEvent) {
   if (e.button !== 0) return;
   const target = e.target as HTMLElement | null;
   // no-drag 区域仍会冒泡到 win-bar；跳过按钮，否则 start_drag 会吞掉 click
-  if (target?.closest(".win-act, .win-dots")) return;
+  if (target?.closest(".win-act, .app-logo")) return;
   await invoke("start_drag");
 }
 function minimize() {
@@ -30,11 +31,7 @@ function close() {
 
 <template>
   <div class="win-bar" @mousedown="onDrag">
-    <div class="win-dots" aria-hidden="true">
-      <span class="a" />
-      <span />
-      <span />
-    </div>
+    <AppLogo class="win-logo" :size="22" decorative />
     <span class="win-name">灵镜 LINGJING</span>
     <span class="win-sub">动态壁纸</span>
     <span class="win-spacer" />

@@ -1,19 +1,31 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { NAV_ROUTE_NAMES, type NavRouteName } from "../router";
 import { NAV_FREQ, playClick } from "../composables/useAudio";
 
 interface NavItem {
-  key: string;
+  key: NavRouteName;
   label: string;
   aria: string;
   badge?: boolean;
 }
 
 const props = withDefaults(
-  defineProps<{ active: string; onlineEnabled?: boolean }>(),
+  defineProps<{ onlineEnabled?: boolean }>(),
   { onlineEnabled: false },
 );
-const emit = defineEmits<{ (e: "nav", key: string): void }>();
+
+const route = useRoute();
+const router = useRouter();
+
+const activeKey = computed(() => {
+  const name = route.name;
+  if (typeof name === "string" && (NAV_ROUTE_NAMES as readonly string[]).includes(name)) {
+    return name as NavRouteName;
+  }
+  return "local" as NavRouteName;
+});
 
 const items: NavItem[] = [
   { key: "online", label: "在线", aria: "在线资源" },
@@ -64,18 +76,21 @@ function fire(n: NavItem, el: HTMLElement, ev?: MouseEvent) {
     setTimeout(() => el.classList.remove("beat"), 760);
   }
 
-  emit("nav", n.key);
+  if (n.key === "online" && !props.onlineEnabled) return;
+  if (route.name !== n.key) {
+    void router.push({ name: n.key });
+  }
   nextTick(() => moveIndicator(el));
   playClick(NAV_FREQ[n.label] ?? 660);
 }
 
 function syncIndicator() {
-  const el = rail.value?.querySelector<HTMLElement>(`.nav-item[data-nav-key="${props.active}"]`);
+  const el = rail.value?.querySelector<HTMLElement>(`.nav-item[data-nav-key="${activeKey.value}"]`);
   if (el) moveIndicator(el);
 }
 
 onMounted(() => nextTick(syncIndicator));
-watch(() => props.active, () => nextTick(syncIndicator));
+watch(activeKey, () => nextTick(syncIndicator));
 watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
 </script>
 
@@ -87,12 +102,13 @@ watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
       <div
         v-if="showItem(it)"
         class="nav-item"
-        :class="{ active: props.active === it.key }"
+        :class="{ active: activeKey === it.key }"
         :data-nav="it.label"
         :data-nav-key="it.key"
         role="button"
         tabindex="0"
         :aria-label="it.aria"
+        :aria-current="activeKey === it.key ? 'page' : undefined"
         @click="(e) => fire(it, e.currentTarget as HTMLElement, e)"
         @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(it, e.currentTarget as HTMLElement); } }"
       >

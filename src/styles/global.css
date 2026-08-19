@@ -254,7 +254,8 @@ input, textarea {
   transition: background var(--dur-base) var(--ease);
 }
 .win-dots span.a { background: var(--secondary); }
-.win-name { font-size: 14px; font-weight: 700; margin-left: 8px; }
+.win-logo { app-region: no-drag; }
+.win-name { font-size: 14px; font-weight: 700; }
 .win-sub { font-size: 11px; color: var(--text-2); }
 .win-spacer { flex: 1; }
 .win-act {

@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import WinBar from "./components/WinBar.vue";
 import IconRail from "./components/IconRail.vue";
-import WallpaperGrid from "./components/WallpaperGrid.vue";
 import DetailDrawer from "./components/DetailDrawer.vue";
 import PlaybackBar, { type LoopMode } from "./components/PlaybackBar.vue";
-import SettingsView from "./components/SettingsView.vue";
-import FavoritesView from "./components/FavoritesView.vue";
-import LocalLibraryView from "./components/LocalLibraryView.vue";
 import Toast from "./components/Toast.vue";
 import LoginModal from "./components/LoginModal.vue";
 import { showToast } from "./composables/useToast";
@@ -35,6 +32,9 @@ import { loadSettings, useSettings } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
 import { fetchOnlineWallpapers } from "./composables/useLingjingApi";
 
+const route = useRoute();
+const router = useRouter();
+
 const drawerItem = ref<WallpaperItem | null>(CATALOG[0] ?? null);
 const drawerOpen = ref(true);
 const selectedId = ref<string | null>(CATALOG[0]?.id ?? null);
@@ -48,7 +48,6 @@ const sort = ref("最热");
 provide("topbarSearch", search);
 provide("topbarSort", sort);
 
-const activeNav = ref("local");
 const loginOpen = ref(false);
 
 const settings = useSettings();
@@ -78,6 +77,63 @@ const onlineEmptyText = computed(() => {
   if (onlineFetchError.value) return onlineFetchError.value;
   return "暂无在线壁纸，请确认 API 服务已启动";
 });
+
+const drawerVisible = computed(
+  () => drawerOpen.value && route.meta.showDrawer === true,
+);
+
+const playQueue = computed(() => {
+  const locals = localItems.value;
+  const samples = settings.value.onlineEnabled
+    ? onlineItems.value.filter((i) => !!i.mediaSrc)
+    : CATALOG.filter((i) => !!i.mediaSrc);
+  if (route.name === "local") return locals.length ? locals : samples;
+  return [...samples, ...locals];
+});
+
+const favoriteItems = computed(() => {
+  const out: WallpaperItem[] = [];
+  if (settings.value.onlineEnabled) {
+    for (const i of onlineItems.value) if (i.favorite) out.push(i);
+  } else {
+    for (const i of CATALOG) if (i.favorite) out.push(i);
+  }
+  for (const i of localItems.value) if (i.favorite) out.push(i);
+  return out;
+});
+
+const routeViewProps = computed(() => {
+  switch (route.name) {
+    case "online":
+      return {
+        selectedId: selectedId.value,
+        items: onlineGridItems.value,
+        loading: onlineGridLoading.value,
+        emptyText: onlineEmptyText.value,
+      };
+    case "favorite":
+      return {
+        selectedId: selectedId.value,
+        items: favoriteItems.value,
+      };
+    case "local":
+      return {
+        selectedId: selectedId.value,
+        items: localItems.value,
+      };
+    default:
+      return {};
+  }
+});
+
+function syncRouteSideEffects(name: typeof route.name) {
+  if (name === "online") void refreshOnline();
+  if (name === "online" || name === "favorite" || name === "local") {
+    if (drawerItem.value) drawerOpen.value = true;
+  } else {
+    drawerOpen.value = false;
+  }
+}
 
 function syncLoopModeFromSettings() {
   const m = settings.value.loopMode;
@@ -112,31 +168,19 @@ watch(
 watch(
   () => settings.value.onlineEnabled,
   (enabled) => {
-    if (!enabled && activeNav.value === "online") {
-      activeNav.value = "local";
+    if (!enabled && route.name === "online") {
+      void router.replace({ name: "local" });
     }
   },
 );
 
-const playQueue = computed(() => {
-  const locals = localItems.value;
-  const samples = settings.value.onlineEnabled
-    ? onlineItems.value.filter((i) => !!i.mediaSrc)
-    : CATALOG.filter((i) => !!i.mediaSrc);
-  if (activeNav.value === "local") return locals.length ? locals : samples;
-  return [...samples, ...locals];
-});
-
-const favoriteItems = computed(() => {
-  const out: WallpaperItem[] = [];
-  if (settings.value.onlineEnabled) {
-    for (const i of onlineItems.value) if (i.favorite) out.push(i);
-  } else {
-    for (const i of CATALOG) if (i.favorite) out.push(i);
-  }
-  for (const i of localItems.value) if (i.favorite) out.push(i);
-  return out;
-});
+watch(
+  () => route.name,
+  (name) => {
+    syncRouteSideEffects(name);
+  },
+  { immediate: true },
+);
 
 async function applyFavorites(ids: string[]) {
   const set = new Set(ids);
@@ -149,7 +193,7 @@ async function applyFavorites(ids: string[]) {
 }
 
 async function refreshOnline() {
-  if (activeNav.value !== "online" || !settings.value.onlineEnabled) {
+  if (route.name !== "online" || !settings.value.onlineEnabled) {
     if (!settings.value.onlineEnabled) {
       onlineItems.value = [];
       onlineFetchError.value = "";
@@ -169,7 +213,7 @@ async function refreshOnline() {
     onlineItems.value = [];
     const msg = e instanceof Error ? e.message : String(e);
     onlineFetchError.value = msg;
-    if (activeNav.value === "online") showToast(msg);
+    if (route.name === "online") showToast(msg);
   } finally {
     onlineLoading.value = false;
   }
@@ -285,26 +329,13 @@ async function onRemoveLocal(item: WallpaperItem) {
   }
 }
 
-function onNav(key: string) {
-  if (key === "online" && !settings.value.onlineEnabled) return;
-  activeNav.value = key;
-  if (key === "online") {
-    void refreshOnline();
-  }
-  if (key === "online" || key === "favorite" || key === "local") {
-    if (drawerItem.value) drawerOpen.value = true;
-  } else {
-    drawerOpen.value = false;
-  }
-}
-
 function openLogin() {
   loginOpen.value = true;
 }
 
 function onLoginSuccess() {
   loginOpen.value = false;
-  if (activeNav.value === "online") void refreshOnline();
+  if (route.name === "online") void refreshOnline();
 }
 
 async function runImport(paths?: string[] | null) {
@@ -328,7 +359,7 @@ async function runImport(paths?: string[] | null) {
     await refreshLibrary();
     if (imported.length) {
       showToast(`已导入 ${imported.length} 个文件`);
-      activeNav.value = "local";
+      await router.push({ name: "local" });
     } else {
       showToast("没有成功导入的文件");
     }
@@ -461,15 +492,15 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
 watch(
   () => [settings.value.onlineEnabled, settings.value.apiBaseUrl, isLoggedIn.value] as const,
   ([enabled]) => {
-    if (enabled && activeNav.value === "online") void refreshOnline();
+    if (enabled && route.name === "online") void refreshOnline();
   },
 );
 
 onMounted(async () => {
   document.documentElement.setAttribute("data-theme", "light");
   await loadSettings();
-  if (!settings.value.onlineEnabled && activeNav.value === "online") {
-    activeNav.value = "local";
+  if (!settings.value.onlineEnabled && route.name === "online") {
+    await router.replace({ name: "local" });
   }
   syncLoopModeFromSettings();
   await refreshMe().catch(() => undefined);
@@ -535,44 +566,22 @@ function onPauseWrapped() {
     />
 
     <div class="app-body">
-      <IconRail :active="activeNav" :online-enabled="settings.onlineEnabled" @nav="onNav" />
+      <IconRail :online-enabled="settings.onlineEnabled" />
 
-      <WallpaperGrid
-        v-if="activeNav === 'online'"
-        :selected-id="selectedId"
-        :items="onlineGridItems"
-        :loading="onlineGridLoading"
-        :empty-text="onlineEmptyText"
-        @select="onSelect"
-        @set="onSet"
-      />
-      <FavoritesView
-        v-else-if="activeNav === 'favorite'"
-        :items="favoriteItems"
-        :selected-id="selectedId"
-        @select="onSelect"
-        @set="onSet"
-      />
-      <LocalLibraryView
-        v-else-if="activeNav === 'local'"
-        :items="localItems"
-        :selected-id="selectedId"
-        @select="onSelect"
-        @set="onSet"
-        @import="runImport()"
-        @remove="onRemoveLocal"
-      />
-      <SettingsView v-else-if="activeNav === 'settings'" />
-      <div v-else class="main">
-        <div class="placeholder">
-          <h3>关于灵镜</h3>
-          <p>动态壁纸客户端 · Phase 3 引擎已接入</p>
-        </div>
-      </div>
+      <RouterView v-slot="{ Component }">
+        <component
+          :is="Component"
+          v-bind="routeViewProps"
+          @select="onSelect"
+          @set="onSet"
+          @import="runImport()"
+          @remove="onRemoveLocal"
+        />
+      </RouterView>
 
       <DetailDrawer
         :item="drawerItem"
-        :open="drawerOpen && (activeNav === 'online' || activeNav === 'favorite' || activeNav === 'local')"
+        :open="drawerVisible"
         @close="drawerOpen = false"
         @set="onSet"
         @favorite="onFavorite"
