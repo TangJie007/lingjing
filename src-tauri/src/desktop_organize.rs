@@ -808,7 +808,40 @@ mod win {
         }
     }
 
+    fn parse_internet_shortcut_icon(path: &std::path::Path) -> Option<(std::path::PathBuf, i32)> {
+        let content = std::fs::read_to_string(path).ok()?;
+        let mut icon_file: Option<String> = None;
+        let mut icon_index = 0i32;
+        for line in content.lines() {
+            let line = line.trim();
+            if let Some(value) = line.strip_prefix("IconFile=") {
+                let trimmed = value.trim().trim_matches('"');
+                if !trimmed.is_empty() {
+                    icon_file = Some(expand_env_path(trimmed));
+                }
+            } else if let Some(value) = line.strip_prefix("IconIndex=") {
+                icon_index = value.trim().parse().unwrap_or(0);
+            }
+        }
+        let icon_path = resolve_icon_file(std::path::PathBuf::from(icon_file?));
+        if icon_path.exists() {
+            Some((icon_path, icon_index))
+        } else {
+            None
+        }
+    }
+
     unsafe fn icon_source(path: &std::path::Path) -> (std::path::PathBuf, i32) {
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("url"))
+        {
+            if let Some(found) = parse_internet_shortcut_icon(path) {
+                return found;
+            }
+        }
+
         use windows_sys::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICONLOCATION};
 
         let wpath = wide_path(path);
@@ -893,13 +926,13 @@ mod win {
 
             let mut icon = None;
             if ok != 0 {
-                if let Some(best) = extract_best_icon(path, info.iIcon) {
-                    icon = hicon_to_png_data_url(best);
-                    DestroyIcon(best);
-                }
+                use windows_sys::Win32::UI::Shell::{SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
+                icon = shell_item_image_png(path, 48, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK);
                 if icon.is_none() {
-                    use windows_sys::Win32::UI::Shell::{SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
-                    icon = shell_item_image_png(path, 48, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK);
+                    if let Some(best) = extract_best_icon(path, info.iIcon) {
+                        icon = hicon_to_png_data_url(best);
+                        DestroyIcon(best);
+                    }
                 }
             }
             if icon.is_none() && ok != 0 && !info.hIcon.is_null() {
