@@ -32,6 +32,8 @@ pub struct AppSettings {
     pub loop_mode: String,
     #[serde(default)]
     pub online_enabled: bool,
+    #[serde(default)]
+    pub desktop_organize_enabled: bool,
     #[serde(default = "default_api_base_url")]
     pub api_base_url: String,
 }
@@ -50,6 +52,7 @@ impl Default for AppSettings {
             library_dir_override: None,
             loop_mode: default_loop_mode(),
             online_enabled: false,
+            desktop_organize_enabled: false,
             api_base_url: default_api_base_url(),
         }
     }

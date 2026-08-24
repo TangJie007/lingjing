@@ -13,6 +13,7 @@ export interface AppSettings {
   libraryDirOverride: string | null;
   loopMode: "list" | "single" | "random";
   onlineEnabled: boolean;
+  desktopOrganizeEnabled: boolean;
   apiBaseUrl: string;
 }
 
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   libraryDirOverride: null,
   loopMode: "list",
   onlineEnabled: false,
+  desktopOrganizeEnabled: false,
   apiBaseUrl: "http://localhost:3002",
 };
 

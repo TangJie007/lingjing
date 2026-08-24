@@ -81,7 +81,7 @@ mod win {
         }
     }
 
-    fn set_icons_visible(visible: bool) {
+    pub fn set_icons_visible(visible: bool) {
         unsafe {
             let lv = find_desktop_listview();
             if !lv.is_null() {
@@ -156,7 +156,10 @@ mod win {
 }
 
 #[cfg(windows)]
-pub use win::set_double_click_enabled;
+pub use win::{set_double_click_enabled, set_icons_visible};
 
 #[cfg(not(windows))]
 pub fn set_double_click_enabled(_enabled: bool) {}
+
+#[cfg(not(windows))]
+pub fn set_icons_visible(_visible: bool) {}

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for main and wallpaper windows",
-  "windows": ["main", "wallpaper"],
+  "windows": ["main", "wallpaper", "desktop-fence"],
   "permissions": [
     "core:default",
     "core:event:default",

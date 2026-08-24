@@ -1,4 +1,5 @@
 mod desktop;
+mod desktop_organize;
 mod favorites;
 mod library;
 mod paths;
@@ -435,6 +436,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             });
         }
         "quit" => {
+            desktop_organize::cleanup(app);
             app.exit(0);
         }
         _ => {}
@@ -585,6 +587,15 @@ pub fn run() {
                     let _ = mgr.disable();
                 }
                 desktop::set_double_click_enabled(s.hide_icons_on_double_click);
+                if s.desktop_organize_enabled {
+                    let app_clone = handle.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(1200));
+                        if let Err(e) = desktop_organize::set_enabled(&app_clone, true) {
+                            eprintln!("[desktop-organize] startup restore failed: {e}");
+                        }
+                    });
+                }
             }
 
             if let Err(e) = build_tray(&handle) {
@@ -628,10 +639,24 @@ pub fn run() {
             set_library_dir,
             migrate_library,
             get_last_wallpaper,
-            export_wallpaper
+            export_wallpaper,
+            desktop_organize::open_desktop_item,
+            desktop_organize::set_desktop_organize,
+            desktop_organize::list_desktop_items,
+            refresh_desktop_organize
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                desktop_organize::cleanup(app_handle);
+            }
+        });
+}
+
+#[tauri::command]
+fn refresh_desktop_organize(app: AppHandle) -> Result<(), String> {
+    desktop_organize::refresh(&app)
 }
 
 #[tauri::command]

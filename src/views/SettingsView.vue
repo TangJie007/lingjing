@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { showToast } from "../composables/useToast";
 import {
@@ -34,6 +35,23 @@ watch(volPct, async (v) => {
     /* ignore */
   }
 });
+
+const organizeBusy = ref(false);
+
+async function flipDesktopOrganize() {
+  if (organizeBusy.value) return;
+  const next = !settings.value.desktopOrganizeEnabled;
+  organizeBusy.value = true;
+  try {
+    await invoke("set_desktop_organize", { enabled: next });
+    settings.value.desktopOrganizeEnabled = next;
+    showToast(next ? "已开启桌面整理" : "已关闭桌面整理，已恢复系统图标");
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
+  } finally {
+    organizeBusy.value = false;
+  }
+}
 
 function flip(key: "autostart" | "hideIconsOnDoubleClick" | "pauseOnFullscreen" | "sound") {
   if (key === "autostart") settings.value.autostart = !settings.value.autostart;
@@ -138,6 +156,21 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
           @click="flip('hideIconsOnDoubleClick')"
           @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('hideIconsOnDoubleClick'); } }"
         />
+      </div>
+      <div class="set-row">
+        <div class="lead">
+          <div class="t">桌面整理</div>
+          <div class="d">隐藏系统桌面图标，用格子窗口接管桌面文件</div>
+        </div>
+        <button
+          type="button"
+          class="mini-btn"
+          :class="{ on: settings.desktopOrganizeEnabled }"
+          :disabled="organizeBusy"
+          @click="flipDesktopOrganize"
+        >
+          {{ organizeBusy ? "处理中" : settings.desktopOrganizeEnabled ? "已开启" : "开启" }}
+        </button>
       </div>
       <div class="set-row">
         <div class="lead">
@@ -363,5 +396,34 @@ footer-note {
   border: 1px solid var(--border);
   pointer-events: none;
   transition: left var(--dur-fast) var(--ease);
+}
+.mini-btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.mini-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.mini-btn:active {
+  transform: scale(0.96);
+}
+.mini-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+}
+.mini-btn.on {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 </style>

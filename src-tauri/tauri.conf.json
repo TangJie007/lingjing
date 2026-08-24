@@ -44,6 +44,26 @@
         "visible": false,
         "alwaysOnTop": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
+      },
+      {
+        "label": "desktop-fence",
+        "title": "Desktop Fence",
+        "url": "fences.html",
+        "width": 480,
+        "height": 720,
+        "x": 24,
+        "y": 24,
+        "decorations": false,
+        "transparent": false,
+        "shadow": false,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "skipTaskbar": true,
+        "focus": false,
+        "visible": false,
+        "alwaysOnTop": false
       }
     ],
     "security": {
