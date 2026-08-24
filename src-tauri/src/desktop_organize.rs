@@ -140,7 +140,7 @@ pub fn scan_desktop_items() -> Result<Vec<DesktopItem>, String> {
 mod win {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use std::sync::atomic::{AtomicIsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::Graphics::Gdi::{
         EnumDisplayMonitors, GetMonitorInfoW, RedrawWindow, HDC, HMONITOR, MONITORINFO,
@@ -150,8 +150,9 @@ mod win {
         CallWindowProcW, EnumWindows, FindWindowExW, FindWindowW, GetParent, GetSystemMetrics,
         GetWindowLongPtrW, SetLayeredWindowAttributes, SetParent, SetWindowLongPtrW, SetWindowPos,
         SetWindowTextW, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, HICON, HTCLIENT, HWND_TOP,
-        LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN, SM_CYSCREEN, STYLESTRUCT, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOW, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT,
+        LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN, SM_CYSCREEN, STYLESTRUCT, SW_HIDE,
+        SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SWP_SHOWWINDOW, SW_SHOW, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT,
         WM_STYLECHANGED, WM_STYLECHANGING, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
         WS_CLIPSIBLINGS, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME,
         WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_STATICEDGE, WS_EX_TOOLWINDOW, WS_EX_WINDOWEDGE,
@@ -159,6 +160,7 @@ mod win {
     };
 
     static ORIG_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+    static FENCE_SHOWN: AtomicBool = AtomicBool::new(false);
 
     pub struct ShellMeta {
         pub display_name: Option<String>,
@@ -222,6 +224,201 @@ mod win {
             writer.write_image_data(rgba).ok()?;
         }
         Some(format!("data:image/png;base64,{}", to_base64(&buf)))
+    }
+
+    fn expand_env_path(s: &str) -> String {
+        let mut out = String::new();
+        let mut rest = s;
+        while let Some(start) = rest.find('%') {
+            out.push_str(&rest[..start]);
+            rest = &rest[start + 1..];
+            if let Some(end) = rest.find('%') {
+                let key = &rest[..end];
+                if key.is_empty() {
+                    out.push('%');
+                } else if let Ok(val) = std::env::var(key) {
+                    out.push_str(&val);
+                } else {
+                    out.push('%');
+                    out.push_str(key);
+                    out.push('%');
+                }
+                rest = &rest[end + 1..];
+            } else {
+                out.push('%');
+                out.push_str(rest);
+                rest = "";
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    fn parse_icon_location(raw: &str, fallback_index: i32) -> (std::path::PathBuf, i32) {
+        let trimmed = raw.trim().trim_matches('"');
+        let (path_part, index) = if let Some((left, right)) = trimmed.rsplit_once(',') {
+            if let Ok(n) = right.trim().parse::<i32>() {
+                (left.trim().trim_matches('"'), n)
+            } else {
+                (trimmed, fallback_index)
+            }
+        } else {
+            (trimmed, fallback_index)
+        };
+        (std::path::PathBuf::from(expand_env_path(path_part)), index)
+    }
+
+    fn resolve_icon_file(path: std::path::PathBuf) -> std::path::PathBuf {
+        if path.exists() {
+            return path;
+        }
+        if let Ok(root) = std::env::var("SystemRoot") {
+            let sys32 = std::path::Path::new(&root).join("System32").join(&path);
+            if sys32.exists() {
+                return sys32;
+            }
+            let syswow = std::path::Path::new(&root).join("SysWOW64").join(&path);
+            if syswow.exists() {
+                return syswow;
+            }
+        }
+        path
+    }
+
+    unsafe fn hbitmap_to_png_data_url(
+        hbmp: windows_sys::Win32::Graphics::Gdi::HBITMAP,
+    ) -> Option<String> {
+        use windows_sys::Win32::Graphics::Gdi::{
+            CreateCompatibleDC, DeleteDC, GetDIBits, GetObjectW, BITMAP, BITMAPINFO,
+            BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        };
+
+        let mut bm: BITMAP = std::mem::zeroed();
+        if GetObjectW(
+            hbmp,
+            std::mem::size_of::<BITMAP>() as i32,
+            &mut bm as *mut BITMAP as *mut core::ffi::c_void,
+        ) == 0
+            || bm.bmWidth <= 0
+            || bm.bmHeight == 0
+        {
+            return None;
+        }
+        let w = bm.bmWidth;
+        let h = bm.bmHeight.abs();
+        let hdc = CreateCompatibleDC(std::ptr::null_mut());
+        if hdc.is_null() {
+            return None;
+        }
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        };
+        let mut bits = vec![0u8; (w * h * 4) as usize];
+        let got = GetDIBits(
+            hdc,
+            hbmp,
+            0,
+            h as u32,
+            bits.as_mut_ptr() as *mut core::ffi::c_void,
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        DeleteDC(hdc);
+        if got == 0 {
+            return None;
+        }
+        let mut rgba = Vec::with_capacity(bits.len());
+        for px in bits.chunks_exact(4) {
+            let b = px[0] as u32;
+            let g = px[1] as u32;
+            let r = px[2] as u32;
+            let a = px[3] as u32;
+            let (r, g, b) = if a > 0 && a < 255 {
+                (
+                    (r * 255 / a).min(255) as u8,
+                    (g * 255 / a).min(255) as u8,
+                    (b * 255 / a).min(255) as u8,
+                )
+            } else {
+                (r as u8, g as u8, b as u8)
+            };
+            rgba.extend_from_slice(&[r, g, b, a as u8]);
+        }
+        rgba_to_png_data_url(&rgba, w as u32, h as u32)
+    }
+
+    unsafe fn shell_item_icon_png(path: &std::path::Path, px: i32) -> Option<String> {
+        use windows_sys::Win32::Foundation::SIZE;
+        use windows_sys::Win32::Graphics::Gdi::{DeleteObject, HBITMAP};
+        use windows_sys::Win32::UI::Shell::{
+            SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+        };
+
+        #[repr(C)]
+        struct FactoryVtbl {
+            query_interface: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                *const windows_sys::core::GUID,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
+            add_ref: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+            get_image: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                SIZE,
+                u32,
+                *mut HBITMAP,
+            ) -> i32,
+        }
+
+        const IID: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0xbcc18b79,
+            data2: 0xba16,
+            data3: 0x442f,
+            data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
+        };
+
+        let wpath = wide_path(path);
+        let mut obj: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hr = SHCreateItemFromParsingName(
+            wpath.as_ptr(),
+            std::ptr::null_mut(),
+            &IID,
+            &mut obj,
+        );
+        if hr < 0 || obj.is_null() {
+            return None;
+        }
+        let vtbl = *(obj as *mut *const FactoryVtbl);
+        if vtbl.is_null() {
+            return None;
+        }
+        let mut hbmp: HBITMAP = std::ptr::null_mut();
+        let flags = SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK;
+        let img_hr = ((*vtbl).get_image)(
+            obj,
+            SIZE { cx: px, cy: px },
+            flags as u32,
+            &mut hbmp,
+        );
+        ((*vtbl).release)(obj);
+        if img_hr < 0 || hbmp.is_null() {
+            return None;
+        }
+        let url = hbitmap_to_png_data_url(hbmp);
+        DeleteObject(hbmp);
+        url
     }
 
     unsafe fn hicon_native_size(hicon: HICON) -> i32 {
@@ -403,7 +600,15 @@ mod win {
         };
         use windows_sys::Win32::UI::WindowsAndMessaging::RT_GROUP_ICON;
 
-        let groups = &mut *(lparam as *mut Vec<Vec<i32>>);
+        let groups = &mut *(lparam as *mut Vec<(i32, Vec<i32>)>);
+        let id = {
+            let p = lpname as usize;
+            if p < 0x10000 {
+                p as i32
+            } else {
+                0
+            }
+        };
         let hrsrc = FindResourceW(hmodule, lpname, RT_GROUP_ICON);
         if hrsrc.is_null() {
             return 1;
@@ -429,7 +634,7 @@ mod win {
             sizes.push(if w == 0 { 256 } else { w as i32 });
             off += 14;
         }
-        groups.push(sizes);
+        groups.push((id, sizes));
         1
     }
 
@@ -450,7 +655,7 @@ mod win {
         if module.is_null() {
             return Vec::new();
         }
-        let mut groups: Vec<Vec<i32>> = Vec::new();
+        let mut groups: Vec<(i32, Vec<i32>)> = Vec::new();
         EnumResourceNamesW(
             module,
             RT_GROUP_ICON,
@@ -458,8 +663,20 @@ mod win {
             &mut groups as *mut _ as isize,
         );
         FreeLibrary(module);
-        let idx = if index < 0 { 0 } else { index as usize };
-        groups.get(idx).cloned().unwrap_or_default()
+        if index < 0 {
+            let id = -index;
+            return groups
+                .into_iter()
+                .find(|(gid, _)| *gid == id)
+                .map(|(_, s)| s)
+                .unwrap_or_default();
+        }
+        groups
+            .iter()
+            .find(|(gid, _)| *gid == index)
+            .map(|(_, s)| s.clone())
+            .or_else(|| groups.get(index as usize).map(|(_, s)| s.clone()))
+            .unwrap_or_default()
     }
 
     fn native_icon_sizes(path: &std::path::Path, index: i32) -> Vec<i32> {
@@ -500,6 +717,10 @@ mod win {
                 return Some(icon);
             }
             DestroyIcon(icon);
+            return None;
+        }
+        if size > 48 {
+            return None;
         }
         let mut large = std::ptr::null_mut();
         let mut small = std::ptr::null_mut();
@@ -514,6 +735,52 @@ mod win {
             if !large.is_null() {
                 DestroyIcon(large);
             }
+            None
+        }
+    }
+
+    unsafe fn assoc_default_icon(path: &std::path::Path) -> Option<(std::path::PathBuf, i32)> {
+        use windows_sys::Win32::UI::Shell::{
+            AssocQueryStringW, ASSOCF_INIT_DEFAULTTOSTAR, ASSOCF_NOTRUNCATE, ASSOCSTR_DEFAULTICON,
+        };
+
+        let ext = path.extension()?.to_str()?;
+        let assoc = wide(&format!(".{}", ext.to_ascii_lowercase()));
+        let mut len: u32 = 0;
+        let _ = AssocQueryStringW(
+            ASSOCF_INIT_DEFAULTTOSTAR | ASSOCF_NOTRUNCATE,
+            ASSOCSTR_DEFAULTICON,
+            assoc.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            &mut len,
+        );
+        if len == 0 || len > 4096 {
+            return None;
+        }
+        let mut buf = vec![0u16; len as usize];
+        let mut written = len;
+        let hr = AssocQueryStringW(
+            ASSOCF_INIT_DEFAULTTOSTAR | ASSOCF_NOTRUNCATE,
+            ASSOCSTR_DEFAULTICON,
+            assoc.as_ptr(),
+            std::ptr::null(),
+            buf.as_mut_ptr(),
+            &mut written,
+        );
+        if hr < 0 {
+            return None;
+        }
+        let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        if n == 0 {
+            return None;
+        }
+        let loc = String::from_utf16_lossy(&buf[..n]);
+        let (p, idx) = parse_icon_location(&loc, 0);
+        let p = resolve_icon_file(p);
+        if p.exists() {
+            Some((p, idx))
+        } else {
             None
         }
     }
@@ -535,21 +802,25 @@ mod win {
             let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
             if len > 0 {
                 let loc = String::from_utf16_lossy(&raw[..len]);
-                let p = std::path::PathBuf::from(loc);
+                let (p, idx) = parse_icon_location(&loc, info.iIcon);
+                let p = resolve_icon_file(p);
                 if p.exists() {
-                    return (p, info.iIcon);
+                    return (p, idx);
                 }
             }
+        }
+        if let Some(assoc) = assoc_default_icon(path) {
+            return assoc;
         }
         (path.to_path_buf(), 0)
     }
 
     unsafe fn extract_best_icon(path: &std::path::Path, sys_index: i32) -> Option<HICON> {
-        use windows_sys::Win32::UI::Shell::SHIL_EXTRALARGE;
+        use windows_sys::Win32::UI::Shell::{SHIL_EXTRALARGE, SHIL_LARGE};
 
         let (src, index) = icon_source(path);
         let sizes = native_icon_sizes(&src, index);
-        let want = sizes.into_iter().max().unwrap_or(0);
+        let want = sizes.iter().copied().max().unwrap_or(0);
         if want >= 16 {
             if let Some(icon) = extract_icon_at(&src, index, want) {
                 return Some(icon);
@@ -558,7 +829,12 @@ mod win {
                 return Some(icon);
             }
         }
-        image_list_icon(SHIL_EXTRALARGE, sys_index)
+        if want >= 48 || want == 0 {
+            if let Some(icon) = image_list_icon(SHIL_EXTRALARGE, sys_index) {
+                return Some(icon);
+            }
+        }
+        image_list_icon(SHIL_LARGE, sys_index)
     }
 
     pub fn shell_name_and_icon(path: &std::path::Path) -> ShellMeta {
@@ -597,6 +873,9 @@ mod win {
                 if let Some(best) = extract_best_icon(path, info.iIcon) {
                     icon = hicon_to_png_data_url(best);
                     DestroyIcon(best);
+                }
+                if icon.is_none() {
+                    icon = shell_item_icon_png(path, 48);
                 }
             }
             if icon.is_none() && ok != 0 && !info.hIcon.is_null() {
@@ -695,11 +974,16 @@ mod win {
         })
     }
 
-    fn force_child_chrome(child: HWND) {
+    fn force_child_chrome(child: HWND, visible: bool) {
         unsafe {
             let mut style = GetWindowLongPtrW(child, GWL_STYLE) as u32;
             style &= !(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
-            style |= WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+            style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+            if visible {
+                style |= WS_VISIBLE;
+            } else {
+                style &= !WS_VISIBLE;
+            }
             SetWindowLongPtrW(child, GWL_STYLE, style as isize);
 
             let mut ex = GetWindowLongPtrW(child, GWL_EXSTYLE) as u32;
@@ -735,7 +1019,12 @@ mod win {
             if wparam as isize == GWL_STYLE as isize {
                 ss.styleNew &=
                     !(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
-                ss.styleNew |= WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+                ss.styleNew |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+                if FENCE_SHOWN.load(Ordering::SeqCst) {
+                    ss.styleNew |= WS_VISIBLE;
+                } else {
+                    ss.styleNew &= !WS_VISIBLE;
+                }
             }
             if wparam as isize == GWL_EXSTYLE as isize {
                 ss.styleNew &= !(WS_EX_APPWINDOW
@@ -746,10 +1035,10 @@ mod win {
                 ss.styleNew |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
             }
         }
-        if msg == WM_STYLECHANGED {
+        if msg == WM_STYLECHANGED && FENCE_SHOWN.load(Ordering::SeqCst) {
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
             if style & (WS_POPUP | WS_CAPTION) != 0 || style & WS_CHILD == 0 {
-                force_child_chrome(hwnd);
+                force_child_chrome(hwnd, true);
             }
         }
         let orig = ORIG_WNDPROC.load(Ordering::SeqCst);
@@ -834,7 +1123,8 @@ mod win {
             }
 
             let child = hwnd_raw as HWND;
-            force_child_chrome(child);
+            FENCE_SHOWN.store(true, Ordering::SeqCst);
+            force_child_chrome(child, true);
             prepare_styles(child);
 
             let parent = if !data.defview.is_null() {
@@ -848,7 +1138,7 @@ mod win {
                 return Err("SetParent 失败".into());
             }
 
-            force_child_chrome(child);
+            force_child_chrome(child, true);
             install_subclass(child);
             prepare_styles(child);
 
@@ -872,7 +1162,7 @@ mod win {
                 mh,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
             );
-            force_child_chrome(child);
+            force_child_chrome(child, true);
             ShowWindow(child, SW_SHOW);
             RedrawWindow(
                 child,
@@ -887,6 +1177,24 @@ mod win {
             Ok((mw, mh))
         }
     }
+
+    pub fn hide_fence_from_desktop(hwnd_raw: isize) {
+        unsafe {
+            let child = hwnd_raw as HWND;
+            FENCE_SHOWN.store(false, Ordering::SeqCst);
+            force_child_chrome(child, false);
+            ShowWindow(child, SW_HIDE);
+            SetWindowPos(
+                child,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED,
+            );
+        }
+    }
 }
 
 fn push_items_to_fence(app: &AppHandle, items: &[DesktopItem]) -> Result<(), String> {
@@ -897,7 +1205,7 @@ fn push_items_to_fence(app: &AppHandle, items: &[DesktopItem]) -> Result<(), Str
     };
     let json = serde_json::to_string(items).map_err(|e| format!("序列化桌面项失败: {e}"))?;
     let script = format!(
-        r#"(function(items,n){{function go(){{if(window.__fenceApply){{window.__fenceApply(items);return;}}if(n<40){{n+=1;setTimeout(go,100);}}}}go();}})({json},0);"#
+        r#"(function(items,n){{function go(){{var a=document.getElementById("apps");if(a){{a.style.paddingTop="28px";a.style.paddingLeft="16px";}}if(window.__fenceApply){{window.__fenceApply(items);return;}}if(n<40){{n+=1;setTimeout(go,100);}}}}go();}})({json},0);"#
     );
     let _ = window.eval(&script);
     Ok(())
@@ -934,6 +1242,7 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
     }
 
     let items = scan_desktop_items()?;
+    let _ = window.eval("location.reload()");
     push_items_to_fence(app, &items)?;
     ACTIVE.store(true, Ordering::SeqCst);
     eprintln!("[desktop-organize] enabled items={}", items.len());
@@ -941,13 +1250,22 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
 }
 
 fn disable_inner(app: &AppHandle) -> Result<(), String> {
+    ACTIVE.store(false, Ordering::SeqCst);
+
+    if let Some(window) = app.get_webview_window(FENCE_LABEL) {
+        #[cfg(windows)]
+        if let Ok(hwnd) = window.hwnd() {
+            win::hide_fence_from_desktop(hwnd.0 as isize);
+        }
+        let _ = window.eval(
+            "document.getElementById('apps').innerHTML='';document.getElementById('images').innerHTML='';document.getElementById('documents').innerHTML='';",
+        );
+        let _ = window.hide();
+    }
+
     #[cfg(windows)]
     desktop::set_icons_visible(true);
 
-    if let Some(window) = app.get_webview_window(FENCE_LABEL) {
-        let _ = window.hide();
-    }
-    ACTIVE.store(false, Ordering::SeqCst);
     eprintln!("[desktop-organize] disabled");
     Ok(())
 }
