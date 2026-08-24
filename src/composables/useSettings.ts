@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ref, watch } from "vue";
 
+export const DEFAULT_API_BASE_URL = "https://36fa666671.eicp.vip";
+
 export interface AppSettings {
   autostart: boolean;
   hideIconsOnDoubleClick: boolean;
@@ -30,7 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   loopMode: "list",
   onlineEnabled: false,
   desktopOrganizeEnabled: false,
-  apiBaseUrl: "http://localhost:3002",
+  apiBaseUrl: DEFAULT_API_BASE_URL,
 };
 
 const settings = ref<AppSettings>({ ...DEFAULT_SETTINGS });
@@ -41,10 +43,26 @@ export function useSettings() {
   return settings;
 }
 
+export function normalizeApiBaseUrl(url?: string | null): string {
+  const trimmed = (url || "").trim().replace(/\/$/, "");
+  if (
+    !trimmed ||
+    trimmed === "http://localhost:3002" ||
+    trimmed === "https://localhost:3002"
+  ) {
+    return DEFAULT_API_BASE_URL;
+  }
+  return trimmed;
+}
+
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const remote = await invoke<AppSettings>("load_settings");
-    settings.value = { ...DEFAULT_SETTINGS, ...remote };
+    settings.value = {
+      ...DEFAULT_SETTINGS,
+      ...remote,
+      apiBaseUrl: normalizeApiBaseUrl(remote.apiBaseUrl),
+    };
   } catch {
     settings.value = { ...DEFAULT_SETTINGS };
   }

@@ -1,5 +1,5 @@
 import { computed, ref } from "vue";
-import { useSettings } from "./useSettings";
+import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 
 const AUTH_STORAGE_KEY = "lingjing.auth.v1";
 
@@ -51,7 +51,7 @@ function persistAuth() {
 
 function apiBase(): string {
   const settings = useSettings();
-  return (settings.value.apiBaseUrl || "http://localhost:3002").replace(/\/$/, "");
+  return normalizeApiBaseUrl(settings.value.apiBaseUrl || DEFAULT_API_BASE_URL);
 }
 
 async function parseJson<T>(res: Response): Promise<ApiEnvelope<T>> {

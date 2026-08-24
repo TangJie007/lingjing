@@ -1202,6 +1202,20 @@ mod win {
         }
     }
 
+    pub fn touch_fence_chrome(hwnd_raw: isize) {
+        unsafe {
+            if !FENCE_SHOWN.load(Ordering::SeqCst) {
+                return;
+            }
+            let child = hwnd_raw as HWND;
+            let style = GetWindowLongPtrW(child, GWL_STYLE) as u32;
+            if style & (WS_POPUP | WS_CAPTION) != 0 || style & WS_CHILD == 0 {
+                force_child_chrome(child, true);
+            }
+            SetWindowTextW(child, [0u16].as_ptr());
+        }
+    }
+
     pub fn hide_fence_from_desktop(hwnd_raw: isize) {
         unsafe {
             let child = hwnd_raw as HWND;
@@ -1258,7 +1272,6 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
             return Err(e);
         }
         let _ = window.set_ignore_cursor_events(false);
-        let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
     }
     #[cfg(not(windows))]
     {
@@ -1322,8 +1335,7 @@ pub fn reassert(app: &AppHandle) {
     };
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
-        let _ = window.set_ignore_cursor_events(false);
-        let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
+        win::touch_fence_chrome(hwnd.0 as isize);
     }
 }
 

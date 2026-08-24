@@ -680,13 +680,8 @@ fn start_drag(window: tauri::Window) {
         if let Ok(hwnd) = window.hwnd() {
             let raw = hwnd.0 as isize;
             desktop::apply_frameless_dwm(raw);
-            let app = window.app_handle().clone();
             std::thread::spawn(move || {
                 desktop::drag_window_by_mouse(raw);
-                let app2 = app.clone();
-                let _ = app.run_on_main_thread(move || {
-                    desktop_organize::reassert(&app2);
-                });
             });
             return;
         }

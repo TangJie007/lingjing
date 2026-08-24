@@ -30,6 +30,8 @@
         left: 0;
         top: 0;
         bottom: 8px;
+        max-width: calc(100% - min(420px, 32vw) - 56px);
+        z-index: 1;
         padding: 28px 0 12px 16px;
         display: flex;
         flex-direction: column;
@@ -44,6 +46,7 @@
         top: 24px;
         bottom: 24px;
         width: min(420px, 32vw);
+        z-index: 2;
         display: flex;
         flex-direction: column;
         gap: 16px;
@@ -63,6 +66,10 @@
         backdrop-filter: blur(18px);
         -webkit-backdrop-filter: blur(18px);
         overflow: auto;
+        overscroll-behavior: contain;
+      }
+      .fence.fence-dragging {
+        overflow: hidden;
       }
       .fence-title {
         font-size: 13px;
@@ -76,6 +83,7 @@
         flex-wrap: wrap;
         align-content: flex-start;
         gap: 2px;
+        touch-action: none;
       }
       .fence-empty {
         padding: 18px 8px;
@@ -107,29 +115,45 @@
         border-radius: 4px;
         background: transparent;
         box-shadow: none;
+      }
+      .cell.draggable {
         cursor: grab;
         touch-action: none;
+        -webkit-user-drag: none;
+        user-select: none;
       }
-      .cell.native:active { cursor: grabbing; }
-      .cell.native.is-dragging-source {
-        opacity: 0.28;
+      .cell.draggable:active,
+      .cell.draggable.is-dragging {
         cursor: grabbing !important;
       }
-      .cell.native.is-dragging {
+      .drag-host.group-dragging .cell.draggable:hover,
+      .drag-host.group-dragging .cell.draggable:active {
+        background: transparent;
+      }
+      .cell.draggable.is-dragging-source {
+        visibility: hidden;
         cursor: grabbing !important;
       }
-      .cell.native.swap-target {
+      .cell.draggable.swap-target {
         background: rgba(255, 255, 255, 0.2);
         outline: 1px dashed rgba(255, 255, 255, 0.55);
       }
       .drag-ghost {
         position: fixed;
+        left: 0;
+        top: 0;
         z-index: 9999;
-        width: 76px;
-        height: 88px;
         pointer-events: none;
         opacity: 0.94;
+        will-change: transform;
         filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+      }
+      .cell.draggable .icon,
+      .cell.draggable .icon img,
+      .cell.draggable .name {
+        -webkit-user-drag: none;
+        user-select: none;
+        pointer-events: none;
       }
       .cell.native:hover,
       .cell.native:active,
@@ -152,8 +176,6 @@
         line-height: 15px;
         color: #fff;
         font-weight: 400;
-        pointer-events: none;
-        user-select: none;
         text-shadow:
           0 0 3px #000,
           1px 1px 1px #000,
@@ -202,15 +224,15 @@
   </head>
   <body>
     <div id="stage">
-      <div id="apps"></div>
+      <div id="apps" class="drag-host"></div>
       <div id="files">
         <section class="fence" data-kind="image">
           <div class="fence-title">图片</div>
-          <div class="fence-grid" id="images"></div>
+          <div class="fence-grid drag-host" id="images"></div>
         </section>
         <section class="fence" data-kind="document">
           <div class="fence-title">文档</div>
-          <div class="fence-grid" id="documents"></div>
+          <div class="fence-grid drag-host" id="documents"></div>
         </section>
       </div>
     </div>
@@ -219,19 +241,66 @@
       const imagesEl = document.getElementById("images");
       const documentsEl = document.getElementById("documents");
       const APP_ORDER_KEY = "lingscape-fence-app-order";
-      let appItems = [];
-      let activeDrag = null;
+      const IMAGE_ORDER_KEY = "lingscape-fence-image-order";
+      const DOC_ORDER_KEY = "lingscape-fence-document-order";
 
-      function saveAppOrder(paths) {
+      const groups = {
+        app: { container: appsEl, orderKey: APP_ORDER_KEY, items: [] },
+        image: { container: imagesEl, orderKey: IMAGE_ORDER_KEY, items: [] },
+        document: { container: documentsEl, orderKey: DOC_ORDER_KEY, items: [] },
+      };
+
+      let activeDrag = null;
+      let dragListenersBound = false;
+
+      function fenceSectionFor(container) {
+        return container.closest?.(".fence") || null;
+      }
+
+      function onDocumentPointerMove(e) {
+        if (!activeDrag || e.pointerId !== activeDrag.pointerId) return;
+        onDragMove(e);
+      }
+
+      function onDocumentPointerEnd(e) {
+        if (!activeDrag || e.pointerId !== activeDrag.pointerId) return;
+        finishDrag(e);
+      }
+
+      function bindDragListeners() {
+        if (dragListenersBound) return;
+        dragListenersBound = true;
+        document.addEventListener("pointermove", onDocumentPointerMove);
+        document.addEventListener("pointerup", onDocumentPointerEnd);
+        document.addEventListener("pointercancel", onDocumentPointerEnd);
+        document.addEventListener("lostpointercapture", onDocumentPointerEnd);
+        document.addEventListener("wheel", onDocumentWheel, { passive: false });
+      }
+
+      function unbindDragListeners() {
+        if (!dragListenersBound) return;
+        dragListenersBound = false;
+        document.removeEventListener("pointermove", onDocumentPointerMove);
+        document.removeEventListener("pointerup", onDocumentPointerEnd);
+        document.removeEventListener("pointercancel", onDocumentPointerEnd);
+        document.removeEventListener("lostpointercapture", onDocumentPointerEnd);
+        document.removeEventListener("wheel", onDocumentWheel);
+      }
+
+      function onDocumentWheel(e) {
+        if (activeDrag) e.preventDefault();
+      }
+
+      function saveOrder(key, paths) {
         try {
-          localStorage.setItem(APP_ORDER_KEY, JSON.stringify(paths));
+          localStorage.setItem(key, JSON.stringify(paths));
         } catch (_) {}
       }
 
-      function loadAppOrder(apps) {
+      function loadOrder(key, items) {
         try {
-          const saved = JSON.parse(localStorage.getItem(APP_ORDER_KEY) || "[]");
-          const map = new Map(apps.map((a) => [a.path, a]));
+          const saved = JSON.parse(localStorage.getItem(key) || "[]");
+          const map = new Map(items.map((a) => [a.path, a]));
           const out = [];
           for (const p of saved) {
             if (map.has(p)) {
@@ -239,28 +308,77 @@
               map.delete(p);
             }
           }
-          for (const a of apps) {
+          for (const a of items) {
             if (map.has(a.path)) out.push(a);
           }
           return out;
         } catch (_) {
-          return apps;
+          return items;
         }
+      }
+
+      function findSwapTarget(x, y, sourceCell, container) {
+        for (const el of document.elementsFromPoint(x, y)) {
+          const cell = el.closest?.(".cell.draggable");
+          if (cell && cell !== sourceCell && container.contains(cell)) return cell;
+        }
+        return null;
+      }
+
+      function swapInPlace(group, fromIndex, toIndex) {
+        const { container, items, orderKey } = group;
+        const cells = container.querySelectorAll(".cell.draggable");
+        const fromCell = cells[fromIndex];
+        const toCell = cells[toIndex];
+        if (!fromCell || !toCell || fromCell === toCell) return;
+
+        if (fromIndex < toIndex) {
+          container.insertBefore(fromCell, toCell.nextSibling);
+        } else {
+          container.insertBefore(fromCell, toCell);
+        }
+
+        const next = [...items];
+        [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+        group.items = next;
+        saveOrder(orderKey, next.map((a) => a.path));
+      }
+
+      function beginDragVisuals(drag) {
+        drag.group.container.classList.add("group-dragging");
+        drag.fenceSection = fenceSectionFor(drag.group.container);
+        if (drag.fenceSection) drag.fenceSection.classList.add("fence-dragging");
+        drag.cell.classList.add("is-dragging-source");
+        document.body.style.cursor = "grabbing";
+        drag.ghost = createDragGhost(drag.cell);
+        const rect = drag.cell.getBoundingClientRect();
+        drag.offsetX = drag.startX - rect.left;
+        drag.offsetY = drag.startY - rect.top;
+      }
+
+      function endDragVisuals(drag) {
+        drag.group.container.classList.remove("group-dragging");
+        if (drag.fenceSection) drag.fenceSection.classList.remove("fence-dragging");
+        document.body.style.cursor = "";
+        if (drag.swapTarget) drag.swapTarget.classList.remove("swap-target");
+        drag.cell.classList.remove("is-dragging-source", "is-dragging");
       }
 
       function createDragGhost(cell) {
         const ghost = cell.cloneNode(true);
-        ghost.classList.add("drag-ghost", "cell", "native");
-        ghost.classList.remove("is-dragging-source", "swap-target");
+        ghost.classList.add("drag-ghost");
+        ghost.classList.remove("is-dragging-source", "swap-target", "is-dragging");
+        const rect = cell.getBoundingClientRect();
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
         document.body.appendChild(ghost);
         return ghost;
       }
 
       function animateGhostBack(ghost, cell, done) {
         const rect = cell.getBoundingClientRect();
-        ghost.style.transition = "left 180ms ease, top 180ms ease, opacity 180ms ease";
-        ghost.style.left = `${rect.left}px`;
-        ghost.style.top = `${rect.top}px`;
+        ghost.style.transition = "transform 180ms ease, opacity 180ms ease";
+        ghost.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
         ghost.style.opacity = "0";
         window.setTimeout(() => {
           ghost.remove();
@@ -277,24 +395,16 @@
 
         if (!drag.moved) {
           drag.moved = true;
-          drag.cell.classList.add("is-dragging-source");
-          document.body.style.cursor = "grabbing";
-          drag.ghost = createDragGhost(drag.cell);
-          const rect = drag.cell.getBoundingClientRect();
-          drag.offsetX = drag.startX - rect.left;
-          drag.offsetY = drag.startY - rect.top;
+          beginDragVisuals(drag);
         }
 
-        drag.ghost.style.left = `${e.clientX - drag.offsetX}px`;
-        drag.ghost.style.top = `${e.clientY - drag.offsetY}px`;
+        drag.ghost.style.transform = `translate(${e.clientX - drag.offsetX}px, ${e.clientY - drag.offsetY}px)`;
 
-        const under = document.elementFromPoint(e.clientX, e.clientY);
-        const target = under?.closest?.(".cell.native");
+        const target = findSwapTarget(e.clientX, e.clientY, drag.cell, drag.group.container);
         if (drag.swapTarget && drag.swapTarget !== target) {
           drag.swapTarget.classList.remove("swap-target");
         }
-        drag.swapTarget =
-          target && target !== drag.cell && target.closest("#apps") ? target : null;
+        drag.swapTarget = target;
         if (drag.swapTarget) drag.swapTarget.classList.add("swap-target");
       }
 
@@ -302,62 +412,57 @@
         const drag = activeDrag;
         if (!drag) return;
         activeDrag = null;
+        unbindDragListeners();
 
         try {
           drag.cell.releasePointerCapture(e.pointerId);
         } catch (_) {}
-        drag.cell.classList.remove("is-dragging");
-
-        if (drag.swapTarget) drag.swapTarget.classList.remove("swap-target");
-        document.body.style.cursor = "";
-
-        const cleanupSource = () => drag.cell.classList.remove("is-dragging-source");
 
         if (!drag.moved) {
-          cleanupSource();
+          endDragVisuals(drag);
           if (drag.ghost) drag.ghost.remove();
           return;
         }
 
-        const under = document.elementFromPoint(e.clientX, e.clientY);
-        const target = under?.closest?.(".cell.native");
-        const toIndex =
-          target && target !== drag.cell && target.closest("#apps")
-            ? appItems.findIndex((a) => a.path === target.dataset.path)
-            : -1;
+        const target = findSwapTarget(e.clientX, e.clientY, drag.cell, drag.group.container);
+        const toIndex = target
+          ? drag.group.items.findIndex((a) => a.path === target.dataset.path)
+          : -1;
 
         if (toIndex >= 0 && toIndex !== drag.fromIndex) {
-          const next = [...appItems];
-          [next[drag.fromIndex], next[toIndex]] = [next[toIndex], next[drag.fromIndex]];
-          saveAppOrder(next.map((a) => a.path));
+          swapInPlace(drag.group, drag.fromIndex, toIndex);
           if (drag.ghost) drag.ghost.remove();
-          cleanupSource();
-          renderApps(next);
+          endDragVisuals(drag);
           return;
         }
 
         if (drag.ghost) {
-          animateGhostBack(drag.ghost, drag.cell, cleanupSource);
+          animateGhostBack(drag.ghost, drag.cell, () => endDragVisuals(drag));
         } else {
-          cleanupSource();
+          endDragVisuals(drag);
         }
       }
 
-      function setupAppDrag(cell, item) {
+      function setupCellDrag(cell, item, group) {
         cell.dataset.path = item.path;
         cell.addEventListener("dragstart", (e) => e.preventDefault());
         cell.addEventListener("selectstart", (e) => e.preventDefault());
 
         cell.addEventListener("pointerdown", (e) => {
           if (e.button !== 0) return;
+          if (activeDrag) return;
           e.preventDefault();
-          const fromIndex = appItems.findIndex((a) => a.path === item.path);
+          e.stopPropagation();
+          const fromIndex = group.items.findIndex((a) => a.path === item.path);
           if (fromIndex < 0) return;
           try {
             cell.setPointerCapture(e.pointerId);
           } catch (_) {}
+          bindDragListeners();
           activeDrag = {
+            group,
             cell,
+            fenceSection: null,
             pointerId: e.pointerId,
             fromIndex,
             startX: e.clientX,
@@ -367,21 +472,6 @@
             swapTarget: null,
           };
           cell.classList.add("is-dragging");
-        });
-
-        cell.addEventListener("pointermove", (e) => {
-          if (!activeDrag || activeDrag.cell !== cell || e.pointerId !== activeDrag.pointerId) return;
-          onDragMove(e);
-        });
-
-        cell.addEventListener("pointerup", (e) => {
-          if (!activeDrag || activeDrag.cell !== cell || e.pointerId !== activeDrag.pointerId) return;
-          finishDrag(e);
-        });
-
-        cell.addEventListener("pointercancel", (e) => {
-          if (!activeDrag || activeDrag.cell !== cell || e.pointerId !== activeDrag.pointerId) return;
-          finishDrag(e);
         });
       }
 
@@ -414,9 +504,9 @@
         apps.style.paddingLeft = "16px";
       }
 
-      function makeCell(item, native) {
+      function makeCell(item, native, group) {
         const cell = document.createElement("div");
-        cell.className = native ? "cell native" : "cell";
+        cell.className = native ? "cell native draggable" : "cell draggable";
         cell.title = item.path;
         const iconWrap = document.createElement("div");
         iconWrap.className = "icon" + (item.isDir ? " folder" : "");
@@ -436,37 +526,45 @@
         cell.appendChild(iconWrap);
         cell.appendChild(name);
         cell.addEventListener("dblclick", () => openItem(item.path));
-        if (native) setupAppDrag(cell, item);
+        if (group) setupCellDrag(cell, item, group);
         return cell;
       }
 
-      function renderApps(apps) {
-        appItems = apps;
-        appsEl.innerHTML = "";
-        for (const item of apps) appsEl.appendChild(makeCell(item, true));
-      }
-
-      function fillGrid(el, items, emptyText) {
-        el.innerHTML = "";
+      function renderGroup(group, items, native, emptyText) {
+        group.items = items;
+        group.container.innerHTML = "";
         if (!items.length) {
           const empty = document.createElement("div");
           empty.className = "fence-empty";
           empty.textContent = emptyText;
-          el.appendChild(empty);
+          group.container.appendChild(empty);
           return;
         }
-        for (const item of items) el.appendChild(makeCell(item, false));
+        for (const item of items) {
+          group.container.appendChild(makeCell(item, native, group));
+        }
+      }
+
+      function renderApps(apps) {
+        renderGroup(groups.app, apps, true, "");
+      }
+
+      function fillGrid(group, items, emptyText) {
+        renderGroup(group, items, false, emptyText);
       }
 
       function render(items) {
         applyAppInset();
         const list = items || [];
-        const apps = loadAppOrder(list.filter((i) => i.kind === "app"));
-        const images = list.filter((i) => i.kind === "image");
-        const documents = list.filter((i) => i.kind === "document" || i.kind === "other");
+        const apps = loadOrder(APP_ORDER_KEY, list.filter((i) => i.kind === "app"));
+        const images = loadOrder(IMAGE_ORDER_KEY, list.filter((i) => i.kind === "image"));
+        const documents = loadOrder(
+          DOC_ORDER_KEY,
+          list.filter((i) => i.kind === "document" || i.kind === "other"),
+        );
         renderApps(apps);
-        fillGrid(imagesEl, images, "暂无图片");
-        fillGrid(documentsEl, documents, "暂无文档");
+        fillGrid(groups.image, images, "暂无图片");
+        fillGrid(groups.document, documents, "暂无文档");
       }
 
       window.__fenceApply = render;

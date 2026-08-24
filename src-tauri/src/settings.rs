@@ -68,7 +68,19 @@ fn default_loop_mode() -> String {
     "list".into()
 }
 fn default_api_base_url() -> String {
-    "http://localhost:3002".into()
+    "https://36fa666671.eicp.vip".into()
+}
+
+fn normalize_api_base_url(url: &str) -> String {
+    let trimmed = url.trim().trim_end_matches('/');
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("http://localhost:3002")
+        || trimmed.eq_ignore_ascii_case("https://localhost:3002")
+    {
+        default_api_base_url()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -93,7 +105,8 @@ pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
     let raw = fs::read_to_string(&path).map_err(|e| format!("读取 settings.json 失败: {e}"))?;
     let value: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|e| format!("解析 settings.json 失败: {e}"))?;
-    let settings: AppSettings = serde_json::from_value(value.clone()).unwrap_or_default();
+    let mut settings: AppSettings = serde_json::from_value(value.clone()).unwrap_or_default();
+    settings.api_base_url = normalize_api_base_url(&settings.api_base_url);
     Ok(settings)
 }
 

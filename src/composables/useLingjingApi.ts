@@ -1,5 +1,5 @@
 import type { WallpaperItem, WallpaperType } from "../data/catalog";
-import { useSettings } from "./useSettings";
+import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 import { useAuth } from "./useAuth";
 
 interface ApiWallpaper {
@@ -30,7 +30,7 @@ interface ApiEnvelope<T> {
 
 function apiBase(): string {
   const settings = useSettings();
-  return (settings.value.apiBaseUrl || "http://localhost:3002").replace(/\/$/, "");
+  return normalizeApiBaseUrl(settings.value.apiBaseUrl || DEFAULT_API_BASE_URL);
 }
 
 function formatSize(bytes?: number): string {
