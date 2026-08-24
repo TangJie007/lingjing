@@ -1222,6 +1222,7 @@ mod win {
             FENCE_SHOWN.store(false, Ordering::SeqCst);
             force_child_chrome(child, false);
             ShowWindow(child, SW_HIDE);
+            SetParent(child, std::ptr::null_mut());
             SetWindowPos(
                 child,
                 std::ptr::null_mut(),
@@ -1230,6 +1231,20 @@ mod win {
                 0,
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED,
+            );
+
+            let progman_class = wide("Progman");
+            let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
+            if progman.is_null() {
+                return;
+            }
+            let defview = find_progman_child(progman, "SHELLDLL_DefView");
+            let refresh = if !defview.is_null() { defview } else { progman };
+            RedrawWindow(
+                refresh,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN,
             );
         }
     }

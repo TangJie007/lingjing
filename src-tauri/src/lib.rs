@@ -437,6 +437,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         }
         "quit" => {
             desktop_organize::cleanup(app);
+            wallpaper::cleanup(app);
             app.exit(0);
         }
         _ => {}
@@ -654,8 +655,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                desktop_organize::cleanup(app_handle);
+            match event {
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                    desktop_organize::cleanup(app_handle);
+                    wallpaper::cleanup(app_handle);
+                }
+                _ => {}
             }
         });
 }

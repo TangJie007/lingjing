@@ -89,9 +89,9 @@ mod win {
         GetWindowLongPtrW, GetWindowRect, IsWindowVisible, SendMessageTimeoutW,
         SetLayeredWindowAttributes, SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindow,
         GWL_EXSTYLE, HWND_BOTTOM, LWA_ALPHA, MONITORINFOF_PRIMARY, SMTO_NORMAL, SM_CXSCREEN,
-        SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-        SWP_SHOWWINDOW, SW_SHOW, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
+        SM_CYSCREEN, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, WS_EX_APPWINDOW, WS_EX_LAYERED,
+        WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
     };
 
     fn wide(s: &str) -> Vec<u16> {
@@ -407,6 +407,71 @@ mod win {
             Ok((w, h))
         }
     }
+
+    pub fn detach_from_desktop(hwnd_raw: isize) {
+        unsafe {
+            let child = hwnd_raw as HWND;
+            ShowWindow(child, SW_HIDE);
+            SetParent(child, std::ptr::null_mut());
+            SetWindowPos(
+                child,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW
+                    | SWP_FRAMECHANGED,
+            );
+
+            let progman_class = wide("Progman");
+            let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
+            if progman.is_null() {
+                return;
+            }
+
+            let mut data = EnumData {
+                defview_parent: std::ptr::null_mut(),
+                defview: std::ptr::null_mut(),
+                worker: std::ptr::null_mut(),
+            };
+            EnumWindows(Some(enum_windows_proc), &mut data as *mut _ as LPARAM);
+
+            if data.defview.is_null() {
+                data.defview = find_progman_child(progman, "SHELLDLL_DefView");
+            }
+            if data.worker.is_null() {
+                data.worker = find_progman_child(progman, "WorkerW");
+            }
+
+            if is_raised_desktop(progman)
+                && !data.worker.is_null()
+                && !data.defview.is_null()
+            {
+                SetWindowPos(
+                    data.worker,
+                    data.defview,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+
+            let refresh = if !data.defview.is_null() {
+                data.defview
+            } else {
+                progman
+            };
+            RedrawWindow(
+                refresh,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN,
+            );
+        }
+    }
 }
 
 fn attach_existing_inner(app: &AppHandle) -> Result<(), String> {
@@ -434,6 +499,23 @@ fn attach_existing_inner(app: &AppHandle) -> Result<(), String> {
 pub fn attach_existing(app: &AppHandle) -> Result<(), String> {
     let handle = app.clone();
     run_on_ui(app, move || attach_existing_inner(&handle))?
+}
+
+pub fn cleanup(app: &AppHandle) {
+    if !ATTACHED.load(Ordering::SeqCst) {
+        return;
+    }
+    let Some(window) = app.get_webview_window(WALLPAPER_LABEL) else {
+        ATTACHED.store(false, Ordering::SeqCst);
+        return;
+    };
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        win::detach_from_desktop(hwnd.0 as isize);
+    }
+    let _ = window.hide();
+    ATTACHED.store(false, Ordering::SeqCst);
+    eprintln!("[wallpaper] cleanup detached from desktop");
 }
 
 fn ensure_wallpaper_inner(app: &AppHandle) -> Result<WebviewWindow, String> {
