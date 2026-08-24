@@ -20,7 +20,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  autostart: true,
+  autostart: false,
   hideIconsOnDoubleClick: false,
   pauseOnFullscreen: true,
   pauseOnBattery: true,
@@ -131,6 +131,14 @@ export interface AppPaths {
 
 export async function getAppPaths(): Promise<AppPaths> {
   return invoke<AppPaths>("get_app_paths");
+}
+
+export async function hasVersionRecord(): Promise<boolean> {
+  return invoke<boolean>("has_version_record");
+}
+
+export async function completeFirstRun(autostart: boolean): Promise<void> {
+  await invoke("complete_first_run", { autostart });
 }
 
 export interface LastWallpaper {

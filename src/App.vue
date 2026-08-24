@@ -9,6 +9,7 @@ import DetailDrawer from "./components/DetailDrawer.vue";
 import PlaybackBar, { type LoopMode } from "./components/PlaybackBar.vue";
 import Toast from "./components/Toast.vue";
 import LoginModal from "./components/LoginModal.vue";
+import FirstRunAutostartModal from "./components/FirstRunAutostartModal.vue";
 import { showToast } from "./composables/useToast";
 import { soundOn } from "./composables/useAudio";
 import { CATALOG, type WallpaperItem } from "./data/catalog";
@@ -28,7 +29,7 @@ import {
   type EngineState,
   type PauseRecommendPayload,
 } from "./composables/useEngine";
-import { loadSettings, useSettings } from "./composables/useSettings";
+import { loadSettings, useSettings, hasVersionRecord, completeFirstRun } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
 import { fetchOnlineWallpapers } from "./composables/useLingjingApi";
 
@@ -49,6 +50,8 @@ provide("topbarSearch", search);
 provide("topbarSort", sort);
 
 const loginOpen = ref(false);
+const firstRunOpen = ref(false);
+const firstRunSaving = ref(false);
 
 const settings = useSettings();
 const { isLoggedIn, refreshMe, user } = useAuth();
@@ -499,6 +502,12 @@ watch(
 onMounted(async () => {
   document.documentElement.setAttribute("data-theme", "light");
   await loadSettings();
+  try {
+    const seen = await hasVersionRecord();
+    if (!seen) firstRunOpen.value = true;
+  } catch {
+    firstRunOpen.value = true;
+  }
   if (!settings.value.onlineEnabled && route.name === "online") {
     await router.replace({ name: "local" });
   }
@@ -549,6 +558,21 @@ function onPlayWrapped() {
 function onPauseWrapped() {
   lastUserAction = Date.now();
   return onPause();
+}
+
+async function onFirstRunConfirm(autostart: boolean) {
+  if (firstRunSaving.value) return;
+  firstRunSaving.value = true;
+  try {
+    await completeFirstRun(autostart);
+    settings.value.autostart = autostart;
+    firstRunOpen.value = false;
+  } catch (e) {
+    console.warn("complete_first_run failed", e);
+    showToast("保存首次设置失败，请稍后重试");
+  } finally {
+    firstRunSaving.value = false;
+  }
 }
 </script>
 
@@ -607,5 +631,6 @@ function onPauseWrapped() {
   </div>
 
   <Toast />
+  <FirstRunAutostartModal :open="firstRunOpen" :saving="firstRunSaving" @confirm="onFirstRunConfirm" />
   <LoginModal :open="loginOpen" @close="loginOpen = false" @success="onLoginSuccess" />
 </template>

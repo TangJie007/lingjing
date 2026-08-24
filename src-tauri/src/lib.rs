@@ -348,6 +348,27 @@ fn save_settings(app: AppHandle, payload: settings::AppSettings) -> Result<(), S
 }
 
 #[tauri::command]
+fn has_version_record(app: AppHandle) -> Result<bool, String> {
+    Ok(settings::has_version_record(&app))
+}
+
+#[tauri::command]
+fn complete_first_run(app: AppHandle, autostart: bool) -> Result<(), String> {
+    let version = app.package_info().version.to_string();
+    settings::write_version_record(&app, &version)?;
+    let mut next = settings::load_settings(&app)?;
+    next.autostart = autostart;
+    settings::persist_and_notify(&app, &next)?;
+    let mgr = app.autolaunch();
+    if autostart {
+        let _ = mgr.enable();
+    } else {
+        let _ = mgr.disable();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn set_library_dir(app: AppHandle, new_dir: String) -> Result<paths::MigrationPlan, String> {
     paths::set_library_dir(&app, new_dir)
 }
@@ -588,8 +609,12 @@ pub fn run() {
 
             if let Ok(s) = settings::load_settings(&handle_for_settings) {
                 let mgr = handle.autolaunch();
-                if s.autostart {
-                    let _ = mgr.enable();
+                if settings::has_version_record(&handle_for_settings) {
+                    if s.autostart {
+                        let _ = mgr.enable();
+                    } else {
+                        let _ = mgr.disable();
+                    }
                 } else {
                     let _ = mgr.disable();
                 }
@@ -643,6 +668,8 @@ pub fn run() {
             get_app_paths,
             load_settings,
             save_settings,
+            has_version_record,
+            complete_first_run,
             set_library_dir,
             migrate_library,
             get_last_wallpaper,

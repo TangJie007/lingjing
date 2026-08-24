@@ -5,12 +5,19 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const SETTINGS_FILE: &str = "settings.json";
 const LAST_WALLPAPER_FILE: &str = "last_wallpaper.json";
+const VERSION_RECORD_FILE: &str = "version_record.json";
 const LIBRARY_SUBDIR: &str = "library";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct VersionRecord {
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub autostart: bool,
     #[serde(default)]
     pub hide_icons_on_double_click: bool,
@@ -41,7 +48,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            autostart: true,
+            autostart: false,
             hide_icons_on_double_click: false,
             pause_on_fullscreen: true,
             pause_on_battery: true,
@@ -95,6 +102,28 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn last_wallpaper_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join(LAST_WALLPAPER_FILE))
+}
+
+fn version_record_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_dir(app)?.join(VERSION_RECORD_FILE))
+}
+
+pub fn has_version_record(app: &AppHandle) -> bool {
+    version_record_path(app)
+        .map(|p| p.exists())
+        .unwrap_or(false)
+}
+
+pub fn write_version_record(app: &AppHandle, version: &str) -> Result<(), String> {
+    let path = version_record_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建数据目录失败: {e}"))?;
+    }
+    let record = VersionRecord {
+        version: version.to_string(),
+    };
+    let raw = serde_json::to_string_pretty(&record).map_err(|e| format!("序列化失败: {e}"))?;
+    fs::write(&path, raw).map_err(|e| format!("写入 version_record.json 失败: {e}"))
 }
 
 pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {

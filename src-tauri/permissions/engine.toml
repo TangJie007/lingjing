@@ -20,6 +20,8 @@ commands.allow = [
   "get_app_paths",
   "load_settings",
   "save_settings",
+  "has_version_record",
+  "complete_first_run",
   "set_library_dir",
   "migrate_library",
   "get_last_wallpaper",
