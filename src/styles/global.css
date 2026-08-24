@@ -244,7 +244,7 @@ input, textarea {
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
   flex-shrink: 0;
-  app-region: drag;
+      app-region: no-drag;
   transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
 }
 .win-dots { display: flex; gap: 6px; app-region: no-drag; }

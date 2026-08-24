@@ -3,53 +3,122 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Desktop Fence</title>
+    <title></title>
     <style>
       * { box-sizing: border-box; }
-      html, body {
+      html, body, #stage, #apps, #files {
         margin: 0;
+        border: none;
+        outline: none;
+        box-shadow: none;
+        background: transparent;
+      }
+      html, body {
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #1b1e26;
         font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
         user-select: none;
-        color: #f2f4f8;
+        color: #f4f6fb;
       }
-      #panel {
-        position: absolute;
+      #stage {
+        position: fixed;
         inset: 0;
+      }
+      #apps {
+        position: absolute;
+        left: 2px;
+        top: 2px;
+        height: calc(100% - 8px);
         display: flex;
         flex-direction: column;
-        background: linear-gradient(180deg, rgba(32, 36, 46, 0.96), rgba(22, 24, 30, 0.96));
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 0 2px;
       }
-      #title {
-        flex: 0 0 auto;
-        padding: 12px 16px 8px;
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        color: rgba(255, 255, 255, 0.78);
+      #files {
+        position: absolute;
+        right: 24px;
+        top: 24px;
+        bottom: 24px;
+        width: min(420px, 32vw);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        outline: none;
       }
-      #grid {
-        flex: 1;
+      .fence {
+        flex: 1 1 0;
+        min-height: 180px;
+        padding: 12px 12px 14px;
+        border-radius: 16px;
+        background: rgba(16, 18, 24, 0.42);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
         overflow: auto;
-        padding: 4px 10px 16px;
+      }
+      .fence-title {
+        font-size: 13px;
+        font-weight: 650;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.82);
+        padding: 2px 8px 10px;
+      }
+      .fence-grid {
         display: flex;
         flex-wrap: wrap;
         align-content: flex-start;
         gap: 2px;
       }
+      .fence-empty {
+        padding: 18px 8px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.38);
+      }
       .cell {
-        width: 88px;
+        width: 84px;
         padding: 8px 4px 10px;
         border-radius: 10px;
         text-align: center;
         cursor: default;
+        border: none;
+        background: transparent;
       }
-      .cell:hover { background: rgba(255, 255, 255, 0.1); }
-      .cell:active { background: rgba(255, 255, 255, 0.16); }
+      .cell:hover { background: rgba(255, 255, 255, 0.12); }
+      .cell:active { background: rgba(255, 255, 255, 0.18); }
+      .cell.native {
+        width: 76px;
+        padding: 5px 2px 4px;
+        border: none;
+        outline: none;
+        border-radius: 4px;
+        background: transparent;
+        box-shadow: none;
+      }
+      .cell.native:hover,
+      .cell.native:active,
+      .cell.native:focus {
+        border: none;
+        outline: none;
+        box-shadow: none;
+        background: rgba(255, 255, 255, 0.14);
+      }
+      .cell.native .name {
+        color: #fff;
+        font-weight: 400;
+        text-shadow:
+          0 0 3px #000,
+          1px 1px 1px #000,
+          -1px 0 1px rgba(0, 0, 0, 0.7);
+      }
+      .cell.native .icon img {
+        filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.45));
+      }
       .icon {
         width: 48px;
         height: 48px;
@@ -66,7 +135,7 @@
         object-fit: contain;
         display: block;
         image-rendering: auto;
-        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+        filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
       }
       .name {
         font-size: 12px;
@@ -76,24 +145,28 @@
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-      }
-      #empty {
-        margin: 40px auto;
-        color: rgba(255, 255, 255, 0.45);
-        font-size: 13px;
-        display: none;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.35);
       }
     </style>
   </head>
   <body>
-    <div id="panel">
-      <div id="title">桌面</div>
-      <div id="grid"></div>
-      <div id="empty">桌面暂无文件</div>
+    <div id="stage">
+      <div id="apps"></div>
+      <div id="files">
+        <section class="fence" data-kind="image">
+          <div class="fence-title">图片</div>
+          <div class="fence-grid" id="images"></div>
+        </section>
+        <section class="fence" data-kind="document">
+          <div class="fence-title">文档</div>
+          <div class="fence-grid" id="documents"></div>
+        </section>
+      </div>
     </div>
     <script>
-      const grid = document.getElementById("grid");
-      const empty = document.getElementById("empty");
+      const appsEl = document.getElementById("apps");
+      const imagesEl = document.getElementById("images");
+      const documentsEl = document.getElementById("documents");
 
       function iconFor(item) {
         if (item.isDir) return "📁";
@@ -117,35 +190,50 @@
         }
       }
 
-      function render(items) {
-        grid.innerHTML = "";
-        if (!items || !items.length) {
-          empty.style.display = "block";
+      function makeCell(item, native) {
+        const cell = document.createElement("div");
+        cell.className = native ? "cell native" : "cell";
+        cell.title = item.path;
+        const iconWrap = document.createElement("div");
+        iconWrap.className = "icon" + (item.isDir ? " folder" : "");
+        if (item.icon) {
+          const img = document.createElement("img");
+          img.alt = "";
+          img.src = item.icon;
+          iconWrap.appendChild(img);
+        } else {
+          iconWrap.textContent = iconFor(item);
+        }
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = item.name;
+        cell.appendChild(iconWrap);
+        cell.appendChild(name);
+        cell.addEventListener("dblclick", () => openItem(item.path));
+        return cell;
+      }
+
+      function fillGrid(el, items, emptyText) {
+        el.innerHTML = "";
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.className = "fence-empty";
+          empty.textContent = emptyText;
+          el.appendChild(empty);
           return;
         }
-        empty.style.display = "none";
-        for (const item of items) {
-          const cell = document.createElement("div");
-          cell.className = "cell";
-          cell.title = item.path;
-          const iconWrap = document.createElement("div");
-          iconWrap.className = "icon" + (item.isDir ? " folder" : "");
-          if (item.icon) {
-            const img = document.createElement("img");
-            img.alt = "";
-            img.src = item.icon;
-            iconWrap.appendChild(img);
-          } else {
-            iconWrap.textContent = iconFor(item);
-          }
-          const name = document.createElement("div");
-          name.className = "name";
-          name.textContent = item.name;
-          cell.appendChild(iconWrap);
-          cell.appendChild(name);
-          cell.addEventListener("dblclick", () => openItem(item.path));
-          grid.appendChild(cell);
-        }
+        for (const item of items) el.appendChild(makeCell(item, false));
+      }
+
+      function render(items) {
+        const list = items || [];
+        const apps = list.filter((i) => i.kind === "app");
+        const images = list.filter((i) => i.kind === "image");
+        const documents = list.filter((i) => i.kind === "document" || i.kind === "other");
+        appsEl.innerHTML = "";
+        for (const item of apps) appsEl.appendChild(makeCell(item, true));
+        fillGrid(imagesEl, images, "暂无图片");
+        fillGrid(documentsEl, documents, "暂无文档");
       }
 
       window.__fenceApply = render;

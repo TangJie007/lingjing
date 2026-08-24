@@ -568,6 +568,12 @@ pub fn run() {
             }
             app.manage(RuntimeProfile { low_power });
 
+            if let Some(main) = app.get_webview_window("main") {
+                if let Ok(hwnd) = main.hwnd() {
+                    desktop::apply_frameless_dwm(hwnd.0 as isize);
+                }
+            }
+
             let handle = app.handle().clone();
             let handle_for_attach = handle.clone();
             let handle_for_settings = handle.clone();
@@ -666,6 +672,25 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 fn start_drag(window: tauri::Window) {
+    if window.label() != "main" {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        if let Ok(hwnd) = window.hwnd() {
+            let raw = hwnd.0 as isize;
+            desktop::apply_frameless_dwm(raw);
+            let app = window.app_handle().clone();
+            std::thread::spawn(move || {
+                desktop::drag_window_by_mouse(raw);
+                let app2 = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    desktop_organize::reassert(&app2);
+                });
+            });
+            return;
+        }
+    }
     let _ = window.start_dragging();
 }
 

@@ -2,7 +2,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, Manager, PhysicalSize};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::desktop;
 use crate::settings;
@@ -10,17 +10,13 @@ use crate::settings;
 const FENCE_LABEL: &str = "desktop-fence";
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-const FENCE_X: i32 = 24;
-const FENCE_Y: i32 = 24;
-const FENCE_W: u32 = 480;
-const FENCE_H: u32 = 720;
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopItem {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
+    pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
 }
@@ -58,8 +54,42 @@ fn scan_dir(dir: &Path, items: &mut Vec<DesktopItem>) {
             name: display_name,
             path: path.to_string_lossy().to_string(),
             is_dir,
+            kind: classify_kind(&name, is_dir),
             icon,
         });
+    }
+}
+
+fn file_ext(file_name: &str) -> String {
+    Path::new(file_name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+fn classify_kind(file_name: &str, is_dir: bool) -> String {
+    if is_dir {
+        return "other".into();
+    }
+    let ext = file_ext(file_name);
+    const APPS: &[&str] = &["lnk", "url", "exe", "bat", "cmd", "msi", "com", "appref-ms"];
+    const IMAGES: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg", "tif", "tiff", "heic", "heif",
+        "raw", "dng", "jfif",
+    ];
+    const DOCS: &[&str] = &[
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "rtf", "odt",
+        "ods", "odp", "epub", "wps", "et", "dps",
+    ];
+    if APPS.contains(&ext.as_str()) {
+        "app".into()
+    } else if IMAGES.contains(&ext.as_str()) {
+        "image".into()
+    } else if DOCS.contains(&ext.as_str()) {
+        "document".into()
+    } else {
+        "other".into()
     }
 }
 
@@ -110,16 +140,25 @@ pub fn scan_desktop_items() -> Result<Vec<DesktopItem>, String> {
 mod win {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
+    use std::sync::atomic::{AtomicIsize, Ordering};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::Graphics::Gdi::{
-        RedrawWindow, RDW_ALLCHILDREN, RDW_INVALIDATE, RDW_UPDATENOW,
+        EnumDisplayMonitors, GetMonitorInfoW, RedrawWindow, HDC, HMONITOR, MONITORINFO,
+        RDW_ALLCHILDREN, RDW_INVALIDATE, RDW_UPDATENOW,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, FindWindowExW, FindWindowW, GetParent, GetWindowLongPtrW, SetParent,
-        SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HICON, HWND_TOP, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOW, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW,
+        CallWindowProcW, EnumWindows, FindWindowExW, FindWindowW, GetParent, GetSystemMetrics,
+        GetWindowLongPtrW, SetLayeredWindowAttributes, SetParent, SetWindowLongPtrW, SetWindowPos,
+        SetWindowTextW, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, HICON, HTCLIENT, HWND_TOP,
+        LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN, SM_CYSCREEN, STYLESTRUCT, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOW, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT,
+        WM_STYLECHANGED, WM_STYLECHANGING, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
+        WS_CLIPSIBLINGS, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME,
+        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_STATICEDGE, WS_EX_TOOLWINDOW, WS_EX_WINDOWEDGE,
+        WS_POPUP, WS_SYSMENU, WS_THICKFRAME, WS_VISIBLE,
     };
+
+    static ORIG_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
     pub struct ShellMeta {
         pub display_name: Option<String>,
@@ -617,22 +656,163 @@ mod win {
         }
     }
 
-    fn prepare_styles(child: HWND) {
+    unsafe extern "system" fn enum_monitors_proc(
+        hmon: HMONITOR,
+        _hdc: HDC,
+        _lprc: *mut RECT,
+        lparam: LPARAM,
+    ) -> i32 {
+        let found = &mut *(lparam as *mut Option<(i32, i32, i32, i32)>);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(hmon, &mut info) != 0 && info.dwFlags & MONITORINFOF_PRIMARY != 0 {
+            let r = info.rcWork;
+            *found = Some((r.left, r.top, r.right - r.left, r.bottom - r.top));
+            return 0;
+        }
+        1
+    }
+
+    fn primary_work_rect() -> (i32, i32, i32, i32) {
+        let mut found: Option<(i32, i32, i32, i32)> = None;
         unsafe {
+            EnumDisplayMonitors(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                Some(enum_monitors_proc),
+                &mut found as *mut _ as LPARAM,
+            );
+        }
+        found.unwrap_or_else(|| unsafe {
+            (
+                0,
+                0,
+                GetSystemMetrics(SM_CXSCREEN),
+                GetSystemMetrics(SM_CYSCREEN),
+            )
+        })
+    }
+
+    fn force_child_chrome(child: HWND) {
+        unsafe {
+            let mut style = GetWindowLongPtrW(child, GWL_STYLE) as u32;
+            style &= !(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
+            style |= WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+            SetWindowLongPtrW(child, GWL_STYLE, style as isize);
+
             let mut ex = GetWindowLongPtrW(child, GWL_EXSTYLE) as u32;
-            ex &= !WS_EX_APPWINDOW;
-            ex |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            ex &= !(WS_EX_APPWINDOW
+                | WS_EX_CLIENTEDGE
+                | WS_EX_WINDOWEDGE
+                | WS_EX_DLGMODALFRAME
+                | WS_EX_STATICEDGE);
+            ex |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
             SetWindowLongPtrW(child, GWL_EXSTYLE, ex as isize);
+            SetLayeredWindowAttributes(child, 0, 255, LWA_ALPHA);
+            SetWindowTextW(child, [0u16].as_ptr());
         }
     }
 
-    pub fn attach_fence_to_desktop(
-        hwnd_raw: isize,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-    ) -> Result<(), String> {
+    unsafe extern "system" fn fence_wndproc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if msg == WM_SETTEXT {
+            return 1;
+        }
+        if msg == WM_NCCALCSIZE || msg == WM_NCPAINT {
+            return 0;
+        }
+        if msg == WM_NCHITTEST {
+            return HTCLIENT as LRESULT;
+        }
+        if msg == WM_STYLECHANGING && lparam != 0 {
+            let ss = &mut *(lparam as *mut STYLESTRUCT);
+            if wparam as isize == GWL_STYLE as isize {
+                ss.styleNew &=
+                    !(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
+                ss.styleNew |= WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+            }
+            if wparam as isize == GWL_EXSTYLE as isize {
+                ss.styleNew &= !(WS_EX_APPWINDOW
+                    | WS_EX_CLIENTEDGE
+                    | WS_EX_WINDOWEDGE
+                    | WS_EX_DLGMODALFRAME
+                    | WS_EX_STATICEDGE);
+                ss.styleNew |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
+            }
+        }
+        if msg == WM_STYLECHANGED {
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+            if style & (WS_POPUP | WS_CAPTION) != 0 || style & WS_CHILD == 0 {
+                force_child_chrome(hwnd);
+            }
+        }
+        let orig = ORIG_WNDPROC.load(Ordering::SeqCst);
+        if orig == 0 {
+            return 0;
+        }
+        let proc: unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT =
+            std::mem::transmute(orig);
+        CallWindowProcW(Some(proc), hwnd, msg, wparam, lparam)
+    }
+
+    fn install_subclass(hwnd: HWND) {
+        unsafe {
+            if ORIG_WNDPROC.load(Ordering::SeqCst) != 0 {
+                return;
+            }
+            let prev = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, fence_wndproc as *const () as isize);
+            if prev != 0 {
+                ORIG_WNDPROC.store(prev, Ordering::SeqCst);
+            }
+        }
+    }
+
+    fn prepare_styles(child: HWND) {
+        unsafe {
+            use windows_sys::Win32::Graphics::Dwm::{
+                DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMNCRP_DISABLED,
+                DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE, DWMWA_NCRENDERING_POLICY,
+            };
+            use windows_sys::Win32::UI::Controls::MARGINS;
+
+            let margins = MARGINS {
+                cxLeftWidth: -1,
+                cxRightWidth: -1,
+                cyTopHeight: -1,
+                cyBottomHeight: -1,
+            };
+            let _ = DwmExtendFrameIntoClientArea(child, &margins);
+
+            let none = DWMWA_COLOR_NONE;
+            let _ = DwmSetWindowAttribute(
+                child,
+                DWMWA_BORDER_COLOR as u32,
+                &none as *const _ as *const core::ffi::c_void,
+                4,
+            );
+            let _ = DwmSetWindowAttribute(
+                child,
+                DWMWA_CAPTION_COLOR as u32,
+                &none as *const _ as *const core::ffi::c_void,
+                4,
+            );
+            let policy = DWMNCRP_DISABLED;
+            let _ = DwmSetWindowAttribute(
+                child,
+                DWMWA_NCRENDERING_POLICY as u32,
+                &policy as *const _ as *const core::ffi::c_void,
+                4,
+            );
+        }
+    }
+
+    pub fn attach_fence_to_desktop(hwnd_raw: isize) -> Result<(i32, i32), String> {
         unsafe {
             let progman_class = wide("Progman");
             let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
@@ -654,9 +834,9 @@ mod win {
             }
 
             let child = hwnd_raw as HWND;
+            force_child_chrome(child);
             prepare_styles(child);
 
-            // 格子挂在图标层 SHELLDLL_DefView 下，和系统图标同层，在壁纸之上。
             let parent = if !data.defview.is_null() {
                 data.defview
             } else {
@@ -668,15 +848,31 @@ mod win {
                 return Err("SetParent 失败".into());
             }
 
+            force_child_chrome(child);
+            install_subclass(child);
+            prepare_styles(child);
+
+            let (pl, pt, pw, ph) = rect_of(parent);
+            let (mx, my, mut mw, mut mh) = primary_work_rect();
+            let mut x = mx - pl;
+            let mut y = my - pt;
+            if mw <= 0 || mh <= 0 {
+                mw = if pw > 0 { pw } else { 1920 };
+                mh = if ph > 0 { ph } else { 1080 };
+                x = 0;
+                y = 0;
+            }
+
             SetWindowPos(
                 child,
                 HWND_TOP,
                 x,
                 y,
-                w,
-                h,
+                mw,
+                mh,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
             );
+            force_child_chrome(child);
             ShowWindow(child, SW_SHOW);
             RedrawWindow(
                 child,
@@ -685,11 +881,10 @@ mod win {
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN,
             );
 
-            let (px, py, pw, ph) = rect_of(parent);
             eprintln!(
-                "[desktop-organize] attached child={child:?} parent={parent:?} parentRect={px},{py} {pw}x{ph} fence={x},{y} {w}x{h}"
+                "[desktop-organize] attached child={child:?} parent={parent:?} parent={pl},{pt} {pw}x{ph} primary={x},{y} {mw}x{mh}"
             );
-            Ok(())
+            Ok((mw, mh))
         }
     }
 }
@@ -723,18 +918,15 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
                 return Err(format!("获取 HWND 失败: {e}"));
             }
         };
-        if let Err(e) = win::attach_fence_to_desktop(
-            hwnd.0 as isize,
-            FENCE_X,
-            FENCE_Y,
-            FENCE_W as i32,
-            FENCE_H as i32,
-        ) {
+        let _ = window.set_title("");
+        let _ = window.set_decorations(false);
+        let _ = window.set_shadow(false);
+        if let Err(e) = win::attach_fence_to_desktop(hwnd.0 as isize) {
             desktop::set_icons_visible(true);
             return Err(e);
         }
-        let _ = window.set_size(PhysicalSize::new(FENCE_W, FENCE_H));
         let _ = window.set_ignore_cursor_events(false);
+        let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
     }
     #[cfg(not(windows))]
     {
@@ -742,7 +934,6 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
     }
 
     let items = scan_desktop_items()?;
-    let _ = window.show();
     push_items_to_fence(app, &items)?;
     ACTIVE.store(true, Ordering::SeqCst);
     eprintln!("[desktop-organize] enabled items={}", items.len());
@@ -778,6 +969,19 @@ pub fn refresh(app: &AppHandle) -> Result<(), String> {
     }
     let items = run_on_ui(app, scan_desktop_items)??;
     push_items_to_fence(app, &items)
+}
+
+pub fn reassert(app: &AppHandle) {
+    if !ACTIVE.load(Ordering::SeqCst) {
+        return;
+    }
+    let Some(window) = app.get_webview_window(FENCE_LABEL) else {
+        return;
+    };
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
+    }
 }
 
 pub fn cleanup(app: &AppHandle) {

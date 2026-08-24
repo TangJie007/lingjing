@@ -158,6 +158,78 @@ mod win {
 #[cfg(windows)]
 pub use win::{set_double_click_enabled, set_icons_visible};
 
+#[cfg(windows)]
+pub fn apply_frameless_dwm(hwnd_raw: isize) {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE,
+    };
+    unsafe {
+        let hwnd = hwnd_raw as HWND;
+        let none = DWMWA_COLOR_NONE;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR as u32,
+            &none as *const _ as *const core::ffi::c_void,
+            4,
+        );
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CAPTION_COLOR as u32,
+            &none as *const _ as *const core::ffi::c_void,
+            4,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+pub fn apply_frameless_dwm(_hwnd_raw: isize) {}
+
+#[cfg(windows)]
+pub fn drag_window_by_mouse(hwnd_raw: isize) {
+    use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetCursorPos, GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+    unsafe {
+        let hwnd = hwnd_raw as HWND;
+        let mut origin = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut origin) == 0 {
+            return;
+        }
+        let mut wr = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if GetWindowRect(hwnd, &mut wr) == 0 {
+            return;
+        }
+        let dx = origin.x - wr.left;
+        let dy = origin.y - wr.top;
+        while GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000 != 0 {
+            let mut cur = POINT { x: 0, y: 0 };
+            if GetCursorPos(&mut cur) != 0 {
+                SetWindowPos(
+                    hwnd,
+                    std::ptr::null_mut(),
+                    cur.x - dx,
+                    cur.y - dy,
+                    0,
+                    0,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(8));
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn drag_window_by_mouse(_hwnd_raw: isize) {}
+
 #[cfg(not(windows))]
 pub fn set_double_click_enabled(_enabled: bool) {}
 
