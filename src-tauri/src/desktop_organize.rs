@@ -17,6 +17,8 @@ pub struct DesktopItem {
     pub path: String,
     pub is_dir: bool,
     pub kind: String,
+    #[serde(default)]
+    pub builtin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
 }
@@ -35,12 +37,16 @@ where
         .map_err(|e| format!("等待 UI 线程失败: {e}"))
 }
 
-fn scan_dir(dir: &Path, items: &mut Vec<DesktopItem>) {
+fn scan_dir(dir: &Path, items: &mut Vec<DesktopItem>, seen: &mut std::collections::HashSet<String>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
+        let path_key = path.to_string_lossy().to_string();
+        if seen.contains(&path_key) {
+            continue;
+        }
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
@@ -57,11 +63,13 @@ fn scan_dir(dir: &Path, items: &mut Vec<DesktopItem>) {
                 icon = Some(preview);
             }
         }
+        seen.insert(path_key);
         items.push(DesktopItem {
             name: display_name,
             path: path.to_string_lossy().to_string(),
             is_dir,
             kind,
+            builtin: false,
             icon,
         });
     }
@@ -130,17 +138,40 @@ fn shell_name_and_icon(path: &Path, file_name: &str, _is_dir: bool) -> (String, 
 
 pub fn scan_desktop_items() -> Result<Vec<DesktopItem>, String> {
     let mut items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    #[cfg(windows)]
+    for item in win::scan_builtin_desktop_icons() {
+        seen.insert(item.path.clone());
+        items.push(item);
+    }
     if let Ok(home) = std::env::var("USERPROFILE") {
-        scan_dir(&PathBuf::from(home).join("Desktop"), &mut items);
+        scan_dir(
+            &PathBuf::from(home).join("Desktop"),
+            &mut items,
+            &mut seen,
+        );
     }
     let public = std::env::var("PUBLIC").unwrap_or_else(|_| r"C:\Users\Public".into());
-    scan_dir(&PathBuf::from(public).join("Desktop"), &mut items);
+    scan_dir(
+        &PathBuf::from(public).join("Desktop"),
+        &mut items,
+        &mut seen,
+    );
     items.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
+        builtin_rank(&a.path).cmp(&builtin_rank(&b.path))
+            .then_with(|| b.is_dir.cmp(&a.is_dir))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(items)
+}
+
+fn builtin_rank(path: &str) -> u8 {
+    match path.to_ascii_uppercase() {
+        p if p.contains("20D04FE0-3AEA-1069-A2D8-08002B30309D") => 0,
+        p if p.contains("645FF040-5081-101B-9F08-00AA002F954E") => 1,
+        p if p.contains("F02C1A0D-B21F-4110-8426-0A0C959C3602") => 2,
+        _ => 3,
+    }
 }
 
 #[cfg(windows)]
@@ -946,6 +977,91 @@ mod win {
         }
     }
 
+    unsafe fn stock_icon_png(siid: i32) -> Option<String> {
+        use windows_sys::Win32::UI::Shell::{
+            SHGetStockIconInfo, SHGSI_ICON, SHGSI_LARGEICON, SHSTOCKICONINFO,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon;
+
+        let mut info = SHSTOCKICONINFO {
+            cbSize: std::mem::size_of::<SHSTOCKICONINFO>() as u32,
+            ..Default::default()
+        };
+        let hr = SHGetStockIconInfo(siid, SHGSI_ICON | SHGSI_LARGEICON, &mut info);
+        if hr < 0 || info.hIcon.is_null() {
+            return None;
+        }
+        let url = hicon_to_png_data_url(info.hIcon);
+        DestroyIcon(info.hIcon);
+        url
+    }
+
+    fn extract_builtin_icon(path: &str, stock_fallback: Option<i32>) -> Option<String> {
+        use windows_sys::Win32::UI::Shell::{SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
+
+        let path_obj = std::path::PathBuf::from(path);
+        let flags = SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK;
+        unsafe {
+            if let Some(icon) = shell_item_image_png(&path_obj, 48, flags) {
+                return Some(icon);
+            }
+            if path.contains("F02C1A0D-B21F-4110-8426-0A0C959C3602") {
+                for alt in ["shell:NetworkPlacesFolder", "::{F02C1A0D-B21F-4110-8426-0A0C959C3602}\\"] {
+                    if let Some(icon) = shell_item_image_png(std::path::Path::new(alt), 48, flags) {
+                        return Some(icon);
+                    }
+                }
+                if let Some(icon) = stock_icon_png(
+                    windows_sys::Win32::UI::Shell::SIID_MYNETWORK,
+                ) {
+                    return Some(icon);
+                }
+            }
+            if let Some(siid) = stock_fallback {
+                if let Some(icon) = stock_icon_png(siid) {
+                    return Some(icon);
+                }
+            }
+        }
+        shell_name_and_icon(&path_obj).icon
+    }
+
+    const BUILTIN_DESKTOP_ICONS: &[(&str, &str, Option<i32>)] = &[
+        ("::{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "此电脑", None),
+        (
+            "::{645FF040-5081-101B-9F08-00AA002F954E}",
+            "回收站",
+            Some(windows_sys::Win32::UI::Shell::SIID_RECYCLER),
+        ),
+        (
+            "::{F02C1A0D-B21F-4110-8426-0A0C959C3602}",
+            "网络",
+            Some(windows_sys::Win32::UI::Shell::SIID_MYNETWORK),
+        ),
+    ];
+
+    pub fn scan_builtin_desktop_icons() -> Vec<super::DesktopItem> {
+        let mut items = Vec::with_capacity(BUILTIN_DESKTOP_ICONS.len());
+        for (path, fallback_name, stock) in BUILTIN_DESKTOP_ICONS {
+            let path_obj = std::path::PathBuf::from(*path);
+            let meta = shell_name_and_icon(&path_obj);
+            let icon = extract_builtin_icon(path, *stock);
+            let name = meta
+                .display_name
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| (*fallback_name).to_string());
+            items.push(super::DesktopItem {
+                name,
+                path: (*path).to_string(),
+                is_dir: false,
+                kind: "app".into(),
+                builtin: true,
+                icon,
+            });
+        }
+        items
+    }
+
     fn rect_of(hwnd: HWND) -> (i32, i32, i32, i32) {
         unsafe {
             let mut r = RECT {
@@ -1415,7 +1531,7 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
         return Err("路径为空".into());
     }
     let p = Path::new(trimmed);
-    if !p.exists() {
+    if !trimmed.starts_with("::") && !p.exists() {
         return Err("文件不存在".into());
     }
     #[cfg(windows)]

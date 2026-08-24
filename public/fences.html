@@ -476,7 +476,7 @@
       }
 
       function iconFor(item) {
-        if (item.isDir) return "📁";
+        if (item?.isDir && !item?.builtin) return "📁";
         const ext = (item.name.split(".").pop() || "").toLowerCase();
         const map = {
           lnk: "🔗", exe: "⚙️", txt: "📄", pdf: "📕",
@@ -497,6 +497,30 @@
         }
       }
 
+      const BUILTIN_ORDER = [
+        "20D04FE0-3AEA-1069-A2D8-08002B30309D",
+        "645FF040-5081-101B-9F08-00AA002F954E",
+        "F02C1A0D-B21F-4110-8426-0A0C959C3602",
+      ];
+
+      function builtinRank(path) {
+        const upper = String(path || "").toUpperCase();
+        const idx = BUILTIN_ORDER.findIndex((id) => upper.includes(id));
+        return idx >= 0 ? idx : 99;
+      }
+
+      function partitionApps(list) {
+        const builtins = [];
+        const regular = [];
+        for (const item of list) {
+          if (item.kind !== "app") continue;
+          if (item.builtin) builtins.push(item);
+          else regular.push(item);
+        }
+        builtins.sort((a, b) => builtinRank(a.path) - builtinRank(b.path));
+        return [...builtins, ...loadOrder(APP_ORDER_KEY, regular)];
+      }
+
       function applyAppInset() {
         const apps = document.getElementById("apps");
         if (!apps) return;
@@ -506,10 +530,13 @@
 
       function makeCell(item, native, group) {
         const cell = document.createElement("div");
-        cell.className = native ? "cell native draggable" : "cell draggable";
+        const draggable = group && !item.builtin;
+        cell.className = native
+          ? `cell native${draggable ? " draggable" : ""}`
+          : `cell${draggable ? " draggable" : ""}`;
         cell.title = item.path;
         const iconWrap = document.createElement("div");
-        iconWrap.className = "icon" + (item.isDir ? " folder" : "");
+        iconWrap.className = "icon" + (item.isDir && !item.builtin ? " folder" : "");
         if (item.icon) {
           const img = document.createElement("img");
           img.alt = "";
@@ -526,7 +553,7 @@
         cell.appendChild(iconWrap);
         cell.appendChild(name);
         cell.addEventListener("dblclick", () => openItem(item.path));
-        if (group) setupCellDrag(cell, item, group);
+        if (group && !item.builtin) setupCellDrag(cell, item, group);
         return cell;
       }
 
@@ -556,7 +583,7 @@
       function render(items) {
         applyAppInset();
         const list = items || [];
-        const apps = loadOrder(APP_ORDER_KEY, list.filter((i) => i.kind === "app"));
+        const apps = partitionApps(list);
         const images = loadOrder(IMAGE_ORDER_KEY, list.filter((i) => i.kind === "image"));
         const documents = loadOrder(
           DOC_ORDER_KEY,
