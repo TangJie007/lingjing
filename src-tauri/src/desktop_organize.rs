@@ -49,12 +49,19 @@ fn scan_dir(dir: &Path, items: &mut Vec<DesktopItem>) {
             continue;
         };
         let is_dir = meta.is_dir();
-        let (display_name, icon) = shell_name_and_icon(&path, &name, is_dir);
+        let kind = classify_kind(&name, is_dir);
+        let (display_name, mut icon) = shell_name_and_icon(&path, &name, is_dir);
+        #[cfg(windows)]
+        if kind == "image" {
+            if let Some(preview) = win::image_file_preview(&path, 96) {
+                icon = Some(preview);
+            }
+        }
         items.push(DesktopItem {
             name: display_name,
             path: path.to_string_lossy().to_string(),
             is_dir,
-            kind: classify_kind(&name, is_dir),
+            kind,
             icon,
         });
     }
@@ -358,12 +365,14 @@ mod win {
         rgba_to_png_data_url(&rgba, w as u32, h as u32)
     }
 
-    unsafe fn shell_item_icon_png(path: &std::path::Path, px: i32) -> Option<String> {
+    unsafe fn shell_item_image_png(
+        path: &std::path::Path,
+        px: i32,
+        flags: i32,
+    ) -> Option<String> {
         use windows_sys::Win32::Foundation::SIZE;
         use windows_sys::Win32::Graphics::Gdi::{DeleteObject, HBITMAP};
-        use windows_sys::Win32::UI::Shell::{
-            SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
-        };
+        use windows_sys::Win32::UI::Shell::SHCreateItemFromParsingName;
 
         #[repr(C)]
         struct FactoryVtbl {
@@ -405,7 +414,6 @@ mod win {
             return None;
         }
         let mut hbmp: HBITMAP = std::ptr::null_mut();
-        let flags = SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK;
         let img_hr = ((*vtbl).get_image)(
             obj,
             SIZE { cx: px, cy: px },
@@ -419,6 +427,21 @@ mod win {
         let url = hbitmap_to_png_data_url(hbmp);
         DeleteObject(hbmp);
         url
+    }
+
+    pub fn image_file_preview(path: &std::path::Path, px: i32) -> Option<String> {
+        use windows_sys::Win32::UI::Shell::{
+            SIIGBF_BIGGERSIZEOK, SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY,
+        };
+
+        unsafe {
+            shell_item_image_png(
+                path,
+                px,
+                SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP,
+            )
+            .or_else(|| shell_item_image_png(path, px, SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP))
+        }
     }
 
     unsafe fn hicon_native_size(hicon: HICON) -> i32 {
@@ -875,7 +898,8 @@ mod win {
                     DestroyIcon(best);
                 }
                 if icon.is_none() {
-                    icon = shell_item_icon_png(path, 48);
+                    use windows_sys::Win32::UI::Shell::{SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
+                    icon = shell_item_image_png(path, 48, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK);
                 }
             }
             if icon.is_none() && ok != 0 && !info.hIcon.is_null() {
