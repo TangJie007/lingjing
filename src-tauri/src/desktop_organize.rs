@@ -1322,6 +1322,7 @@ pub fn reassert(app: &AppHandle) {
     };
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
+        let _ = window.set_ignore_cursor_events(false);
         let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
     }
 }

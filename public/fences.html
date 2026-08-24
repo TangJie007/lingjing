@@ -107,6 +107,29 @@
         border-radius: 4px;
         background: transparent;
         box-shadow: none;
+        cursor: grab;
+        touch-action: none;
+      }
+      .cell.native:active { cursor: grabbing; }
+      .cell.native.is-dragging-source {
+        opacity: 0.28;
+        cursor: grabbing !important;
+      }
+      .cell.native.is-dragging {
+        cursor: grabbing !important;
+      }
+      .cell.native.swap-target {
+        background: rgba(255, 255, 255, 0.2);
+        outline: 1px dashed rgba(255, 255, 255, 0.55);
+      }
+      .drag-ghost {
+        position: fixed;
+        z-index: 9999;
+        width: 76px;
+        height: 88px;
+        pointer-events: none;
+        opacity: 0.94;
+        filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
       }
       .cell.native:hover,
       .cell.native:active,
@@ -116,6 +139,12 @@
         box-shadow: none;
         background: rgba(255, 255, 255, 0.14);
       }
+      .cell.native .icon,
+      .cell.native .icon img {
+        -webkit-user-drag: none;
+        user-select: none;
+        pointer-events: none;
+      }
       .cell.native .name {
         width: 100%;
         height: 30px;
@@ -123,6 +152,8 @@
         line-height: 15px;
         color: #fff;
         font-weight: 400;
+        pointer-events: none;
+        user-select: none;
         text-shadow:
           0 0 3px #000,
           1px 1px 1px #000,
@@ -187,6 +218,172 @@
       const appsEl = document.getElementById("apps");
       const imagesEl = document.getElementById("images");
       const documentsEl = document.getElementById("documents");
+      const APP_ORDER_KEY = "lingscape-fence-app-order";
+      let appItems = [];
+      let activeDrag = null;
+
+      function saveAppOrder(paths) {
+        try {
+          localStorage.setItem(APP_ORDER_KEY, JSON.stringify(paths));
+        } catch (_) {}
+      }
+
+      function loadAppOrder(apps) {
+        try {
+          const saved = JSON.parse(localStorage.getItem(APP_ORDER_KEY) || "[]");
+          const map = new Map(apps.map((a) => [a.path, a]));
+          const out = [];
+          for (const p of saved) {
+            if (map.has(p)) {
+              out.push(map.get(p));
+              map.delete(p);
+            }
+          }
+          for (const a of apps) {
+            if (map.has(a.path)) out.push(a);
+          }
+          return out;
+        } catch (_) {
+          return apps;
+        }
+      }
+
+      function createDragGhost(cell) {
+        const ghost = cell.cloneNode(true);
+        ghost.classList.add("drag-ghost", "cell", "native");
+        ghost.classList.remove("is-dragging-source", "swap-target");
+        document.body.appendChild(ghost);
+        return ghost;
+      }
+
+      function animateGhostBack(ghost, cell, done) {
+        const rect = cell.getBoundingClientRect();
+        ghost.style.transition = "left 180ms ease, top 180ms ease, opacity 180ms ease";
+        ghost.style.left = `${rect.left}px`;
+        ghost.style.top = `${rect.top}px`;
+        ghost.style.opacity = "0";
+        window.setTimeout(() => {
+          ghost.remove();
+          done();
+        }, 190);
+      }
+
+      function onDragMove(e) {
+        const drag = activeDrag;
+        if (!drag) return;
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+
+        if (!drag.moved) {
+          drag.moved = true;
+          drag.cell.classList.add("is-dragging-source");
+          document.body.style.cursor = "grabbing";
+          drag.ghost = createDragGhost(drag.cell);
+          const rect = drag.cell.getBoundingClientRect();
+          drag.offsetX = drag.startX - rect.left;
+          drag.offsetY = drag.startY - rect.top;
+        }
+
+        drag.ghost.style.left = `${e.clientX - drag.offsetX}px`;
+        drag.ghost.style.top = `${e.clientY - drag.offsetY}px`;
+
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const target = under?.closest?.(".cell.native");
+        if (drag.swapTarget && drag.swapTarget !== target) {
+          drag.swapTarget.classList.remove("swap-target");
+        }
+        drag.swapTarget =
+          target && target !== drag.cell && target.closest("#apps") ? target : null;
+        if (drag.swapTarget) drag.swapTarget.classList.add("swap-target");
+      }
+
+      function finishDrag(e) {
+        const drag = activeDrag;
+        if (!drag) return;
+        activeDrag = null;
+
+        try {
+          drag.cell.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+        drag.cell.classList.remove("is-dragging");
+
+        if (drag.swapTarget) drag.swapTarget.classList.remove("swap-target");
+        document.body.style.cursor = "";
+
+        const cleanupSource = () => drag.cell.classList.remove("is-dragging-source");
+
+        if (!drag.moved) {
+          cleanupSource();
+          if (drag.ghost) drag.ghost.remove();
+          return;
+        }
+
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const target = under?.closest?.(".cell.native");
+        const toIndex =
+          target && target !== drag.cell && target.closest("#apps")
+            ? appItems.findIndex((a) => a.path === target.dataset.path)
+            : -1;
+
+        if (toIndex >= 0 && toIndex !== drag.fromIndex) {
+          const next = [...appItems];
+          [next[drag.fromIndex], next[toIndex]] = [next[toIndex], next[drag.fromIndex]];
+          saveAppOrder(next.map((a) => a.path));
+          if (drag.ghost) drag.ghost.remove();
+          cleanupSource();
+          renderApps(next);
+          return;
+        }
+
+        if (drag.ghost) {
+          animateGhostBack(drag.ghost, drag.cell, cleanupSource);
+        } else {
+          cleanupSource();
+        }
+      }
+
+      function setupAppDrag(cell, item) {
+        cell.dataset.path = item.path;
+        cell.addEventListener("dragstart", (e) => e.preventDefault());
+        cell.addEventListener("selectstart", (e) => e.preventDefault());
+
+        cell.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          const fromIndex = appItems.findIndex((a) => a.path === item.path);
+          if (fromIndex < 0) return;
+          try {
+            cell.setPointerCapture(e.pointerId);
+          } catch (_) {}
+          activeDrag = {
+            cell,
+            pointerId: e.pointerId,
+            fromIndex,
+            startX: e.clientX,
+            startY: e.clientY,
+            moved: false,
+            ghost: null,
+            swapTarget: null,
+          };
+          cell.classList.add("is-dragging");
+        });
+
+        cell.addEventListener("pointermove", (e) => {
+          if (!activeDrag || activeDrag.cell !== cell || e.pointerId !== activeDrag.pointerId) return;
+          onDragMove(e);
+        });
+
+        cell.addEventListener("pointerup", (e) => {
+          if (!activeDrag || activeDrag.cell !== cell || e.pointerId !== activeDrag.pointerId) return;
+          finishDrag(e);
+        });
+
+        cell.addEventListener("pointercancel", (e) => {
+          if (!activeDrag || activeDrag.cell !== cell || e.pointerId !== activeDrag.pointerId) return;
+          finishDrag(e);
+        });
+      }
 
       function iconFor(item) {
         if (item.isDir) return "📁";
@@ -226,6 +423,8 @@
         if (item.icon) {
           const img = document.createElement("img");
           img.alt = "";
+          img.draggable = false;
+          img.addEventListener("dragstart", (ev) => ev.preventDefault());
           img.src = item.icon;
           iconWrap.appendChild(img);
         } else {
@@ -237,7 +436,14 @@
         cell.appendChild(iconWrap);
         cell.appendChild(name);
         cell.addEventListener("dblclick", () => openItem(item.path));
+        if (native) setupAppDrag(cell, item);
         return cell;
+      }
+
+      function renderApps(apps) {
+        appItems = apps;
+        appsEl.innerHTML = "";
+        for (const item of apps) appsEl.appendChild(makeCell(item, true));
       }
 
       function fillGrid(el, items, emptyText) {
@@ -255,11 +461,10 @@
       function render(items) {
         applyAppInset();
         const list = items || [];
-        const apps = list.filter((i) => i.kind === "app");
+        const apps = loadAppOrder(list.filter((i) => i.kind === "app"));
         const images = list.filter((i) => i.kind === "image");
         const documents = list.filter((i) => i.kind === "document" || i.kind === "other");
-        appsEl.innerHTML = "";
-        for (const item of apps) appsEl.appendChild(makeCell(item, true));
+        renderApps(apps);
         fillGrid(imagesEl, images, "暂无图片");
         fillGrid(documentsEl, documents, "暂无文档");
       }
