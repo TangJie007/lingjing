@@ -7,6 +7,9 @@
 
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use windows::core::{Interface, PCWSTR};
 use windows::Win32::Foundation::{HWND, POINT};
@@ -32,6 +35,15 @@ use crate::desktop_organize::ShellMenuEntry;
 
 const CMD_FIRST: u32 = 1;
 const CMD_LAST: u32 = 0x7fff;
+
+/// Reserved IDs for built-in fallback when Shell extensions block QueryContextMenu.
+pub const BUILTIN_CMD_BASE: u32 = 0xF000_0000;
+pub const BUILTIN_OPEN: u32 = BUILTIN_CMD_BASE + 1;
+pub const BUILTIN_SHOW_IN_FOLDER: u32 = BUILTIN_CMD_BASE + 2;
+pub const BUILTIN_OPEN_WITH: u32 = BUILTIN_CMD_BASE + 3;
+pub const BUILTIN_PROPERTIES: u32 = BUILTIN_CMD_BASE + 4;
+
+const QUERY_MENU_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn stage(s: &str) {
     crate::desktop_organize::shell_host_stage(s);
@@ -294,7 +306,59 @@ unsafe fn initialize_submenu_path(
     Ok(current)
 }
 
-pub fn list_shell_context_menu(
+fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
+    let is_dir = std::path::Path::new(path).is_dir();
+    let mut items = vec![ShellMenuEntry {
+        id: BUILTIN_OPEN,
+        label: "打开".into(),
+        disabled: false,
+        separator: false,
+        icon: None,
+        children: None,
+        menu_path: Vec::new(),
+    }];
+    if !is_dir {
+        items.push(ShellMenuEntry {
+            id: BUILTIN_OPEN_WITH,
+            label: "打开方式".into(),
+            disabled: false,
+            separator: false,
+            icon: None,
+            children: None,
+            menu_path: Vec::new(),
+        });
+    }
+    items.push(ShellMenuEntry {
+        id: BUILTIN_SHOW_IN_FOLDER,
+        label: "在资源管理器中显示".into(),
+        disabled: false,
+        separator: false,
+        icon: None,
+        children: None,
+        menu_path: Vec::new(),
+    });
+    items.push(ShellMenuEntry {
+        id: 0,
+        label: String::new(),
+        disabled: true,
+        separator: true,
+        icon: None,
+        children: None,
+        menu_path: Vec::new(),
+    });
+    items.push(ShellMenuEntry {
+        id: BUILTIN_PROPERTIES,
+        label: "属性".into(),
+        disabled: false,
+        separator: false,
+        icon: None,
+        children: None,
+        menu_path: Vec::new(),
+    });
+    items
+}
+
+fn list_shell_context_menu_inner(
     hwnd: HWND,
     path: Option<&str>,
 ) -> Result<Vec<ShellMenuEntry>, String> {
@@ -315,6 +379,32 @@ pub fn list_shell_context_menu(
         stage("完成");
         let _ = DestroyMenu(hmenu);
         Ok(items)
+    }
+}
+
+pub fn list_shell_context_menu(
+    hwnd: HWND,
+    path: Option<&str>,
+) -> Result<Vec<ShellMenuEntry>, String> {
+    let path_owned = path.map(|s| s.to_string());
+    let hwnd_raw = hwnd.0 as isize;
+    let (tx, rx) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let hwnd = HWND(hwnd_raw as *mut _);
+        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref());
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
+        Ok(Ok(items)) if !items.is_empty() => Ok(items),
+        Ok(Ok(_)) | Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Timeout) => {
+            if let Some(p) = path {
+                stage("QueryContextMenu 超时，使用内置菜单");
+                Ok(fallback_menu(p))
+            } else {
+                Err("桌面背景菜单加载超时".into())
+            }
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err("菜单加载线程异常退出".into()),
     }
 }
 
@@ -345,12 +435,19 @@ pub fn list_shell_context_submenu(
     }
 }
 
+pub fn is_builtin_command(command_id: u32) -> bool {
+    command_id >= BUILTIN_CMD_BASE
+}
+
 pub fn invoke_shell_context_command(
     hwnd: HWND,
     path: Option<&str>,
     command_id: u32,
     menu_path: &[u32],
 ) -> Result<(), String> {
+    if is_builtin_command(command_id) {
+        return Err("内置命令应在上层处理".into());
+    }
     if command_id < CMD_FIRST {
         return Err("无效命令".into());
     }

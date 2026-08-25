@@ -1797,6 +1797,10 @@ pub async fn invoke_desktop_shell_context_command(
 
     #[cfg(windows)]
     {
+        if crate::shell_menu::is_builtin_command(command_id) {
+            let path = path_opt.ok_or_else(|| "路径为空".to_string())?;
+            return dispatch_builtin_shell_command(&path, command_id);
+        }
         return tauri::async_runtime::spawn_blocking(move || {
             let hwnd = crate::shell_menu::create_host_window()?;
             crate::shell_menu::pump_messages();
@@ -1817,6 +1821,18 @@ pub async fn invoke_desktop_shell_context_command(
     {
         let _ = (_window, path_opt, command_id, menu_path);
         Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+#[cfg(windows)]
+fn dispatch_builtin_shell_command(path: &str, command_id: u32) -> Result<(), String> {
+    use crate::shell_menu::{BUILTIN_OPEN, BUILTIN_OPEN_WITH, BUILTIN_PROPERTIES, BUILTIN_SHOW_IN_FOLDER};
+    match command_id {
+        BUILTIN_OPEN => open_desktop_item(path.to_string()),
+        BUILTIN_SHOW_IN_FOLDER => show_desktop_item_in_folder(path.to_string()),
+        BUILTIN_OPEN_WITH => open_desktop_item_with(path.to_string()),
+        BUILTIN_PROPERTIES => open_desktop_item_properties(path.to_string()),
+        _ => Err("未知内置命令".into()),
     }
 }
 
