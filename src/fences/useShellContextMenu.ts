@@ -1,48 +1,76 @@
-import { onMounted, onUnmounted, ref } from "vue";
-import type { DesktopItem, ShellMenuEntry } from "./types";
+import { ref } from "vue";
+import type { ShellMenuEntry } from "./types";
 
 /**
- * Prefer the HTML shell menu. Native TrackPopupMenu on the embedded fence HWND
- * often returns Ok without a visible popup, which previously skipped fallback.
+ * Shell context menu data layer for reka-ui ContextMenu.
+ * UI open/close + positioning are owned by ContextMenuTrigger/Content.
  */
 export function useShellContextMenu() {
-  const open = ref(false);
   const entries = ref<ShellMenuEntry[]>([]);
   const path = ref("");
-  const style = ref({ left: "0px", top: "0px" });
-  let lastOpenAt = 0;
+  const loading = ref(false);
   let generation = 0;
+  let lastPrepareAt = 0;
+  let lastPreparePath = "\0";
 
-  function clearUi() {
-    open.value = false;
+  function clear() {
     entries.value = [];
-  }
-
-  function hide() {
-    clearUi();
     path.value = "";
-    generation += 1;
+    loading.value = false;
   }
 
-  function place(x: number, y: number) {
-    const menu = document.getElementById("shell-ctx");
-    const pad = 8;
-    const w = menu?.offsetWidth || 220;
-    const h = menu?.offsetHeight || 240;
-    let left = x;
-    let top = y;
-    if (left + w > window.innerWidth - pad) {
-      left = Math.max(pad, window.innerWidth - w - pad);
+  function onOpenChange(open: boolean) {
+    if (!open) {
+      generation += 1;
+      clear();
     }
-    if (top + h > window.innerHeight - pad) {
-      top = Math.max(pad, window.innerHeight - h - pad);
+  }
+
+  async function prepare(targetPath: string) {
+    if (!window.__TAURI__) return;
+
+    const now = Date.now();
+    // pointerdown + contextmenu both call prepare for the same gesture
+    if (
+      targetPath === lastPreparePath &&
+      now - lastPrepareAt < 400 &&
+      (loading.value || entries.value.length)
+    ) {
+      return;
     }
-    style.value = { left: `${left}px`, top: `${top}px` };
+    lastPrepareAt = now;
+    lastPreparePath = targetPath;
+
+    const myGen = ++generation;
+    path.value = targetPath;
+    loading.value = true;
+    // Clear immediately so we never show another item's shell commands.
+    entries.value = [];
+
+    try {
+      const list = await window.__TAURI__.core.invoke<ShellMenuEntry[]>(
+        "list_desktop_shell_context_menu",
+        { path: targetPath },
+      );
+      if (myGen !== generation) return;
+      entries.value = list || [];
+      if (!entries.value.length) {
+        console.warn("shell context menu returned no entries", {
+          path: targetPath,
+        });
+      }
+    } catch (e) {
+      console.warn("shell context menu failed", e);
+      if (myGen === generation) entries.value = [];
+    } finally {
+      if (myGen === generation) loading.value = false;
+    }
   }
 
   async function runCommand(commandId: number) {
     const p = path.value;
-    hide();
+    generation += 1;
+    clear();
     if (!window.__TAURI__) return;
     try {
       await window.__TAURI__.core.invoke("invoke_desktop_shell_context_command", {
@@ -54,72 +82,5 @@ export function useShellContextMenu() {
     }
   }
 
-  async function show(item: DesktopItem | null, x: number, y: number) {
-    if (!window.__TAURI__) return;
-    const now = Date.now();
-    if (now - lastOpenAt < 250) return;
-    lastOpenAt = now;
-
-    const targetPath = item?.path || "";
-    const myGen = ++generation;
-    clearUi();
-    path.value = targetPath;
-
-    try {
-      const list = await window.__TAURI__.core.invoke<ShellMenuEntry[]>(
-        "list_desktop_shell_context_menu",
-        { path: targetPath },
-      );
-      if (myGen !== generation) return;
-      entries.value = list || [];
-      if (!entries.value.length) {
-        console.warn("shell context menu returned no entries", { path: targetPath });
-      }
-      path.value = targetPath;
-      open.value = true;
-      style.value = { left: `${x}px`, top: `${y}px` };
-      requestAnimationFrame(() => {
-        if (myGen === generation) place(x, y);
-      });
-    } catch (e) {
-      console.warn("shell context menu failed", e);
-      if (myGen === generation) clearUi();
-    }
-  }
-
-  function onDocPointerDown(e: PointerEvent) {
-    if (!open.value) return;
-    const menu = document.getElementById("shell-ctx");
-    if (menu && menu.contains(e.target as Node)) return;
-    // Ignore the same right-button press that opened the menu.
-    if (e.button === 2) return;
-    hide();
-  }
-
-  function onWindowBlur() {
-    if (open.value) {
-      clearUi();
-      path.value = "";
-    }
-  }
-
-  function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") hide();
-  }
-
-  onMounted(() => {
-    document.addEventListener("pointerdown", onDocPointerDown);
-    window.addEventListener("blur", onWindowBlur);
-    window.addEventListener("resize", hide);
-    document.addEventListener("keydown", onKeyDown);
-  });
-
-  onUnmounted(() => {
-    document.removeEventListener("pointerdown", onDocPointerDown);
-    window.removeEventListener("blur", onWindowBlur);
-    window.removeEventListener("resize", hide);
-    document.removeEventListener("keydown", onKeyDown);
-  });
-
-  return { open, entries, path, style, show, hide, runCommand };
+  return { entries, path, loading, prepare, runCommand, onOpenChange };
 }

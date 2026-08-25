@@ -10,7 +10,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   open: [];
-  context: [e: MouseEvent];
 }>();
 
 const canDrag = computed(() => !props.item.builtin);
@@ -23,15 +22,6 @@ const canDrag = computed(() => !props.item.builtin);
     :data-path="item.path"
     :title="item.path"
     @dblclick="emit('open')"
-    @contextmenu.prevent.stop="emit('context', $event)"
-    @pointerdown="
-      (e: PointerEvent) => {
-        if (e.button !== 2) return;
-        e.preventDefault();
-        e.stopPropagation();
-        emit('context', e);
-      }
-    "
   >
     <div class="icon" :class="{ folder: item.isDir && !item.builtin }">
       <img v-if="item.icon" :src="item.icon" alt="" draggable="false" />

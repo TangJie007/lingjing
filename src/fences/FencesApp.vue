@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from "vue";
 import type { SortableEvent } from "sortablejs";
+import {
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuPortal,
+  ContextMenuRoot,
+  ContextMenuTrigger,
+} from "reka-ui";
 import FenceGroup from "./components/FenceGroup.vue";
 import ShellMenuEntries from "./components/ShellMenuEntries.vue";
 import {
@@ -92,11 +99,11 @@ const dragging = ref(false);
 const fenceDraggingKey = ref<FenceGroupKey | null>(null);
 
 const {
-  open: shellOpen,
   entries: shellEntries,
-  style: shellStyle,
-  show: showShellMenu,
+  loading: shellLoading,
+  prepare: prepareShellMenu,
   runCommand: runShellCommand,
+  onOpenChange: onShellOpenChange,
 } = useShellContextMenu();
 
 const shellDrag = useShellFileDrag();
@@ -181,17 +188,15 @@ async function openItem(path: string) {
   }
 }
 
-function onBlankContext(e: MouseEvent) {
+function pathFromEvent(e: Event): string {
   const t = e.target as HTMLElement | null;
-  if (t?.closest?.(".cell") || t?.closest?.("#shell-ctx")) return;
-  e.preventDefault();
-  e.stopPropagation();
-  void showShellMenu(null, e.clientX, e.clientY);
+  const cell = t?.closest?.(".cell") as HTMLElement | null;
+  return cell?.dataset?.path || "";
 }
 
-function onBlankPointerDown(e: PointerEvent) {
-  if (e.button !== 2) return;
-  onBlankContext(e);
+/** Do not preventDefault — ContextMenuTrigger opens only if default is intact. */
+function onStageContextMenu(e: MouseEvent) {
+  void prepareShellMenu(pathFromEvent(e));
 }
 
 onMounted(async () => {
@@ -217,62 +222,67 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="stage" @contextmenu="onBlankContext" @pointerdown="onBlankPointerDown">
-    <FenceGroup
-      group-key="app"
-      v-model:items="groups.app.items"
-      native
-      host-id="apps"
-      :drag-group="appDragGroup"
-      @open="openItem"
-      @context="(item, e) => showShellMenu(item, e.clientX, e.clientY)"
-      @sorted="onSorted('app')"
-      @added="onAdded('app', $event)"
-      @start="onDragStart('app', $event)"
-      @end="onDragEnd('app')"
-      @move="onDragMove"
-    />
-
-    <div id="files">
-      <section
-        v-for="key in fileKeys"
-        :key="key"
-        class="fence"
-        :class="{
-          compact: groups[key].compact,
-          'fence-dragging': fenceDraggingKey === key,
-        }"
-        :data-kind="key"
+  <ContextMenuRoot @update:open="onShellOpenChange">
+    <ContextMenuTrigger as-child>
+      <div
+        id="stage"
+        @contextmenu="onStageContextMenu"
       >
-        <div class="fence-title">{{ groups[key].title }}</div>
         <FenceGroup
-          :group-key="key"
-          v-model:items="groups[key].items"
-          :empty-text="emptyTextFor(key)"
-          :host-id="hostId[key]"
-          :drag-group="fileDragGroup"
+          group-key="app"
+          v-model:items="groups.app.items"
+          native
+          host-id="apps"
+          :drag-group="appDragGroup"
           @open="openItem"
-          @context="(item, e) => showShellMenu(item, e.clientX, e.clientY)"
-          @sorted="onSorted(key)"
-          @added="onAdded(key, $event)"
-          @start="onDragStart(key, $event)"
-          @end="onDragEnd(key)"
+          @sorted="onSorted('app')"
+          @added="onAdded('app', $event)"
+          @start="onDragStart('app', $event)"
+          @end="onDragEnd('app')"
           @move="onDragMove"
         />
-      </section>
-    </div>
-  </div>
 
-  <ul
-    id="shell-ctx"
-    role="menu"
-    :class="{ open: shellOpen }"
-    :style="shellStyle"
-  >
-    <ShellMenuEntries
-      v-if="shellOpen"
-      :entries="shellEntries"
-      @command="runShellCommand"
-    />
-  </ul>
+        <div id="files">
+          <section
+            v-for="key in fileKeys"
+            :key="key"
+            class="fence"
+            :class="{
+              compact: groups[key].compact,
+              'fence-dragging': fenceDraggingKey === key,
+            }"
+            :data-kind="key"
+          >
+            <div class="fence-title">{{ groups[key].title }}</div>
+            <FenceGroup
+              :group-key="key"
+              v-model:items="groups[key].items"
+              :empty-text="emptyTextFor(key)"
+              :host-id="hostId[key]"
+              :drag-group="fileDragGroup"
+              @open="openItem"
+              @sorted="onSorted(key)"
+              @added="onAdded(key, $event)"
+              @start="onDragStart(key, $event)"
+              @end="onDragEnd(key)"
+              @move="onDragMove"
+            />
+          </section>
+        </div>
+      </div>
+    </ContextMenuTrigger>
+
+    <ContextMenuPortal>
+      <ContextMenuContent class="shell-ctx" :collision-padding="8">
+        <ContextMenuItem v-if="shellLoading && !shellEntries.length" class="item" disabled>
+          <span class="lbl">加载中…</span>
+        </ContextMenuItem>
+        <ShellMenuEntries
+          v-else
+          :entries="shellEntries"
+          @command="runShellCommand"
+        />
+      </ContextMenuContent>
+    </ContextMenuPortal>
+  </ContextMenuRoot>
 </template>

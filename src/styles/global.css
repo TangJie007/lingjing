@@ -134,13 +134,60 @@ input, textarea {
   color: var(--text);
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb {
-  background: rgba(31, 35, 41, 0.18);
-  border-radius: 8px;
+/* iOS-like overlay scrollbars (thin, rounded, transparent track) */
+.window {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(60, 60, 67, 0.28) transparent;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(31, 35, 41, 0.32);
+.window * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(60, 60, 67, 0.28) transparent;
+}
+.window::-webkit-scrollbar,
+.window *::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+  background: transparent;
+}
+.window::-webkit-scrollbar-track,
+.window *::-webkit-scrollbar-track,
+.window::-webkit-scrollbar-corner,
+.window *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.window::-webkit-scrollbar-thumb,
+.window *::-webkit-scrollbar-thumb {
+  background-color: rgba(60, 60, 67, 0.22);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  min-height: 24px;
+  transition: background-color 160ms ease;
+}
+.window::-webkit-scrollbar-thumb:hover,
+.window *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(60, 60, 67, 0.4);
+}
+.window::-webkit-scrollbar-thumb:active,
+.window *::-webkit-scrollbar-thumb:active {
+  background-color: rgba(60, 60, 67, 0.55);
+}
+
+:root[data-theme="dark"] .window,
+:root[data-theme="dark"] .window * {
+  scrollbar-color: rgba(235, 235, 245, 0.28) transparent;
+}
+:root[data-theme="dark"] .window::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .window *::-webkit-scrollbar-thumb {
+  background-color: rgba(235, 235, 245, 0.22);
+}
+:root[data-theme="dark"] .window::-webkit-scrollbar-thumb:hover,
+:root[data-theme="dark"] .window *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(235, 235, 245, 0.4);
+}
+:root[data-theme="dark"] .window::-webkit-scrollbar-thumb:active,
+:root[data-theme="dark"] .window *::-webkit-scrollbar-thumb:active {
+  background-color: rgba(235, 235, 245, 0.55);
 }
 
 /* ============================================================

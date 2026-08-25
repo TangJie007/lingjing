@@ -16,7 +16,6 @@ defineProps<{
 const emit = defineEmits<{
   "update:items": [items: DesktopItem[]];
   open: [path: string];
-  context: [item: DesktopItem, e: MouseEvent];
   sorted: [];
   added: [evt: SortableEvent];
   start: [evt: SortableEvent];
@@ -64,7 +63,6 @@ function onMove(evt: MoveEvent, originalEvent: Event) {
       :item="item"
       :native="native"
       @open="emit('open', item.path)"
-      @context="emit('context', item, $event)"
     />
     <div v-if="!items.length && emptyText" class="fence-empty no-drag">
       {{ emptyText }}

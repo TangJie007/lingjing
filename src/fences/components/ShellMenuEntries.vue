@@ -1,76 +1,61 @@
 <script setup lang="ts">
+import {
+  ContextMenuItem,
+  ContextMenuPortal,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from "reka-ui";
 import type { ShellMenuEntry } from "../types";
 
 defineProps<{
   entries: ShellMenuEntry[];
-  nested?: boolean;
 }>();
 
 const emit = defineEmits<{
   command: [id: number];
 }>();
 
-function onItemClick(entry: ShellMenuEntry) {
-  if (entry.disabled) return;
-  if (entry.children && entry.children.length) return;
-  if (entry.id == null) return;
+function onSelect(entry: ShellMenuEntry) {
+  if (entry.disabled || entry.id == null) return;
   emit("command", entry.id);
 }
 </script>
 
 <template>
-  <ul v-if="nested" class="sub">
-    <template v-for="(entry, idx) in entries" :key="idx">
-      <li v-if="entry.separator" class="sep" role="separator" />
-      <li
-        v-else
-        class="item"
-        :class="{
-          disabled: !!entry.disabled,
-          'has-sub': !!(entry.children && entry.children.length),
-        }"
-        role="menuitem"
-        @click.stop.prevent="onItemClick(entry)"
+  <template v-for="(entry, idx) in entries" :key="idx">
+    <ContextMenuSeparator v-if="entry.separator" class="sep" />
+    <ContextMenuSub v-else-if="entry.children">
+      <ContextMenuSubTrigger
+        class="item has-sub"
+        :disabled="!!entry.disabled"
       >
         <span class="ico">
           <img v-if="entry.icon" :src="entry.icon" alt="" />
         </span>
         <span class="lbl">{{ entry.label || "" }}</span>
-        <span v-if="entry.children?.length" class="arrow">›</span>
-        <ShellMenuEntries
-          v-if="entry.children?.length"
-          nested
-          :entries="entry.children"
-          @command="emit('command', $event)"
-        />
-      </li>
-    </template>
-  </ul>
-  <template v-else>
-    <template v-for="(entry, idx) in entries" :key="idx">
-      <li v-if="entry.separator" class="sep" role="separator" />
-      <li
-        v-else
-        class="item"
-        :class="{
-          disabled: !!entry.disabled,
-          'has-sub': !!(entry.children && entry.children.length),
-        }"
-        role="menuitem"
-        @click.stop.prevent="onItemClick(entry)"
-      >
-        <span class="ico">
-          <img v-if="entry.icon" :src="entry.icon" alt="" />
-        </span>
-        <span class="lbl">{{ entry.label || "" }}</span>
-        <span v-if="entry.children?.length" class="arrow">›</span>
-        <ShellMenuEntries
-          v-if="entry.children?.length"
-          nested
-          :entries="entry.children"
-          @command="emit('command', $event)"
-        />
-      </li>
-    </template>
+        <span class="arrow">›</span>
+      </ContextMenuSubTrigger>
+      <ContextMenuPortal>
+        <ContextMenuSubContent class="shell-ctx-sub" :side-offset="2">
+          <ShellMenuEntries
+            :entries="entry.children"
+            @command="emit('command', $event)"
+          />
+        </ContextMenuSubContent>
+      </ContextMenuPortal>
+    </ContextMenuSub>
+    <ContextMenuItem
+      v-else
+      class="item"
+      :disabled="!!entry.disabled || entry.id == null"
+      @select="onSelect(entry)"
+    >
+      <span class="ico">
+        <img v-if="entry.icon" :src="entry.icon" alt="" />
+      </span>
+      <span class="lbl">{{ entry.label || "" }}</span>
+    </ContextMenuItem>
   </template>
 </template>
