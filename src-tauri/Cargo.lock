@@ -2165,7 +2165,7 @@ dependencies = [
  "tauri-plugin-os",
  "tokio",
  "uuid",
- "windows-sys 0.61.2",
+ "windows 0.61.3",
 ]
 
 [[package]]

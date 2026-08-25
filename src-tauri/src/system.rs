@@ -1,10 +1,10 @@
 #[cfg(windows)]
 pub fn detect_low_power_mode() -> bool {
-    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
     unsafe {
         let mut status: MEMORYSTATUSEX = std::mem::zeroed();
         status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-        if GlobalMemoryStatusEx(&mut status) == 0 {
+        if GlobalMemoryStatusEx(&mut status).is_err() {
             return false;
         }
         // < 6 GB physical RAM → low power tier

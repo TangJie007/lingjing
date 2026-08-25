@@ -1,25 +1,17 @@
 #[cfg(windows)]
 mod win {
     use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
-    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, FindWindowExW, FindWindowW, GetClassNameW, GetParent, IsWindowVisible,
-        SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, WindowFromPoint, HHOOK, SW_HIDE, SW_SHOW,
-        WH_MOUSE_LL, WM_LBUTTONDBLCLK,
+        SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, WindowFromPoint, HHOOK, MSLLHOOKSTRUCT,
+        SW_HIDE, SW_SHOW, WH_MOUSE_LL, WM_LBUTTONDBLCLK,
     };
 
     static ENABLED: AtomicBool = AtomicBool::new(false);
     static HOOK: AtomicIsize = AtomicIsize::new(0);
-
-    #[repr(C)]
-    struct MouseLowLevelHook {
-        pt: POINT,
-        mouse_data: u32,
-        flags: u32,
-        time: u32,
-        extra_info: usize,
-    }
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -41,51 +33,69 @@ mod win {
             let workerw = wide("WorkerW");
             let shelldll = wide("SHELLDLL_DefView");
             let listview = wide("SysListView32");
-            let mut worker = FindWindowW(workerw.as_ptr(), std::ptr::null());
-            while !worker.is_null() {
-                let shell =
-                    FindWindowExW(worker, std::ptr::null_mut(), shelldll.as_ptr(), std::ptr::null());
-                if !shell.is_null() {
-                    let lv =
-                        FindWindowExW(shell, std::ptr::null_mut(), listview.as_ptr(), std::ptr::null());
-                    if !lv.is_null() {
+            let mut worker =
+                FindWindowW(PCWSTR(workerw.as_ptr()), PCWSTR::null()).unwrap_or_default();
+            while !worker.0.is_null() {
+                if let Ok(shell) = FindWindowExW(
+                    Some(worker),
+                    None,
+                    PCWSTR(shelldll.as_ptr()),
+                    PCWSTR::null(),
+                ) {
+                    if let Ok(lv) = FindWindowExW(
+                        Some(shell),
+                        None,
+                        PCWSTR(listview.as_ptr()),
+                        PCWSTR::null(),
+                    ) {
                         return lv;
                     }
                 }
-                worker = FindWindowExW(std::ptr::null_mut(), worker, workerw.as_ptr(), std::ptr::null());
+                worker = FindWindowExW(
+                    None,
+                    Some(worker),
+                    PCWSTR(workerw.as_ptr()),
+                    PCWSTR::null(),
+                )
+                .unwrap_or_default();
             }
             let progman = wide("Progman");
-            let prog = FindWindowW(progman.as_ptr(), std::ptr::null());
-            if !prog.is_null() {
-                let shell =
-                    FindWindowExW(prog, std::ptr::null_mut(), shelldll.as_ptr(), std::ptr::null());
-                if !shell.is_null() {
-                    let lv =
-                        FindWindowExW(shell, std::ptr::null_mut(), listview.as_ptr(), std::ptr::null());
-                    if !lv.is_null() {
+            if let Ok(prog) = FindWindowW(PCWSTR(progman.as_ptr()), PCWSTR::null()) {
+                if let Ok(shell) = FindWindowExW(
+                    Some(prog),
+                    None,
+                    PCWSTR(shelldll.as_ptr()),
+                    PCWSTR::null(),
+                ) {
+                    if let Ok(lv) = FindWindowExW(
+                        Some(shell),
+                        None,
+                        PCWSTR(listview.as_ptr()),
+                        PCWSTR::null(),
+                    ) {
                         return lv;
                     }
                 }
             }
-            std::ptr::null_mut()
+            HWND::default()
         }
     }
 
     fn icons_visible() -> bool {
         unsafe {
             let lv = find_desktop_listview();
-            if lv.is_null() {
+            if lv.0.is_null() {
                 return true;
             }
-            IsWindowVisible(lv) != 0
+            IsWindowVisible(lv).as_bool()
         }
     }
 
     pub fn set_icons_visible(visible: bool) {
         unsafe {
             let lv = find_desktop_listview();
-            if !lv.is_null() {
-                ShowWindow(lv, if visible { SW_SHOW } else { SW_HIDE });
+            if !lv.0.is_null() {
+                let _ = ShowWindow(lv, if visible { SW_SHOW } else { SW_HIDE });
             }
         }
     }
@@ -98,23 +108,22 @@ mod win {
         if HOOK.load(Ordering::SeqCst) != 0 {
             return;
         }
-        let module = GetModuleHandleW(std::ptr::null());
-        let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module, 0);
-        if !hook.is_null() {
-            HOOK.store(hook as isize, Ordering::SeqCst);
+        let module = GetModuleHandleW(None).ok().map(Into::into);
+        if let Ok(hook) = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module, 0) {
+            HOOK.store(hook.0 as isize, Ordering::SeqCst);
         }
     }
 
     unsafe fn uninstall_hook() {
         let handle = HOOK.swap(0, Ordering::SeqCst);
         if handle != 0 {
-            UnhookWindowsHookEx(handle as HHOOK);
+            let _ = UnhookWindowsHookEx(HHOOK(handle as *mut _));
         }
     }
 
     fn class_name(hwnd: HWND) -> String {
         let mut buf = [0u16; 256];
-        let len = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+        let len = unsafe { GetClassNameW(hwnd, &mut buf) };
         if len <= 0 {
             return String::new();
         }
@@ -123,14 +132,14 @@ mod win {
 
     fn is_desktop_hwnd(mut hwnd: HWND) -> bool {
         for _ in 0..10 {
-            if hwnd.is_null() {
+            if hwnd.0.is_null() {
                 break;
             }
             let name = class_name(hwnd);
             if name == "SysListView32" || name == "WorkerW" || name == "Progman" {
                 return true;
             }
-            hwnd = unsafe { GetParent(hwnd) };
+            hwnd = unsafe { GetParent(hwnd).unwrap_or_default() };
         }
         false
     }
@@ -144,14 +153,17 @@ mod win {
     }
 
     unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-        let hook = HOOK.load(Ordering::SeqCst) as HHOOK;
-        if code >= 0 && ENABLED.load(Ordering::SeqCst) && wparam == WM_LBUTTONDBLCLK as WPARAM {
-            let info = &*(lparam as *const MouseLowLevelHook);
+        let hook = HHOOK(HOOK.load(Ordering::SeqCst) as *mut _);
+        if code >= 0
+            && ENABLED.load(Ordering::SeqCst)
+            && wparam.0 == WM_LBUTTONDBLCLK as usize
+        {
+            let info = &*(lparam.0 as *const MSLLHOOKSTRUCT);
             if is_desktop_at_point(info.pt.x, info.pt.y) {
                 toggle_icons_visible();
             }
         }
-        CallNextHookEx(hook, code, wparam, lparam)
+        CallNextHookEx(Some(hook), code, wparam, lparam)
     }
 }
 
@@ -160,22 +172,22 @@ pub use win::{set_double_click_enabled, set_icons_visible};
 
 #[cfg(windows)]
 pub fn apply_frameless_dwm(hwnd_raw: isize) {
-    use windows_sys::Win32::Foundation::HWND;
-    use windows_sys::Win32::Graphics::Dwm::{
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE,
     };
     unsafe {
-        let hwnd = hwnd_raw as HWND;
+        let hwnd = HWND(hwnd_raw as *mut _);
         let none = DWMWA_COLOR_NONE;
         let _ = DwmSetWindowAttribute(
             hwnd,
-            DWMWA_BORDER_COLOR as u32,
+            DWMWA_BORDER_COLOR,
             &none as *const _ as *const core::ffi::c_void,
             4,
         );
         let _ = DwmSetWindowAttribute(
             hwnd,
-            DWMWA_CAPTION_COLOR as u32,
+            DWMWA_CAPTION_COLOR,
             &none as *const _ as *const core::ffi::c_void,
             4,
         );
@@ -187,15 +199,15 @@ pub fn apply_frameless_dwm(_hwnd_raw: isize) {}
 
 #[cfg(windows)]
 pub fn drag_window_by_mouse(hwnd_raw: isize) {
-    use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
+    use windows::Win32::Foundation::{HWND, POINT, RECT};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    use windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
     };
     unsafe {
-        let hwnd = hwnd_raw as HWND;
+        let hwnd = HWND(hwnd_raw as *mut _);
         let mut origin = POINT { x: 0, y: 0 };
-        if GetCursorPos(&mut origin) == 0 {
+        if GetCursorPos(&mut origin).is_err() {
             return;
         }
         let mut wr = RECT {
@@ -204,17 +216,17 @@ pub fn drag_window_by_mouse(hwnd_raw: isize) {
             right: 0,
             bottom: 0,
         };
-        if GetWindowRect(hwnd, &mut wr) == 0 {
+        if GetWindowRect(hwnd, &mut wr).is_err() {
             return;
         }
         let dx = origin.x - wr.left;
         let dy = origin.y - wr.top;
-        while GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000 != 0 {
+        while GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000 != 0 {
             let mut cur = POINT { x: 0, y: 0 };
-            if GetCursorPos(&mut cur) != 0 {
-                SetWindowPos(
+            if GetCursorPos(&mut cur).is_ok() {
+                let _ = SetWindowPos(
                     hwnd,
-                    std::ptr::null_mut(),
+                    None,
                     cur.x - dx,
                     cur.y - dy,
                     0,

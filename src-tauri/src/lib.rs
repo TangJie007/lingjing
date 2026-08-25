@@ -1,5 +1,7 @@
 mod desktop;
 mod desktop_organize;
+#[cfg(windows)]
+mod shell_menu;
 mod favorites;
 mod library;
 mod paths;
@@ -749,10 +751,11 @@ fn minimize_main(app: AppHandle) -> Result<(), String> {
         .ok_or_else(|| "主窗口不存在".to_string())?;
     #[cfg(windows)]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MINIMIZE};
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MINIMIZE};
         let hwnd = win.hwnd().map_err(|e| e.to_string())?;
         unsafe {
-            ShowWindow(hwnd.0 as _, SW_MINIMIZE);
+            let _ = ShowWindow(HWND(hwnd.0 as *mut _), SW_MINIMIZE);
         }
         return Ok(());
     }

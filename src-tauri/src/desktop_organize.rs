@@ -197,60 +197,31 @@ mod win {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
-    use windows_sys::Win32::Graphics::Gdi::{
+
+    use windows::core::{BOOL, PCWSTR, PWSTR};
+    use windows::Win32::Foundation::{
+        COLORREF, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM,
+    };
+    use windows::Win32::Graphics::Gdi::{
         EnumDisplayMonitors, GetMonitorInfoW, RedrawWindow, HDC, HMONITOR, MONITORINFO,
         RDW_ALLCHILDREN, RDW_INVALIDATE, RDW_UPDATENOW,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
+    use windows::Win32::UI::WindowsAndMessaging::{
         CallWindowProcW, EnumWindows, FindWindowExW, FindWindowW, GetParent, GetSystemMetrics,
-        GetWindowLongPtrW, SetLayeredWindowAttributes, SetParent, SetWindowLongPtrW, SetWindowPos,
-        SetWindowTextW, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWLP_WNDPROC, HICON, HTCLIENT, HWND_TOP,
-        LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN, SM_CYSCREEN, STYLESTRUCT, SW_HIDE,
-        SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-        SWP_SHOWWINDOW, SW_SHOW, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT,
-        WM_STYLECHANGED, WM_STYLECHANGING, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
-        WS_CLIPSIBLINGS, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_STATICEDGE, WS_EX_TOOLWINDOW, WS_EX_WINDOWEDGE,
-        WS_POPUP, WS_SYSMENU, WS_THICKFRAME, WS_VISIBLE,
+        GetWindowLongPtrW, GetWindowRect, SetLayeredWindowAttributes, SetParent,
+        SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, GWL_EXSTYLE, GWL_STYLE,
+        GWLP_WNDPROC, HICON, HTCLIENT, HWND_TOP, LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN,
+        SM_CYSCREEN, STYLESTRUCT, SW_HIDE, SW_SHOW, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WM_NCCALCSIZE,
+        WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT, WM_STYLECHANGED, WM_STYLECHANGING, WS_BORDER,
+        WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_DLGFRAME, WS_EX_APPWINDOW,
+        WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_STATICEDGE,
+        WS_EX_TOOLWINDOW, WS_EX_WINDOWEDGE, WS_POPUP, WS_SYSMENU, WS_THICKFRAME, WS_VISIBLE,
     };
 
     static ORIG_WNDPROC: AtomicIsize = AtomicIsize::new(0);
     static FENCE_SHOWN: AtomicBool = AtomicBool::new(false);
     static DESKTOP_DEFVIEW: AtomicIsize = AtomicIsize::new(0);
-
-    thread_local! {
-        static CTX_MENU_FWD: std::cell::RefCell<Option<CtxMenuFwd>> =
-            std::cell::RefCell::new(None);
-    }
-
-    struct CtxMenuFwd {
-        pcm2: *mut core::ffi::c_void,
-        pcm2_handle_menu_msg: Option<
-            unsafe extern "system" fn(*mut core::ffi::c_void, u32, WPARAM, LPARAM) -> i32,
-        >,
-        pcm3: *mut core::ffi::c_void,
-        pcm3_handle_menu_msg2: Option<
-            unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                u32,
-                WPARAM,
-                LPARAM,
-                *mut LRESULT,
-            ) -> i32,
-        >,
-    }
-
-    impl Clone for CtxMenuFwd {
-        fn clone(&self) -> Self {
-            Self {
-                pcm2: self.pcm2,
-                pcm2_handle_menu_msg: self.pcm2_handle_menu_msg,
-                pcm3: self.pcm3,
-                pcm3_handle_menu_msg2: self.pcm3_handle_menu_msg2,
-            }
-        }
-    }
 
     pub struct ShellMeta {
         pub display_name: Option<String>,
@@ -264,64 +235,7 @@ mod win {
             .collect()
     }
 
-    pub fn create_shell_menu_host_window() -> Result<HWND, String> {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
-        };
-
-        unsafe {
-            let class_name = wide("STATIC");
-            let title = wide("LingScape Shell Menu Host");
-            let hwnd = CreateWindowExW(
-                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                class_name.as_ptr(),
-                title.as_ptr(),
-                WS_POPUP,
-                0,
-                0,
-                1,
-                1,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null(),
-            );
-            if hwnd.is_null() {
-                Err("创建 Shell 菜单宿主窗口失败".into())
-            } else {
-                install_subclass(hwnd);
-                Ok(hwnd)
-            }
-        }
-    }
-
-    pub fn pump_shell_menu_host_messages() {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE, WM_QUIT,
-        };
-
-        unsafe {
-            let mut msg: MSG = std::mem::zeroed();
-            while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
-                if msg.message == WM_QUIT {
-                    break;
-                }
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-    }
-
-    pub fn destroy_shell_menu_host_window(hwnd: HWND) {
-        if !hwnd.is_null() {
-            unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd);
-            }
-        }
-    }
-
     fn wide_path(path: &std::path::Path) -> Vec<u16> {
-        use std::os::windows::ffi::OsStrExt;
         path.as_os_str()
             .encode_wide()
             .chain(std::iter::once(0))
@@ -436,18 +350,18 @@ mod win {
     }
 
     unsafe fn hbitmap_to_png_data_url(
-        hbmp: windows_sys::Win32::Graphics::Gdi::HBITMAP,
+        hbmp: windows::Win32::Graphics::Gdi::HBITMAP,
     ) -> Option<String> {
-        use windows_sys::Win32::Graphics::Gdi::{
+        use windows::Win32::Graphics::Gdi::{
             CreateCompatibleDC, DeleteDC, GetDIBits, GetObjectW, BITMAP, BITMAPINFO,
             BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
         };
 
-        let mut bm: BITMAP = std::mem::zeroed();
+        let mut bm = BITMAP::default();
         if GetObjectW(
-            hbmp,
+            hbmp.into(),
             std::mem::size_of::<BITMAP>() as i32,
-            &mut bm as *mut BITMAP as *mut core::ffi::c_void,
+            Some(&mut bm as *mut BITMAP as *mut core::ffi::c_void),
         ) == 0
             || bm.bmWidth <= 0
             || bm.bmHeight == 0
@@ -456,23 +370,25 @@ mod win {
         }
         let w = bm.bmWidth;
         let h = bm.bmHeight.abs();
-        let hdc = CreateCompatibleDC(std::ptr::null_mut());
-        if hdc.is_null() {
+        let hdc = CreateCompatibleDC(None);
+        if hdc.is_invalid() {
             return None;
         }
-        let mut bmi: BITMAPINFO = std::mem::zeroed();
-        bmi.bmiHeader = BITMAPINFOHEADER {
-            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: w,
-            biHeight: -h,
-            biPlanes: 1,
-            biBitCount: 32,
-            biCompression: BI_RGB,
-            biSizeImage: 0,
-            biXPelsPerMeter: 0,
-            biYPelsPerMeter: 0,
-            biClrUsed: 0,
-            biClrImportant: 0,
+        let mut bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [Default::default()],
         };
         let mut bits = vec![0u8; (w * h * 4) as usize];
         let got = GetDIBits(
@@ -480,11 +396,11 @@ mod win {
             hbmp,
             0,
             h as u32,
-            bits.as_mut_ptr() as *mut core::ffi::c_void,
+            Some(bits.as_mut_ptr() as *mut core::ffi::c_void),
             &mut bmi,
             DIB_RGB_COLORS,
         );
-        DeleteDC(hdc);
+        let _ = DeleteDC(hdc);
         if got == 0 {
             return None;
         }
@@ -511,69 +427,27 @@ mod win {
     unsafe fn shell_item_image_png(
         path: &std::path::Path,
         px: i32,
-        flags: i32,
+        flags: windows::Win32::UI::Shell::SIIGBF,
     ) -> Option<String> {
-        use windows_sys::Win32::Foundation::SIZE;
-        use windows_sys::Win32::Graphics::Gdi::{DeleteObject, HBITMAP};
-        use windows_sys::Win32::UI::Shell::SHCreateItemFromParsingName;
-
-        #[repr(C)]
-        struct FactoryVtbl {
-            query_interface: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            add_ref: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-            get_image: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                SIZE,
-                u32,
-                *mut HBITMAP,
-            ) -> i32,
-        }
-
-        const IID: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0xbcc18b79,
-            data2: 0xba16,
-            data3: 0x442f,
-            data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
-        };
+        use windows::Win32::Graphics::Gdi::DeleteObject;
+        use windows::Win32::UI::Shell::{IShellItemImageFactory, SHCreateItemFromParsingName};
 
         let wpath = wide_path(path);
-        let mut obj: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hr = SHCreateItemFromParsingName(
-            wpath.as_ptr(),
-            std::ptr::null_mut(),
-            &IID,
-            &mut obj,
-        );
-        if hr < 0 || obj.is_null() {
-            return None;
-        }
-        let vtbl = *(obj as *mut *const FactoryVtbl);
-        if vtbl.is_null() {
-            return None;
-        }
-        let mut hbmp: HBITMAP = std::ptr::null_mut();
-        let img_hr = ((*vtbl).get_image)(
-            obj,
-            SIZE { cx: px, cy: px },
-            flags as u32,
-            &mut hbmp,
-        );
-        ((*vtbl).release)(obj);
-        if img_hr < 0 || hbmp.is_null() {
+        let factory: IShellItemImageFactory =
+            SHCreateItemFromParsingName(PCWSTR(wpath.as_ptr()), None).ok()?;
+        let hbmp = factory
+            .GetImage(SIZE { cx: px, cy: px }, flags)
+            .ok()?;
+        if hbmp.is_invalid() {
             return None;
         }
         let url = hbitmap_to_png_data_url(hbmp);
-        DeleteObject(hbmp);
+        let _ = DeleteObject(hbmp.into());
         url
     }
 
     pub fn image_file_preview(path: &std::path::Path, px: i32) -> Option<String> {
-        use windows_sys::Win32::UI::Shell::{
+        use windows::Win32::UI::Shell::{
             SIIGBF_BIGGERSIZEOK, SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY,
         };
 
@@ -583,108 +457,87 @@ mod win {
                 px,
                 SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP,
             )
-            .or_else(|| shell_item_image_png(path, px, SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP))
+            .or_else(|| {
+                shell_item_image_png(path, px, SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP)
+            })
         }
     }
 
     unsafe fn hicon_native_size(hicon: HICON) -> i32 {
-        use windows_sys::Win32::Graphics::Gdi::{DeleteObject, GetObjectW, BITMAP, HGDIOBJ};
-        use windows_sys::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
+        use windows::Win32::Graphics::Gdi::{DeleteObject, GetObjectW, BITMAP};
+        use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
 
-        let mut info = ICONINFO {
-            fIcon: 0,
-            xHotspot: 0,
-            yHotspot: 0,
-            hbmMask: std::ptr::null_mut(),
-            hbmColor: std::ptr::null_mut(),
-        };
-        if GetIconInfo(hicon, &mut info) == 0 {
+        let mut info = ICONINFO::default();
+        if GetIconInfo(hicon, &mut info).is_err() {
             return 256;
         }
-        let mut bm = BITMAP {
-            bmType: 0,
-            bmWidth: 0,
-            bmHeight: 0,
-            bmWidthBytes: 0,
-            bmPlanes: 0,
-            bmBitsPixel: 0,
-            bmBits: std::ptr::null_mut(),
-        };
-        let hbmp: HGDIOBJ = if info.hbmColor.is_null() {
+        let mut bm = BITMAP::default();
+        let hbmp = if info.hbmColor.is_invalid() {
             info.hbmMask
         } else {
             info.hbmColor
         };
         GetObjectW(
-            hbmp,
+            hbmp.into(),
             std::mem::size_of::<BITMAP>() as i32,
-            &mut bm as *mut BITMAP as *mut core::ffi::c_void,
+            Some(&mut bm as *mut BITMAP as *mut core::ffi::c_void),
         );
-        if !info.hbmColor.is_null() {
-            DeleteObject(info.hbmColor);
+        if !info.hbmColor.is_invalid() {
+            let _ = DeleteObject(info.hbmColor.into());
         }
-        if !info.hbmMask.is_null() {
-            DeleteObject(info.hbmMask);
+        if !info.hbmMask.is_invalid() {
+            let _ = DeleteObject(info.hbmMask.into());
         }
         bm.bmWidth.clamp(16, 256)
     }
 
     unsafe fn hicon_to_png_data_url(hicon: HICON) -> Option<String> {
-        use windows_sys::Win32::Graphics::Gdi::{
+        use windows::Win32::Graphics::Gdi::{
             CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO,
-            BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+            BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
         };
-        use windows_sys::Win32::UI::WindowsAndMessaging::{DrawIconEx, DI_NORMAL};
+        use windows::Win32::UI::WindowsAndMessaging::{DrawIconEx, DI_NORMAL};
 
-        if hicon.is_null() {
+        if hicon.0.is_null() {
             return None;
         }
         let size = hicon_native_size(hicon);
-        let mut bmi: BITMAPINFO = std::mem::zeroed();
-        bmi.bmiHeader = BITMAPINFOHEADER {
-            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: size,
-            biHeight: -size,
-            biPlanes: 1,
-            biBitCount: 32,
-            biCompression: BI_RGB,
-            biSizeImage: 0,
-            biXPelsPerMeter: 0,
-            biYPelsPerMeter: 0,
-            biClrUsed: 0,
-            biClrImportant: 0,
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size,
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [Default::default()],
         };
-        let hdc = CreateCompatibleDC(std::ptr::null_mut());
-        if hdc.is_null() {
+        let hdc = CreateCompatibleDC(None);
+        if hdc.is_invalid() {
             return None;
         }
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let dib = CreateDIBSection(
-            hdc,
-            &bmi,
-            DIB_RGB_COLORS,
-            &mut bits,
-            std::ptr::null_mut(),
-            0,
-        );
-        if dib.is_null() || bits.is_null() {
-            DeleteDC(hdc);
+        let dib = match CreateDIBSection(Some(hdc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0) {
+            Ok(d) => d,
+            Err(_) => {
+                let _ = DeleteDC(hdc);
+                return None;
+            }
+        };
+        if dib.is_invalid() || bits.is_null() {
+            let _ = DeleteDC(hdc);
             return None;
         }
-        let old = SelectObject(hdc, dib);
+        let old = SelectObject(hdc, dib.into());
         let pixel_count = (size * size) as usize;
         std::ptr::write_bytes(bits, 0, pixel_count * 4);
-        DrawIconEx(
-            hdc,
-            0,
-            0,
-            hicon,
-            size,
-            size,
-            0,
-            std::ptr::null_mut(),
-            DI_NORMAL,
-        );
+        let _ = DrawIconEx(hdc, 0, 0, hicon, size, size, 0, None, DI_NORMAL);
 
         let raw = std::slice::from_raw_parts(bits as *const u8, pixel_count * 4);
         let mut rgba = Vec::with_capacity(pixel_count * 4);
@@ -707,30 +560,19 @@ mod win {
             }
         }
 
-        SelectObject(hdc, old as HGDIOBJ);
-        DeleteObject(dib);
-        DeleteDC(hdc);
+        SelectObject(hdc, old);
+        let _ = DeleteObject(dib.into());
+        let _ = DeleteDC(hdc);
         rgba_to_png_data_url(&rgba, size as u32, size as u32)
     }
 
     unsafe fn image_list_icon(list_id: u32, index: i32) -> Option<HICON> {
-        use windows_sys::Win32::UI::Controls::{ImageList_GetIcon, HIMAGELIST, ILD_TRANSPARENT};
-        use windows_sys::Win32::UI::Shell::SHGetImageList;
+        use windows::Win32::UI::Controls::{IImageList, ILD_TRANSPARENT};
+        use windows::Win32::UI::Shell::SHGetImageList;
 
-        const IID_IIMAGELIST: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x46eb5926,
-            data2: 0x582e,
-            data3: 0x4017,
-            data4: [0x9f, 0xdf, 0xe8, 0x99, 0x8d, 0xaa, 0x09, 0x50],
-        };
-
-        let mut list: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hr = SHGetImageList(list_id as i32, &IID_IIMAGELIST, &mut list);
-        if hr < 0 || list.is_null() {
-            return None;
-        }
-        let icon = ImageList_GetIcon(list as HIMAGELIST, index, ILD_TRANSPARENT);
-        if icon.is_null() {
+        let list: IImageList = SHGetImageList(list_id as i32).ok()?;
+        let icon = list.GetIcon(index, ILD_TRANSPARENT.0).ok()?;
+        if icon.0.is_null() {
             None
         } else {
             Some(icon)
@@ -756,37 +598,36 @@ mod win {
     }
 
     unsafe extern "system" fn enum_group_icons(
-        hmodule: windows_sys::Win32::Foundation::HMODULE,
-        _lptype: windows_sys::core::PCWSTR,
-        lpname: windows_sys::core::PCWSTR,
+        hmodule: windows::Win32::Foundation::HMODULE,
+        _lptype: PCWSTR,
+        lpname: PCWSTR,
         lparam: isize,
-    ) -> i32 {
-        use windows_sys::Win32::System::LibraryLoader::{
+    ) -> BOOL {
+        use windows::Win32::System::LibraryLoader::{
             FindResourceW, LoadResource, LockResource, SizeofResource,
         };
-        use windows_sys::Win32::UI::WindowsAndMessaging::RT_GROUP_ICON;
+        use windows::Win32::UI::WindowsAndMessaging::RT_GROUP_ICON;
 
         let groups = &mut *(lparam as *mut Vec<(i32, Vec<i32>)>);
         let id = {
-            let p = lpname as usize;
+            let p = lpname.0 as usize;
             if p < 0x10000 {
                 p as i32
             } else {
                 0
             }
         };
-        let hrsrc = FindResourceW(hmodule, lpname, RT_GROUP_ICON);
-        if hrsrc.is_null() {
-            return 1;
+        let hrsrc = FindResourceW(Some(hmodule), lpname, RT_GROUP_ICON);
+        if hrsrc.0.is_null() {
+            return BOOL(1);
         }
-        let size = SizeofResource(hmodule, hrsrc) as usize;
-        let hdata = LoadResource(hmodule, hrsrc);
-        if hdata.is_null() {
-            return 1;
-        }
+        let size = SizeofResource(Some(hmodule), hrsrc) as usize;
+        let Ok(hdata) = LoadResource(Some(hmodule), hrsrc) else {
+            return BOOL(1);
+        };
         let ptr = LockResource(hdata) as *const u8;
         if ptr.is_null() || size < 6 {
-            return 1;
+            return BOOL(1);
         }
         let bytes = std::slice::from_raw_parts(ptr, size);
         let count = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
@@ -801,34 +642,33 @@ mod win {
             off += 14;
         }
         groups.push((id, sizes));
-        1
+        BOOL(1)
     }
 
     unsafe fn pe_icon_sizes(path: &std::path::Path, index: i32) -> Vec<i32> {
-        use windows_sys::Win32::Foundation::FreeLibrary;
-        use windows_sys::Win32::System::LibraryLoader::{
+        use windows::Win32::Foundation::FreeLibrary;
+        use windows::Win32::System::LibraryLoader::{
             EnumResourceNamesW, LoadLibraryExW, LOAD_LIBRARY_AS_DATAFILE,
             LOAD_LIBRARY_AS_IMAGE_RESOURCE,
         };
-        use windows_sys::Win32::UI::WindowsAndMessaging::RT_GROUP_ICON;
+        use windows::Win32::UI::WindowsAndMessaging::RT_GROUP_ICON;
 
         let wpath = wide_path(path);
-        let module = LoadLibraryExW(
-            wpath.as_ptr(),
-            std::ptr::null_mut(),
+        let Ok(module) = LoadLibraryExW(
+            PCWSTR(wpath.as_ptr()),
+            None,
             LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE,
-        );
-        if module.is_null() {
+        ) else {
             return Vec::new();
-        }
+        };
         let mut groups: Vec<(i32, Vec<i32>)> = Vec::new();
-        EnumResourceNamesW(
-            module,
+        let _ = EnumResourceNamesW(
+            Some(module),
             RT_GROUP_ICON,
             Some(enum_group_icons),
             &mut groups as *mut _ as isize,
         );
-        FreeLibrary(module);
+        let _ = FreeLibrary(module);
         if index < 0 {
             let id = -index;
             return groups
@@ -860,53 +700,73 @@ mod win {
         unsafe { pe_icon_sizes(path, index) }
     }
 
-    unsafe fn extract_icon_at(path: &std::path::Path, index: i32, size: i32) -> Option<HICON> {
-        use windows_sys::Win32::UI::Shell::SHDefExtractIconW;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, PrivateExtractIconsW};
+    fn path_to_fixed_wide(path: &std::path::Path) -> [u16; 260] {
+        let mut buf = [0u16; 260];
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let n = wide.len().min(259);
+        buf[..n].copy_from_slice(&wide[..n]);
+        buf
+    }
 
+    unsafe fn extract_icon_at(path: &std::path::Path, index: i32, size: i32) -> Option<HICON> {
+        use windows::Win32::UI::Shell::SHDefExtractIconW;
+        use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, PrivateExtractIconsW};
+
+        let fixed = path_to_fixed_wide(path);
         let wpath = wide_path(path);
-        let mut icon: HICON = std::ptr::null_mut();
+        let mut icons = [HICON::default()];
         let mut icon_id: u32 = 0;
         let got = PrivateExtractIconsW(
-            wpath.as_ptr(),
+            &fixed,
             index,
             size,
             size,
-            &mut icon,
-            &mut icon_id,
-            1,
+            Some(&mut icons),
+            Some(&mut icon_id),
             0,
         );
-        if got > 0 && !icon.is_null() {
+        let icon = icons[0];
+        if got > 0 && !icon.0.is_null() {
             let native = hicon_native_size(icon);
             if (native - size).abs() <= 8 {
                 return Some(icon);
             }
-            DestroyIcon(icon);
+            let _ = DestroyIcon(icon);
             return None;
         }
         if size > 48 {
             return None;
         }
-        let mut large = std::ptr::null_mut();
-        let mut small = std::ptr::null_mut();
+        let mut large = HICON::default();
+        let mut small = HICON::default();
         let nsize = (size as u32) | ((size as u32) << 16);
-        let hr = SHDefExtractIconW(wpath.as_ptr(), index, 0, &mut large, &mut small, nsize);
-        if !small.is_null() {
-            DestroyIcon(small);
+        let hr = SHDefExtractIconW(
+            PCWSTR(wpath.as_ptr()),
+            index,
+            0,
+            Some(&mut large),
+            Some(&mut small),
+            nsize,
+        );
+        if !small.0.is_null() {
+            let _ = DestroyIcon(small);
         }
-        if hr >= 0 && !large.is_null() {
+        if hr.is_ok() && !large.0.is_null() {
             Some(large)
         } else {
-            if !large.is_null() {
-                DestroyIcon(large);
+            if !large.0.is_null() {
+                let _ = DestroyIcon(large);
             }
             None
         }
     }
 
     unsafe fn assoc_default_icon(path: &std::path::Path) -> Option<(std::path::PathBuf, i32)> {
-        use windows_sys::Win32::UI::Shell::{
+        use windows::Win32::UI::Shell::{
             AssocQueryStringW, ASSOCF_INIT_DEFAULTTOSTAR, ASSOCF_NOTRUNCATE, ASSOCSTR_DEFAULTICON,
         };
 
@@ -916,9 +776,9 @@ mod win {
         let _ = AssocQueryStringW(
             ASSOCF_INIT_DEFAULTTOSTAR | ASSOCF_NOTRUNCATE,
             ASSOCSTR_DEFAULTICON,
-            assoc.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null_mut(),
+            PCWSTR(assoc.as_ptr()),
+            PCWSTR::null(),
+            None,
             &mut len,
         );
         if len == 0 || len > 4096 {
@@ -929,12 +789,12 @@ mod win {
         let hr = AssocQueryStringW(
             ASSOCF_INIT_DEFAULTTOSTAR | ASSOCF_NOTRUNCATE,
             ASSOCSTR_DEFAULTICON,
-            assoc.as_ptr(),
-            std::ptr::null(),
-            buf.as_mut_ptr(),
+            PCWSTR(assoc.as_ptr()),
+            PCWSTR::null(),
+            Some(PWSTR(buf.as_mut_ptr())),
             &mut written,
         );
-        if hr < 0 {
+        if hr.is_err() {
             return None;
         }
         let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
@@ -985,14 +845,15 @@ mod win {
             }
         }
 
-        use windows_sys::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICONLOCATION};
+        use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+        use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICONLOCATION};
 
         let wpath = wide_path(path);
-        let mut info: SHFILEINFOW = std::mem::zeroed();
+        let mut info = SHFILEINFOW::default();
         let ok = SHGetFileInfoW(
-            wpath.as_ptr(),
-            0,
-            &mut info,
+            PCWSTR(wpath.as_ptr()),
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            Some(&mut info),
             std::mem::size_of::<SHFILEINFOW>() as u32,
             SHGFI_ICONLOCATION,
         );
@@ -1015,7 +876,7 @@ mod win {
     }
 
     unsafe fn extract_best_icon(path: &std::path::Path, sys_index: i32) -> Option<HICON> {
-        use windows_sys::Win32::UI::Shell::{SHIL_EXTRALARGE, SHIL_LARGE};
+        use windows::Win32::UI::Shell::{SHIL_EXTRALARGE, SHIL_LARGE};
 
         let (src, index) = icon_source(path);
         let sizes = native_icon_sizes(&src, index);
@@ -1037,22 +898,23 @@ mod win {
     }
 
     pub fn shell_name_and_icon(path: &std::path::Path) -> ShellMeta {
-        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
-        use windows_sys::Win32::UI::Shell::{
+        use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        use windows::Win32::UI::Shell::{
             SHGetFileInfoW, SHFILEINFOW, SHGFI_DISPLAYNAME, SHGFI_ICON, SHGFI_LARGEICON,
-            SHGFI_SYSICONINDEX,
+            SHGFI_SYSICONINDEX, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
         };
-        use windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon;
+        use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
 
         unsafe {
-            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             let wpath = wide_path(path);
-            let mut info: SHFILEINFOW = std::mem::zeroed();
+            let mut info = SHFILEINFOW::default();
             let flags = SHGFI_SYSICONINDEX | SHGFI_DISPLAYNAME | SHGFI_ICON | SHGFI_LARGEICON;
             let ok = SHGetFileInfoW(
-                wpath.as_ptr(),
-                0,
-                &mut info,
+                PCWSTR(wpath.as_ptr()),
+                FILE_FLAGS_AND_ATTRIBUTES(0),
+                Some(&mut info),
                 std::mem::size_of::<SHFILEINFOW>() as u32,
                 flags,
             );
@@ -1069,47 +931,50 @@ mod win {
 
             let mut icon = None;
             if ok != 0 {
-                use windows_sys::Win32::UI::Shell::{SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
                 icon = shell_item_image_png(path, 48, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK);
                 if icon.is_none() {
                     if let Some(best) = extract_best_icon(path, info.iIcon) {
                         icon = hicon_to_png_data_url(best);
-                        DestroyIcon(best);
+                        let _ = DestroyIcon(best);
                     }
                 }
             }
-            if icon.is_none() && ok != 0 && !info.hIcon.is_null() {
+            if icon.is_none() && ok != 0 && !info.hIcon.0.is_null() {
                 icon = hicon_to_png_data_url(info.hIcon);
             }
-            if !info.hIcon.is_null() {
-                DestroyIcon(info.hIcon);
+            if !info.hIcon.0.is_null() {
+                let _ = DestroyIcon(info.hIcon);
             }
 
             ShellMeta { display_name, icon }
         }
     }
 
-    unsafe fn stock_icon_png(siid: i32) -> Option<String> {
-        use windows_sys::Win32::UI::Shell::{
+    unsafe fn stock_icon_png(siid: windows::Win32::UI::Shell::SHSTOCKICONID) -> Option<String> {
+        use windows::Win32::UI::Shell::{
             SHGetStockIconInfo, SHGSI_ICON, SHGSI_LARGEICON, SHSTOCKICONINFO,
         };
-        use windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon;
+        use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
 
         let mut info = SHSTOCKICONINFO {
             cbSize: std::mem::size_of::<SHSTOCKICONINFO>() as u32,
             ..Default::default()
         };
-        let hr = SHGetStockIconInfo(siid, SHGSI_ICON | SHGSI_LARGEICON, &mut info);
-        if hr < 0 || info.hIcon.is_null() {
+        if SHGetStockIconInfo(siid, SHGSI_ICON | SHGSI_LARGEICON, &mut info).is_err()
+            || info.hIcon.0.is_null()
+        {
             return None;
         }
         let url = hicon_to_png_data_url(info.hIcon);
-        DestroyIcon(info.hIcon);
+        let _ = DestroyIcon(info.hIcon);
         url
     }
 
-    fn extract_builtin_icon(path: &str, stock_fallback: Option<i32>) -> Option<String> {
-        use windows_sys::Win32::UI::Shell::{SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
+    fn extract_builtin_icon(
+        path: &str,
+        stock_fallback: Option<windows::Win32::UI::Shell::SHSTOCKICONID>,
+    ) -> Option<String> {
+        use windows::Win32::UI::Shell::{SIID_MYNETWORK, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
 
         let path_obj = std::path::PathBuf::from(path);
         let flags = SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK;
@@ -1118,14 +983,16 @@ mod win {
                 return Some(icon);
             }
             if path.contains("F02C1A0D-B21F-4110-8426-0A0C959C3602") {
-                for alt in ["shell:NetworkPlacesFolder", "::{F02C1A0D-B21F-4110-8426-0A0C959C3602}\\"] {
-                    if let Some(icon) = shell_item_image_png(std::path::Path::new(alt), 48, flags) {
+                for alt in [
+                    "shell:NetworkPlacesFolder",
+                    "::{F02C1A0D-B21F-4110-8426-0A0C959C3602}\\",
+                ] {
+                    if let Some(icon) = shell_item_image_png(std::path::Path::new(alt), 48, flags)
+                    {
                         return Some(icon);
                     }
                 }
-                if let Some(icon) = stock_icon_png(
-                    windows_sys::Win32::UI::Shell::SIID_MYNETWORK,
-                ) {
+                if let Some(icon) = stock_icon_png(SIID_MYNETWORK) {
                     return Some(icon);
                 }
             }
@@ -1138,17 +1005,21 @@ mod win {
         shell_name_and_icon(&path_obj).icon
     }
 
-    const BUILTIN_DESKTOP_ICONS: &[(&str, &str, Option<i32>)] = &[
+    const BUILTIN_DESKTOP_ICONS: &[(
+        &str,
+        &str,
+        Option<windows::Win32::UI::Shell::SHSTOCKICONID>,
+    )] = &[
         ("::{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "此电脑", None),
         (
             "::{645FF040-5081-101B-9F08-00AA002F954E}",
             "回收站",
-            Some(windows_sys::Win32::UI::Shell::SIID_RECYCLER),
+            Some(windows::Win32::UI::Shell::SIID_RECYCLER),
         ),
         (
             "::{F02C1A0D-B21F-4110-8426-0A0C959C3602}",
             "网络",
-            Some(windows_sys::Win32::UI::Shell::SIID_MYNETWORK),
+            Some(windows::Win32::UI::Shell::SIID_MYNETWORK),
         ),
     ];
 
@@ -1176,13 +1047,8 @@ mod win {
 
     fn rect_of(hwnd: HWND) -> (i32, i32, i32, i32) {
         unsafe {
-            let mut r = RECT {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 0,
-            };
-            windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut r);
+            let mut r = RECT::default();
+            let _ = GetWindowRect(hwnd, &mut r);
             (r.left, r.top, r.right - r.left, r.bottom - r.top)
         }
     }
@@ -1192,31 +1058,23 @@ mod win {
         defview_parent: HWND,
     }
 
-    unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> i32 {
-        let data = &mut *(lparam as *mut EnumData);
+    unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = &mut *(lparam.0 as *mut EnumData);
         let class_def = wide("SHELLDLL_DefView");
-        let def = FindWindowExW(
-            hwnd,
-            std::ptr::null_mut(),
-            class_def.as_ptr(),
-            std::ptr::null(),
-        );
-        if !def.is_null() {
+        if let Ok(def) =
+            FindWindowExW(Some(hwnd), None, PCWSTR(class_def.as_ptr()), PCWSTR::null())
+        {
             data.defview = def;
             data.defview_parent = hwnd;
         }
-        1
+        BOOL(1)
     }
 
     fn find_progman_child(progman: HWND, class: &str) -> HWND {
         unsafe {
             let cls = wide(class);
-            FindWindowExW(
-                progman,
-                std::ptr::null_mut(),
-                cls.as_ptr(),
-                std::ptr::null(),
-            )
+            FindWindowExW(Some(progman), None, PCWSTR(cls.as_ptr()), PCWSTR::null())
+                .unwrap_or_default()
         }
     }
 
@@ -1225,28 +1083,30 @@ mod win {
         _hdc: HDC,
         _lprc: *mut RECT,
         lparam: LPARAM,
-    ) -> i32 {
-        let found = &mut *(lparam as *mut Option<(i32, i32, i32, i32)>);
+    ) -> BOOL {
+        let found = &mut *(lparam.0 as *mut Option<(i32, i32, i32, i32)>);
         let mut info = MONITORINFO {
             cbSize: std::mem::size_of::<MONITORINFO>() as u32,
             ..Default::default()
         };
-        if GetMonitorInfoW(hmon, &mut info) != 0 && info.dwFlags & MONITORINFOF_PRIMARY != 0 {
+        if GetMonitorInfoW(hmon, &mut info).as_bool()
+            && info.dwFlags & MONITORINFOF_PRIMARY != 0
+        {
             let r = info.rcWork;
             *found = Some((r.left, r.top, r.right - r.left, r.bottom - r.top));
-            return 0;
+            return BOOL(0);
         }
-        1
+        BOOL(1)
     }
 
     fn primary_work_rect() -> (i32, i32, i32, i32) {
         let mut found: Option<(i32, i32, i32, i32)> = None;
         unsafe {
-            EnumDisplayMonitors(
-                std::ptr::null_mut(),
-                std::ptr::null(),
+            let _ = EnumDisplayMonitors(
+                None,
+                None,
                 Some(enum_monitors_proc),
-                &mut found as *mut _ as LPARAM,
+                LPARAM(&mut found as *mut _ as isize),
             );
         }
         found.unwrap_or_else(|| unsafe {
@@ -1262,25 +1122,31 @@ mod win {
     fn force_child_chrome(child: HWND, visible: bool) {
         unsafe {
             let mut style = GetWindowLongPtrW(child, GWL_STYLE) as u32;
-            style &= !(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
-            style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+            style &= !(WS_POPUP.0
+                | WS_CAPTION.0
+                | WS_THICKFRAME.0
+                | WS_BORDER.0
+                | WS_DLGFRAME.0
+                | WS_SYSMENU.0);
+            style |= WS_CHILD.0 | WS_CLIPSIBLINGS.0 | WS_CLIPCHILDREN.0;
             if visible {
-                style |= WS_VISIBLE;
+                style |= WS_VISIBLE.0;
             } else {
-                style &= !WS_VISIBLE;
+                style &= !WS_VISIBLE.0;
             }
             SetWindowLongPtrW(child, GWL_STYLE, style as isize);
 
             let mut ex = GetWindowLongPtrW(child, GWL_EXSTYLE) as u32;
-            ex &= !(WS_EX_APPWINDOW
-                | WS_EX_CLIENTEDGE
-                | WS_EX_WINDOWEDGE
-                | WS_EX_DLGMODALFRAME
-                | WS_EX_STATICEDGE);
-            ex |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
+            ex &= !(WS_EX_APPWINDOW.0
+                | WS_EX_CLIENTEDGE.0
+                | WS_EX_WINDOWEDGE.0
+                | WS_EX_DLGMODALFRAME.0
+                | WS_EX_STATICEDGE.0);
+            ex |= WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0 | WS_EX_LAYERED.0;
             SetWindowLongPtrW(child, GWL_EXSTYLE, ex as isize);
-            SetLayeredWindowAttributes(child, 0, 255, LWA_ALPHA);
-            SetWindowTextW(child, [0u16].as_ptr());
+            let _ = SetLayeredWindowAttributes(child, COLORREF(0), 255, LWA_ALPHA);
+            let empty = [0u16];
+            let _ = SetWindowTextW(child, PCWSTR(empty.as_ptr()));
         }
     }
 
@@ -1291,70 +1157,48 @@ mod win {
         lparam: LPARAM,
     ) -> LRESULT {
         if msg == WM_SETTEXT {
-            return 1;
+            return LRESULT(1);
         }
         if msg == WM_NCCALCSIZE || msg == WM_NCPAINT {
-            return 0;
+            return LRESULT(0);
         }
         if msg == WM_NCHITTEST {
-            return HTCLIENT as LRESULT;
+            return LRESULT(HTCLIENT as isize);
         }
-        if msg == WM_STYLECHANGING && lparam != 0 {
-            let ss = &mut *(lparam as *mut STYLESTRUCT);
-            if wparam as isize == GWL_STYLE as isize {
-                ss.styleNew &=
-                    !(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME | WS_SYSMENU);
-                ss.styleNew |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+        if msg == WM_STYLECHANGING && lparam.0 != 0 {
+            let ss = &mut *(lparam.0 as *mut STYLESTRUCT);
+            if wparam.0 as isize == GWL_STYLE.0 as isize {
+                ss.styleNew &= !(WS_POPUP.0
+                    | WS_CAPTION.0
+                    | WS_THICKFRAME.0
+                    | WS_BORDER.0
+                    | WS_DLGFRAME.0
+                    | WS_SYSMENU.0);
+                ss.styleNew |= WS_CHILD.0 | WS_CLIPSIBLINGS.0 | WS_CLIPCHILDREN.0;
                 if FENCE_SHOWN.load(Ordering::SeqCst) {
-                    ss.styleNew |= WS_VISIBLE;
+                    ss.styleNew |= WS_VISIBLE.0;
                 } else {
-                    ss.styleNew &= !WS_VISIBLE;
+                    ss.styleNew &= !WS_VISIBLE.0;
                 }
             }
-            if wparam as isize == GWL_EXSTYLE as isize {
-                ss.styleNew &= !(WS_EX_APPWINDOW
-                    | WS_EX_CLIENTEDGE
-                    | WS_EX_WINDOWEDGE
-                    | WS_EX_DLGMODALFRAME
-                    | WS_EX_STATICEDGE);
-                ss.styleNew |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
+            if wparam.0 as isize == GWL_EXSTYLE.0 as isize {
+                ss.styleNew &= !(WS_EX_APPWINDOW.0
+                    | WS_EX_CLIENTEDGE.0
+                    | WS_EX_WINDOWEDGE.0
+                    | WS_EX_DLGMODALFRAME.0
+                    | WS_EX_STATICEDGE.0);
+                ss.styleNew |= WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0 | WS_EX_LAYERED.0;
             }
         }
         if msg == WM_STYLECHANGED && FENCE_SHOWN.load(Ordering::SeqCst) {
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-            if style & (WS_POPUP | WS_CAPTION) != 0 || style & WS_CHILD == 0 {
+            if style & (WS_POPUP.0 | WS_CAPTION.0) != 0 || style & WS_CHILD.0 == 0 {
                 force_child_chrome(hwnd, true);
-            }
-        }
-        if let Ok(fwd) = CTX_MENU_FWD.try_with(|c| c.borrow().clone()) {
-            if let Some(fwd) = fwd {
-                const WM_INITMENUPOPUP: u32 = 279;
-                const WM_MEASUREITEM: u32 = 44;
-                const WM_DRAWITEM: u32 = 43;
-                const WM_MENUCHAR: u32 = 288;
-                match msg {
-                    WM_INITMENUPOPUP | WM_MEASUREITEM | WM_DRAWITEM => {
-                        if let Some(handle) = fwd.pcm2_handle_menu_msg {
-                            if handle(fwd.pcm2, msg, wparam, lparam) == 0 {
-                                return 0;
-                            }
-                        }
-                    }
-                    WM_MENUCHAR => {
-                        if let Some(handle) = fwd.pcm3_handle_menu_msg2 {
-                            let mut lres: LRESULT = 0;
-                            if handle(fwd.pcm3, msg, wparam, lparam, &mut lres) == 0 {
-                                return lres;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
             }
         }
         let orig = ORIG_WNDPROC.load(Ordering::SeqCst);
         if orig == 0 {
-            return 0;
+            return LRESULT(0);
         }
         let proc: unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT =
             std::mem::transmute(orig);
@@ -1375,11 +1219,11 @@ mod win {
 
     fn prepare_styles(child: HWND) {
         unsafe {
-            use windows_sys::Win32::Graphics::Dwm::{
+            use windows::Win32::Graphics::Dwm::{
                 DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMNCRP_DISABLED,
                 DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE, DWMWA_NCRENDERING_POLICY,
             };
-            use windows_sys::Win32::UI::Controls::MARGINS;
+            use windows::Win32::UI::Controls::MARGINS;
 
             let margins = MARGINS {
                 cxLeftWidth: -1,
@@ -1392,20 +1236,20 @@ mod win {
             let none = DWMWA_COLOR_NONE;
             let _ = DwmSetWindowAttribute(
                 child,
-                DWMWA_BORDER_COLOR as u32,
+                DWMWA_BORDER_COLOR,
                 &none as *const _ as *const core::ffi::c_void,
                 4,
             );
             let _ = DwmSetWindowAttribute(
                 child,
-                DWMWA_CAPTION_COLOR as u32,
+                DWMWA_CAPTION_COLOR,
                 &none as *const _ as *const core::ffi::c_void,
                 4,
             );
             let policy = DWMNCRP_DISABLED;
             let _ = DwmSetWindowAttribute(
                 child,
-                DWMWA_NCRENDERING_POLICY as u32,
+                DWMWA_NCRENDERING_POLICY,
                 &policy as *const _ as *const core::ffi::c_void,
                 4,
             );
@@ -1415,40 +1259,38 @@ mod win {
     pub fn attach_fence_to_desktop(hwnd_raw: isize) -> Result<(i32, i32), String> {
         unsafe {
             let progman_class = wide("Progman");
-            let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
-            if progman.is_null() {
-                return Err("未找到 Progman 窗口".into());
-            }
+            let progman = FindWindowW(PCWSTR(progman_class.as_ptr()), PCWSTR::null())
+                .map_err(|_| "未找到 Progman 窗口".to_string())?;
 
             let mut data = EnumData {
-                defview: std::ptr::null_mut(),
-                defview_parent: std::ptr::null_mut(),
+                defview: HWND::default(),
+                defview_parent: HWND::default(),
             };
-            EnumWindows(Some(enum_windows_proc), &mut data as *mut _ as LPARAM);
+            let _ = EnumWindows(Some(enum_windows_proc), LPARAM(&mut data as *mut _ as isize));
 
-            if data.defview.is_null() {
+            if data.defview.0.is_null() {
                 data.defview = find_progman_child(progman, "SHELLDLL_DefView");
-                if !data.defview.is_null() {
+                if !data.defview.0.is_null() {
                     data.defview_parent = progman;
                 }
             }
-            if !data.defview.is_null() {
-                DESKTOP_DEFVIEW.store(data.defview as isize, Ordering::SeqCst);
+            if !data.defview.0.is_null() {
+                DESKTOP_DEFVIEW.store(data.defview.0 as isize, Ordering::SeqCst);
             }
 
-            let child = hwnd_raw as HWND;
+            let child = HWND(hwnd_raw as *mut _);
             FENCE_SHOWN.store(true, Ordering::SeqCst);
             force_child_chrome(child, true);
             prepare_styles(child);
 
-            let parent = if !data.defview.is_null() {
+            let parent = if !data.defview.0.is_null() {
                 data.defview
             } else {
                 progman
             };
 
-            let prev = SetParent(child, parent);
-            if prev.is_null() && GetParent(child) != parent {
+            let set_parent_err = SetParent(child, Some(parent)).is_err();
+            if set_parent_err && GetParent(child).ok() != Some(parent) {
                 return Err("SetParent 失败".into());
             }
 
@@ -1467,9 +1309,9 @@ mod win {
                 y = 0;
             }
 
-            SetWindowPos(
+            let _ = SetWindowPos(
                 child,
-                HWND_TOP,
+                Some(HWND_TOP),
                 x,
                 y,
                 mw,
@@ -1477,11 +1319,11 @@ mod win {
                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
             );
             force_child_chrome(child, true);
-            ShowWindow(child, SW_SHOW);
-            RedrawWindow(
-                child,
-                std::ptr::null(),
-                std::ptr::null_mut(),
+            let _ = ShowWindow(child, SW_SHOW);
+            let _ = RedrawWindow(
+                Some(child),
+                None,
+                None,
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN,
             );
 
@@ -1497,1310 +1339,83 @@ mod win {
             if !FENCE_SHOWN.load(Ordering::SeqCst) {
                 return;
             }
-            let child = hwnd_raw as HWND;
+            let child = HWND(hwnd_raw as *mut _);
             let style = GetWindowLongPtrW(child, GWL_STYLE) as u32;
-            if style & (WS_POPUP | WS_CAPTION) != 0 || style & WS_CHILD == 0 {
+            if style & (WS_POPUP.0 | WS_CAPTION.0) != 0 || style & WS_CHILD.0 == 0 {
                 force_child_chrome(child, true);
             }
-            SetWindowTextW(child, [0u16].as_ptr());
+            let empty = [0u16];
+            let _ = SetWindowTextW(child, PCWSTR(empty.as_ptr()));
         }
     }
 
     pub fn hide_fence_from_desktop(hwnd_raw: isize) {
         unsafe {
-            let child = hwnd_raw as HWND;
+            let child = HWND(hwnd_raw as *mut _);
             FENCE_SHOWN.store(false, Ordering::SeqCst);
             DESKTOP_DEFVIEW.store(0, Ordering::SeqCst);
             force_child_chrome(child, false);
-            ShowWindow(child, SW_HIDE);
-            SetParent(child, std::ptr::null_mut());
-            SetWindowPos(
+            let _ = ShowWindow(child, SW_HIDE);
+            let _ = SetParent(child, None);
+            let _ = SetWindowPos(
                 child,
-                std::ptr::null_mut(),
+                None,
                 0,
                 0,
                 0,
                 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED,
+                SWP_NOMOVE
+                    | SWP_NOSIZE
+                    | SWP_NOZORDER
+                    | SWP_NOACTIVATE
+                    | SWP_HIDEWINDOW
+                    | SWP_FRAMECHANGED,
             );
 
             let progman_class = wide("Progman");
-            let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
-            if progman.is_null() {
+            let Ok(progman) = FindWindowW(PCWSTR(progman_class.as_ptr()), PCWSTR::null()) else {
                 return;
-            }
+            };
             let defview = find_progman_child(progman, "SHELLDLL_DefView");
-            let refresh = if !defview.is_null() { defview } else { progman };
-            RedrawWindow(
-                refresh,
-                std::ptr::null(),
-                std::ptr::null_mut(),
+            let refresh = if !defview.0.is_null() {
+                defview
+            } else {
+                progman
+            };
+            let _ = RedrawWindow(
+                Some(refresh),
+                None,
+                None,
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN,
             );
         }
     }
 
     pub fn shell_show_properties(path: &str) -> Result<(), String> {
-        use windows_sys::Win32::UI::Shell::ShellExecuteW;
-        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOW;
+        use windows::Win32::UI::Shell::ShellExecuteW;
         unsafe {
             let wpath = wide(path);
             let verb = wide("properties");
             let ret = ShellExecuteW(
-                std::ptr::null_mut(),
-                verb.as_ptr(),
-                wpath.as_ptr(),
-                std::ptr::null(),
-                std::ptr::null(),
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(wpath.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
                 SW_SHOW,
             );
-            if ret as isize <= 32 {
-                return Err(format!("打开属性失败: code={}", ret as isize));
+            if (ret.0 as isize) <= 32 {
+                return Err(format!("打开属性失败: code={}", ret.0 as isize));
             }
         }
         Ok(())
-    }
-
-    fn desktop_defview_hwnd() -> Option<HWND> {
-        let stored = DESKTOP_DEFVIEW.load(Ordering::SeqCst);
-        if stored != 0 {
-            return Some(stored as HWND);
-        }
-        unsafe {
-            let progman_class = wide("Progman");
-            let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
-            if progman.is_null() {
-                return None;
-            }
-            let def = find_progman_child(progman, "SHELLDLL_DefView");
-            if def.is_null() {
-                return None;
-            }
-            DESKTOP_DEFVIEW.store(def as isize, Ordering::SeqCst);
-            Some(def)
-        }
-    }
-
-    fn menu_flags() -> u32 {
-        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
-        use windows_sys::Win32::UI::Shell::{CMF_EXTENDEDVERBS, CMF_NORMAL};
-        // CMF_EXPLORE is unnecessary for the custom menu and causes some
-        // folder extensions to wait for a real Explorer view indefinitely.
-        let mut flags = CMF_NORMAL;
-        unsafe {
-            if (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0 {
-                flags |= CMF_EXTENDEDVERBS;
-            }
-        }
-        flags
-    }
-
-    /// Blank desktop/folder background menus hang or miss verbs with CMF_EXPLORE
-    /// on some Shell extensions; keep list+invoke on the same flag set.
-    fn menu_flags_for(path: Option<&str>) -> u32 {
-        use windows_sys::Win32::UI::Shell::CMF_NORMAL;
-        if path.is_none() {
-            CMF_NORMAL
-        } else {
-            menu_flags()
-        }
-    }
-
-    fn clean_menu_label(raw: &str) -> String {
-        let s = raw.split('\t').next().unwrap_or(raw);
-        let mut out = String::with_capacity(s.len());
-        let mut chars = s.chars().peekable();
-        while let Some(c) = chars.next() {
-            if c == '&' {
-                if chars.peek() == Some(&'&') {
-                    out.push('&');
-                    chars.next();
-                }
-                continue;
-            }
-            out.push(c);
-        }
-        out.trim().to_string()
-    }
-
-    unsafe fn hbitmap_to_data_url(
-        hbmp: windows_sys::Win32::Graphics::Gdi::HBITMAP,
-    ) -> Option<String> {
-        use windows_sys::Win32::Graphics::Gdi::{
-            GetDC, GetDIBits, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-            HBITMAP, RGBQUAD,
-        };
-
-        if hbmp.is_null() {
-            return None;
-        }
-        let as_isize = hbmp as isize;
-        if as_isize <= 16 && as_isize >= -16 {
-            return None;
-        }
-
-        let hdc = GetDC(std::ptr::null_mut());
-        if hdc.is_null() {
-            return None;
-        }
-
-        let mut bmi = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: 0,
-                biHeight: 0,
-                biPlanes: 1,
-                biBitCount: 0,
-                biCompression: BI_RGB as u32,
-                biSizeImage: 0,
-                biXPelsPerMeter: 0,
-                biYPelsPerMeter: 0,
-                biClrUsed: 0,
-                biClrImportant: 0,
-            },
-            bmiColors: [RGBQUAD {
-                rgbBlue: 0,
-                rgbGreen: 0,
-                rgbRed: 0,
-                rgbReserved: 0,
-            }],
-        };
-
-        if GetDIBits(
-            hdc,
-            hbmp as HBITMAP,
-            0,
-            0,
-            std::ptr::null_mut(),
-            &mut bmi,
-            DIB_RGB_COLORS,
-        ) == 0
-        {
-            ReleaseDC(std::ptr::null_mut(), hdc);
-            return None;
-        }
-
-        let w = bmi.bmiHeader.biWidth;
-        let h_abs = bmi.bmiHeader.biHeight.abs();
-        if w <= 0 || h_abs <= 0 || w > 256 || h_abs > 256 {
-            ReleaseDC(std::ptr::null_mut(), hdc);
-            return None;
-        }
-
-        bmi.bmiHeader.biBitCount = 32;
-        bmi.bmiHeader.biCompression = BI_RGB as u32;
-        bmi.bmiHeader.biHeight = -h_abs;
-        bmi.bmiHeader.biSizeImage = (w * h_abs * 4) as u32;
-
-        let mut bgra = vec![0u8; (w * h_abs * 4) as usize];
-        let got = GetDIBits(
-            hdc,
-            hbmp as HBITMAP,
-            0,
-            h_abs as u32,
-            bgra.as_mut_ptr() as *mut _,
-            &mut bmi,
-            DIB_RGB_COLORS,
-        );
-        ReleaseDC(std::ptr::null_mut(), hdc);
-        if got == 0 {
-            return None;
-        }
-
-        let mut rgba = vec![0u8; bgra.len()];
-        for (i, chunk) in bgra.chunks_exact(4).enumerate() {
-            let o = i * 4;
-            rgba[o] = chunk[2];
-            rgba[o + 1] = chunk[1];
-            rgba[o + 2] = chunk[0];
-            rgba[o + 3] = chunk[3];
-        }
-        rgba_to_png_data_url(&rgba, w as u32, h_abs as u32)
-    }
-
-    unsafe fn enumerate_hmenu_level(
-        pcm: *mut core::ffi::c_void,
-        hmenu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-        parent_path: &[u32],
-        depth: u32,
-    ) -> Vec<super::ShellMenuEntry> {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            GetMenuItemCount, GetMenuItemInfoW, GetSubMenu, MENUITEMINFOW, MIIM_BITMAP, MIIM_FTYPE,
-            MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MFS_DISABLED, MFS_GRAYED, MFT_SEPARATOR,
-        };
-
-        if hmenu.is_null() {
-            return Vec::new();
-        }
-
-        let count = GetMenuItemCount(hmenu);
-        if count <= 0 {
-            return Vec::new();
-        }
-
-        let mut out = Vec::with_capacity(count as usize);
-        for i in 0..count {
-            let mut text_buf = [0u16; 512];
-            let mut mii: MENUITEMINFOW = std::mem::zeroed();
-            mii.cbSize = std::mem::size_of::<MENUITEMINFOW>() as u32;
-            mii.fMask = MIIM_BITMAP | MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU;
-            mii.dwTypeData = text_buf.as_mut_ptr();
-            mii.cch = text_buf.len() as u32 - 1;
-
-            if GetMenuItemInfoW(hmenu, i as u32, 1, &mut mii) == 0 {
-                continue;
-            }
-
-            if mii.fType & MFT_SEPARATOR != 0 {
-                out.push(super::ShellMenuEntry {
-                    id: 0,
-                    label: String::new(),
-                    disabled: true,
-                    separator: true,
-                    icon: None,
-                    children: None,
-                    menu_path: parent_path.to_vec(),
-                });
-                continue;
-            }
-
-            let len = text_buf.iter().position(|&c| c == 0).unwrap_or(0);
-            let mut label = clean_menu_label(&String::from_utf16_lossy(&text_buf[..len]));
-            if label.is_empty() {
-                // Some shell entries are owner-drawn; try GetMenuStringW as fallback.
-                use windows_sys::Win32::UI::WindowsAndMessaging::{GetMenuStringW, MF_BYPOSITION};
-                let mut alt = [0u16; 512];
-                let n = GetMenuStringW(
-                    hmenu,
-                    i as u32,
-                    alt.as_mut_ptr(),
-                    alt.len() as i32 - 1,
-                    MF_BYPOSITION,
-                );
-                if n > 0 {
-                    label = clean_menu_label(&String::from_utf16_lossy(&alt[..n as usize]));
-                }
-            }
-            if label.is_empty() && mii.hSubMenu.is_null() {
-                continue;
-            }
-            if label.is_empty() {
-                label = "…".into();
-            }
-
-            let disabled = mii.fState & (MFS_DISABLED | MFS_GRAYED) != 0;
-            let icon = if !mii.hbmpItem.is_null() {
-                hbitmap_to_data_url(mii.hbmpItem)
-            } else {
-                None
-            };
-
-            let sub = if !mii.hSubMenu.is_null() {
-                mii.hSubMenu
-            } else {
-                GetSubMenu(hmenu, i)
-            };
-            let mut menu_path = parent_path.to_vec();
-            let children = if !sub.is_null() {
-                menu_path.push(i as u32);
-                if depth < 4 && GetMenuItemCount(sub) > 0 {
-                    Some(enumerate_hmenu_level(pcm, sub, &menu_path, depth + 1))
-                } else {
-                    Some(Vec::new())
-                }
-            } else {
-                None
-            };
-
-            out.push(super::ShellMenuEntry {
-                id: if children.is_some() { 0 } else { mii.wID },
-                label,
-                disabled,
-                separator: false,
-                icon,
-                children,
-                menu_path,
-            });
-        }
-        out
-    }
-
-    unsafe fn init_submenu(
-        pcm: *mut core::ffi::c_void,
-        submenu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-        position: u32,
-    ) {
-        const WM_INITMENUPOPUP: u32 = 0x0117;
-        const IID_ICONTEXTMENU2: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x000214f4,
-            data2: 0,
-            data3: 0,
-            data4: [0xc0, 0, 0, 0, 0, 0, 0, 0x46],
-        };
-        const IID_ICONTEXTMENU3: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0xbcfce0a0,
-            data2: 0xec17,
-            data3: 0x11d0,
-            data4: [0x8d, 0x10, 0, 0xa0, 0xc9, 0x0f, 0x27, 0x19],
-        };
-        #[repr(C)]
-        struct IUnknownVtbl {
-            query_interface: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            add_ref: *const core::ffi::c_void,
-            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-        }
-        #[repr(C)]
-        struct IContextMenu2Vtbl {
-            base: [*const core::ffi::c_void; 6],
-            handle_menu_msg:
-                unsafe extern "system" fn(*mut core::ffi::c_void, u32, WPARAM, LPARAM) -> i32,
-        }
-        #[repr(C)]
-        struct IContextMenu3Vtbl {
-            base: IContextMenu2Vtbl,
-            handle_menu_msg2: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                u32,
-                WPARAM,
-                LPARAM,
-                *mut LRESULT,
-            ) -> i32,
-        }
-
-        let unknown = *(pcm as *mut *const IUnknownVtbl);
-        let lparam = (position as u16 as usize) as LPARAM;
-        let mut pcm3 = std::ptr::null_mut();
-        if ((*unknown).query_interface)(pcm, &IID_ICONTEXTMENU3, &mut pcm3) >= 0
-            && !pcm3.is_null()
-        {
-            let vtbl = *(pcm3 as *mut *const IContextMenu3Vtbl);
-            let mut result = 0;
-            let _ = ((*vtbl).handle_menu_msg2)(
-                pcm3,
-                WM_INITMENUPOPUP,
-                submenu as WPARAM,
-                lparam,
-                &mut result,
-            );
-            let vtbl = *(pcm3 as *mut *const IUnknownVtbl);
-            ((*vtbl).release)(pcm3);
-            return;
-        }
-
-        let mut pcm2 = std::ptr::null_mut();
-        if ((*unknown).query_interface)(pcm, &IID_ICONTEXTMENU2, &mut pcm2) >= 0
-            && !pcm2.is_null()
-        {
-            let vtbl = *(pcm2 as *mut *const IContextMenu2Vtbl);
-            let _ = ((*vtbl).handle_menu_msg)(
-                pcm2,
-                WM_INITMENUPOPUP,
-                submenu as WPARAM,
-                lparam,
-            );
-            let vtbl = *(pcm2 as *mut *const IUnknownVtbl);
-            ((*vtbl).release)(pcm2);
-        }
-    }
-
-    unsafe fn initialize_submenu_path(
-        pcm: *mut core::ffi::c_void,
-        root: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-        menu_path: &[u32],
-    ) -> Result<windows_sys::Win32::UI::WindowsAndMessaging::HMENU, String> {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{GetMenuItemCount, GetSubMenu};
-
-        if menu_path.len() > 4 {
-            return Err("菜单层级过深".into());
-        }
-        let mut current = root;
-        for &position in menu_path {
-            let submenu = GetSubMenu(current, position as i32);
-            if submenu.is_null() {
-                return Err("二级菜单已失效，请重新打开".into());
-            }
-            // Most static cascades are populated by QueryContextMenu already.
-            // Calling WM_INITMENUPOPUP again outside a native TrackPopupMenu loop
-            // makes some extensions wait forever. Initialize only truly dynamic,
-            // currently-empty cascades such as "发送到".
-            if GetMenuItemCount(submenu) <= 0 {
-                init_submenu(pcm, submenu, position);
-            }
-            current = submenu;
-        }
-        Ok(current)
-    }
-
-    unsafe fn acquire_context_menu(
-        hwnd_invoke: HWND,
-        path: Option<&str>,
-    ) -> Result<
-        (
-            *mut core::ffi::c_void,
-            *mut core::ffi::c_void,
-            *mut windows_sys::Win32::UI::Shell::Common::ITEMIDLIST,
-        ),
-        String,
-    > {
-        use windows_sys::Win32::UI::Shell::{
-            CSIDL_DESKTOP, DEFCONTEXTMENU, ILFree, SHBindToParent, SHCreateDefaultContextMenu,
-            SHGetSpecialFolderLocation, SHParseDisplayName, Common::ITEMIDLIST,
-        };
-
-        const IID_ISHELLFOLDER: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x000214e6,
-            data2: 0x0000,
-            data3: 0x0000,
-            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-        };
-        const IID_ICONTEXTMENU: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x000214e4,
-            data2: 0x0000,
-            data3: 0x0000,
-            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-        };
-
-        #[repr(C)]
-        struct IUnknownVtbl {
-            query_interface: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            add_ref: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-        }
-        #[repr(C)]
-        struct IShellFolderVtbl {
-            base: IUnknownVtbl,
-            parse_display_name: *const core::ffi::c_void,
-            enum_objects: *const core::ffi::c_void,
-            bind_to_object: *const core::ffi::c_void,
-            bind_to_storage: *const core::ffi::c_void,
-            compare_ids: *const core::ffi::c_void,
-            create_view_object: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                HWND,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            get_attributes_of: *const core::ffi::c_void,
-            get_ui_object_of: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                HWND,
-                u32,
-                *const *const ITEMIDLIST,
-                *const windows_sys::core::GUID,
-                *mut u32,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            get_display_name_of: *const core::ffi::c_void,
-            set_name_of: *const core::ffi::c_void,
-        }
-        unsafe fn com_release(obj: *mut core::ffi::c_void) {
-            if obj.is_null() {
-                return;
-            }
-            let vtbl = *(obj as *mut *const IUnknownVtbl);
-            ((*vtbl).release)(obj);
-        }
-
-        if path.is_none() {
-            // Desktop / folder *background* menu comes from IShellFolder::CreateViewObject,
-            // not from SHCreateDefaultContextMenu with cidl=0 (often yields an empty HMENU).
-            use windows_sys::Win32::UI::Shell::SHGetDesktopFolder;
-
-            let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
-            let hr = SHGetDesktopFolder(&mut psf);
-            if hr < 0 || psf.is_null() {
-                return Err(format!("SHGetDesktopFolder: {hr}"));
-            }
-
-            let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
-            let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
-            let hr_view = ((*psf_vtbl).create_view_object)(
-                psf,
-                hwnd_invoke,
-                &IID_ICONTEXTMENU,
-                &mut pcm,
-            );
-            if hr_view >= 0 && !pcm.is_null() {
-                return Ok((pcm, psf, std::ptr::null_mut()));
-            }
-
-            let mut desktop_pidl: *mut ITEMIDLIST = std::ptr::null_mut();
-            let hr = SHGetSpecialFolderLocation(
-                std::ptr::null_mut(),
-                CSIDL_DESKTOP as i32,
-                &mut desktop_pidl,
-            );
-            if hr < 0 {
-                com_release(psf);
-                return Err(format!("SHGetSpecialFolderLocation: {hr}"));
-            }
-            let dcm = DEFCONTEXTMENU {
-                hwnd: hwnd_invoke,
-                pcmcb: std::ptr::null_mut(),
-                pidlFolder: desktop_pidl,
-                psf,
-                cidl: 0,
-                apidl: std::ptr::null_mut(),
-                punkAssociationInfo: std::ptr::null_mut(),
-                cKeys: 0,
-                aKeys: std::ptr::null(),
-            };
-            let hr = SHCreateDefaultContextMenu(&dcm, &IID_ICONTEXTMENU, &mut pcm);
-            if hr < 0 || pcm.is_null() {
-                com_release(psf);
-                ILFree(desktop_pidl);
-                return Err(format!(
-                    "desktop background menu failed view={hr_view} def={hr}"
-                ));
-            }
-            return Ok((pcm, psf, desktop_pidl));
-        }
-
-        let file_path = path.unwrap();
-        let wpath = wide(file_path);
-        let mut pidl_abs: *mut ITEMIDLIST = std::ptr::null_mut();
-        let mut sfgao: u32 = 0;
-        let hr = SHParseDisplayName(
-            wpath.as_ptr(),
-            std::ptr::null_mut(),
-            &mut pidl_abs,
-            0,
-            &mut sfgao,
-        );
-        if hr < 0 {
-            return Err(format!("解析路径失败: {hr}"));
-        }
-        let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
-        let mut pidl_child: *mut ITEMIDLIST = std::ptr::null_mut();
-        let hr = SHBindToParent(pidl_abs, &IID_ISHELLFOLDER, &mut psf, &mut pidl_child);
-        if hr < 0 {
-            ILFree(pidl_abs);
-            return Err(format!("绑定 Shell 文件夹失败: {hr}"));
-        }
-
-        let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
-        let child_array: [*const ITEMIDLIST; 1] = [pidl_child];
-        let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
-        let hr_ui = ((*psf_vtbl).get_ui_object_of)(
-            psf,
-            hwnd_invoke,
-            1,
-            child_array.as_ptr(),
-            &IID_ICONTEXTMENU,
-            std::ptr::null_mut(),
-            &mut pcm,
-        );
-        if hr_ui < 0 || pcm.is_null() {
-            com_release(psf);
-            ILFree(pidl_abs);
-            return Err(format!("GetUIObjectOf: {hr_ui}"));
-        }
-        Ok((pcm, psf, pidl_abs))
-    }
-
-    /// Background context menu for a filesystem folder via CreateViewObject.
-    unsafe fn acquire_folder_background_menu(
-        hwnd_invoke: HWND,
-        folder_path: &str,
-    ) -> Result<
-        (
-            *mut core::ffi::c_void,
-            *mut core::ffi::c_void,
-            *mut windows_sys::Win32::UI::Shell::Common::ITEMIDLIST,
-        ),
-        String,
-    > {
-        use windows_sys::Win32::UI::Shell::{
-            ILFree, SHBindToObject, SHParseDisplayName, Common::ITEMIDLIST,
-        };
-
-        const IID_ISHELLFOLDER: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x000214e6,
-            data2: 0x0000,
-            data3: 0x0000,
-            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-        };
-        const IID_ICONTEXTMENU: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x000214e4,
-            data2: 0x0000,
-            data3: 0x0000,
-            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-        };
-
-        #[repr(C)]
-        struct IUnknownVtbl {
-            query_interface: *const core::ffi::c_void,
-            add_ref: *const core::ffi::c_void,
-            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-        }
-        #[repr(C)]
-        struct IShellFolderVtbl {
-            base: IUnknownVtbl,
-            parse_display_name: *const core::ffi::c_void,
-            enum_objects: *const core::ffi::c_void,
-            bind_to_object: *const core::ffi::c_void,
-            bind_to_storage: *const core::ffi::c_void,
-            compare_ids: *const core::ffi::c_void,
-            create_view_object: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                HWND,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            get_attributes_of: *const core::ffi::c_void,
-            get_ui_object_of: *const core::ffi::c_void,
-            get_display_name_of: *const core::ffi::c_void,
-            set_name_of: *const core::ffi::c_void,
-        }
-
-        let wpath = wide(folder_path);
-        let mut pidl_abs: *mut ITEMIDLIST = std::ptr::null_mut();
-        let mut sfgao: u32 = 0;
-        let hr = SHParseDisplayName(
-            wpath.as_ptr(),
-            std::ptr::null_mut(),
-            &mut pidl_abs,
-            0,
-            &mut sfgao,
-        );
-        if hr < 0 || pidl_abs.is_null() {
-            return Err(format!("SHParseDisplayName folder bg: {hr}"));
-        }
-
-        let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hr = SHBindToObject(
-            std::ptr::null_mut(),
-            pidl_abs,
-            std::ptr::null_mut(),
-            &IID_ISHELLFOLDER,
-            &mut psf,
-        );
-        if hr < 0 || psf.is_null() {
-            ILFree(pidl_abs);
-            return Err(format!("SHBindToObject folder bg: {hr}"));
-        }
-
-        let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
-        let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hr = ((*psf_vtbl).create_view_object)(psf, hwnd_invoke, &IID_ICONTEXTMENU, &mut pcm);
-        if hr < 0 || pcm.is_null() {
-            let vtbl = *(psf as *mut *const IUnknownVtbl);
-            ((*vtbl).release)(psf);
-            ILFree(pidl_abs);
-            return Err(format!("CreateViewObject folder bg: {hr}"));
-        }
-        Ok((pcm, psf, pidl_abs))
-    }
-
-    unsafe fn com_release_any(obj: *mut core::ffi::c_void) {
-        if obj.is_null() {
-            return;
-        }
-        #[repr(C)]
-        struct IUnknownVtbl {
-            query_interface: *const core::ffi::c_void,
-            add_ref: *const core::ffi::c_void,
-            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-        }
-        let vtbl = *(obj as *mut *const IUnknownVtbl);
-        ((*vtbl).release)(obj);
-    }
-
-    /// Enumerate Shell COM menu entries (labels + icons) for custom UI.
-    pub fn list_shell_context_menu(
-        hwnd_fence: HWND,
-        path: Option<&str>,
-    ) -> Result<Vec<super::ShellMenuEntry>, String> {
-        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
-        use windows_sys::Win32::UI::Shell::ILFree;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
-
-        const CMD_FIRST: u32 = 1;
-        const CMD_LAST: u32 = 0x7fff;
-
-        #[repr(C)]
-        struct IContextMenuVtbl {
-            query_interface: *const core::ffi::c_void,
-            add_ref: *const core::ffi::c_void,
-            release: *const core::ffi::c_void,
-            query_context_menu: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-                u32,
-                u32,
-                u32,
-                u32,
-            ) -> i32,
-            invoke_command: *const core::ffi::c_void,
-            get_command_string: *const core::ffi::c_void,
-        }
-
-        unsafe {
-            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-            let hwnd_invoke = if hwnd_fence.is_null() {
-                desktop_defview_hwnd().unwrap_or(hwnd_fence)
-            } else {
-                hwnd_fence
-            };
-            // Enumeration and invocation must use identical flags or command
-            // offsets can point at a different verb when the menu is rebuilt.
-            let flags = menu_flags_for(path);
-            super::shell_host_stage("获取 IContextMenu");
-            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
-            super::shell_host_stage("创建菜单句柄");
-
-            let hmenu = CreatePopupMenu();
-            if hmenu.is_null() {
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err("创建菜单失败".into());
-            }
-            let pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
-            super::shell_host_stage("QueryContextMenu");
-            let hr = ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, flags);
-            if hr < 0 {
-                DestroyMenu(hmenu);
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err(format!("QueryContextMenu: {hr}"));
-            }
-
-            super::shell_host_stage("读取菜单项");
-            let mut items = enumerate_hmenu_level(pcm, hmenu, &[], 0);
-            super::shell_host_stage("完成");
-            let raw_count = {
-                use windows_sys::Win32::UI::WindowsAndMessaging::GetMenuItemCount;
-                GetMenuItemCount(hmenu)
-            };
-            DestroyMenu(hmenu);
-            com_release_any(pcm);
-            com_release_any(psf);
-            if !pidl_abs.is_null() {
-                ILFree(pidl_abs);
-            }
-
-            // If the desktop namespace background menu is empty, retry with the user's
-            // Desktop directory folder background (CreateViewObject on that folder).
-            if items.is_empty() && path.is_none() {
-                if let Some(desk) = std::env::var_os("USERPROFILE")
-                    .map(std::path::PathBuf::from)
-                    .map(|p| p.join("Desktop"))
-                {
-                    if desk.is_dir() {
-                        if let Some(s) = desk.to_str() {
-                            eprintln!(
-                                "[desktop-organize] blank menu empty (hmenu={raw_count}), retry folder bg: {s}"
-                            );
-                            if let Ok((pcm2, psf2, pidl2)) =
-                                acquire_folder_background_menu(hwnd_invoke, s)
-                            {
-                                let hmenu2 = CreatePopupMenu();
-                                if !hmenu2.is_null() {
-                                    let vtbl2 = *(pcm2 as *mut *const IContextMenuVtbl);
-                                    let hr2 = ((*vtbl2).query_context_menu)(
-                                        pcm2, hmenu2, 0, CMD_FIRST, CMD_LAST, flags,
-                                    );
-                                    if hr2 >= 0 {
-                                        items = enumerate_hmenu_level(pcm2, hmenu2, &[], 0);
-                                    }
-                                    DestroyMenu(hmenu2);
-                                }
-                                com_release_any(pcm2);
-                                com_release_any(psf2);
-                                if !pidl2.is_null() {
-                                    ILFree(pidl2);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(p) = path {
-                if let Some(file_icon) = shell_name_and_icon(std::path::Path::new(p)).icon {
-                    for entry in &mut items {
-                        if !entry.separator && entry.children.is_none() && entry.icon.is_none() {
-                            entry.icon = Some(file_icon);
-                            break;
-                        }
-                    }
-                }
-            } else if items.is_empty() {
-                eprintln!(
-                    "[desktop-organize] blank desktop shell menu still empty (hmenu count={raw_count})"
-                );
-            }
-
-            Ok(items)
-        }
-    }
-
-    /// Populate only the submenu currently being opened by the pointer.
-    pub fn list_shell_context_submenu(
-        hwnd_fence: HWND,
-        path: Option<&str>,
-        menu_path: &[u32],
-    ) -> Result<Vec<super::ShellMenuEntry>, String> {
-        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
-        use windows_sys::Win32::UI::Shell::ILFree;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
-
-        const CMD_FIRST: u32 = 1;
-        const CMD_LAST: u32 = 0x7fff;
-        #[repr(C)]
-        struct IContextMenuVtbl {
-            base: [*const core::ffi::c_void; 3],
-            query_context_menu: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-                u32,
-                u32,
-                u32,
-                u32,
-            ) -> i32,
-        }
-
-        unsafe {
-            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-            let hwnd_invoke = if hwnd_fence.is_null() {
-                desktop_defview_hwnd().unwrap_or(hwnd_fence)
-            } else {
-                hwnd_fence
-            };
-            super::shell_host_stage("二级菜单：获取 IContextMenu");
-            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
-            let hmenu = CreatePopupMenu();
-            if hmenu.is_null() {
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err("创建二级菜单失败".into());
-            }
-
-            let result = (|| {
-                let vtbl = *(pcm as *mut *const IContextMenuVtbl);
-                super::shell_host_stage("二级菜单：QueryContextMenu");
-                let hr = ((*vtbl).query_context_menu)(
-                    pcm,
-                    hmenu,
-                    0,
-                    CMD_FIRST,
-                    CMD_LAST,
-                    menu_flags_for(path),
-                );
-                if hr < 0 {
-                    return Err(format!("QueryContextMenu submenu: {hr}"));
-                }
-                super::shell_host_stage("二级菜单：初始化");
-                let submenu = initialize_submenu_path(pcm, hmenu, menu_path)?;
-                super::shell_host_stage("二级菜单：读取菜单项");
-                Ok(enumerate_hmenu_level(pcm, submenu, menu_path, 0))
-            })();
-
-            DestroyMenu(hmenu);
-            com_release_any(pcm);
-            com_release_any(psf);
-            if !pidl_abs.is_null() {
-                ILFree(pidl_abs);
-            }
-            result
-        }
-    }
-
-    /// Invoke a shell menu command id previously returned by list_shell_context_menu.
-    pub fn invoke_shell_context_command(
-        hwnd_fence: HWND,
-        path: Option<&str>,
-        command_id: u32,
-        menu_path: &[u32],
-    ) -> Result<(), String> {
-        use windows_sys::Win32::Foundation::POINT;
-        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
-        use windows_sys::Win32::UI::Shell::{
-            CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, ILFree,
-        };
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            CreatePopupMenu, DestroyMenu, GetCursorPos, SW_SHOWNORMAL,
-        };
-
-        const CMD_FIRST: u32 = 1;
-        const CMD_LAST: u32 = 0x7fff;
-        if command_id < CMD_FIRST {
-            return Err("无效命令".into());
-        }
-
-        #[repr(C)]
-        struct IContextMenuVtbl {
-            query_interface: *const core::ffi::c_void,
-            add_ref: *const core::ffi::c_void,
-            release: *const core::ffi::c_void,
-            query_context_menu: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-                u32,
-                u32,
-                u32,
-                u32,
-            ) -> i32,
-            invoke_command: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *const windows_sys::Win32::UI::Shell::CMINVOKECOMMANDINFO,
-            ) -> i32,
-            get_command_string: *const core::ffi::c_void,
-        }
-
-        unsafe {
-            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-            let hwnd_invoke = if hwnd_fence.is_null() {
-                desktop_defview_hwnd().unwrap_or(hwnd_fence)
-            } else {
-                hwnd_fence
-            };
-            let flags = menu_flags_for(path);
-            let mut pt = POINT { x: 0, y: 0 };
-            let _ = GetCursorPos(&mut pt);
-
-            let (mut pcm, mut psf, mut pidl_abs) =
-                acquire_context_menu(hwnd_invoke, path)?;
-            let mut hmenu = CreatePopupMenu();
-            if hmenu.is_null() {
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err("创建菜单失败".into());
-            }
-            let mut pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
-            let hr =
-                ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, flags);
-            if hr < 0 {
-                DestroyMenu(hmenu);
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err(format!("QueryContextMenu: {hr}"));
-            }
-
-            // Only check whether the rebuilt menu is empty; avoid the heavy
-            // recursive enumerate that previously hung some Shell extensions.
-            let mut menu_count = {
-                use windows_sys::Win32::UI::WindowsAndMessaging::GetMenuItemCount;
-                GetMenuItemCount(hmenu)
-            };
-
-            // Listing falls back to the physical Desktop folder if the virtual
-            // desktop provider returns no usable entries. Invocation must make
-            // the same choice or the numeric command ID belongs to another menu.
-            if menu_count <= 0 && path.is_none() {
-                DestroyMenu(hmenu);
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-
-                let desktop = std::env::var_os("USERPROFILE")
-                    .map(std::path::PathBuf::from)
-                    .map(|p| p.join("Desktop"))
-                    .ok_or_else(|| "无法定位桌面目录".to_string())?;
-                let desktop = desktop
-                    .to_str()
-                    .ok_or_else(|| "桌面目录编码无效".to_string())?;
-                (pcm, psf, pidl_abs) = acquire_folder_background_menu(hwnd_invoke, desktop)?;
-                hmenu = CreatePopupMenu();
-                if hmenu.is_null() {
-                    com_release_any(pcm);
-                    com_release_any(psf);
-                    if !pidl_abs.is_null() {
-                        ILFree(pidl_abs);
-                    }
-                    return Err("创建桌面菜单失败".into());
-                }
-                pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
-                let hr =
-                    ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, flags);
-                if hr < 0 {
-                    DestroyMenu(hmenu);
-                    com_release_any(pcm);
-                    com_release_any(psf);
-                    if !pidl_abs.is_null() {
-                        ILFree(pidl_abs);
-                    }
-                    return Err(format!("QueryContextMenu desktop fallback: {hr}"));
-                }
-                use windows_sys::Win32::UI::WindowsAndMessaging::GetMenuItemCount;
-                menu_count = GetMenuItemCount(hmenu);
-            }
-            if menu_count <= 0 {
-                DestroyMenu(hmenu);
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err("Shell 菜单已失效，请重新打开菜单".into());
-            }
-
-            if let Err(e) = initialize_submenu_path(pcm, hmenu, menu_path) {
-                DestroyMenu(hmenu);
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err(e);
-            }
-
-            let verb_offset = (command_id - CMD_FIRST) as usize;
-            let ici = CMINVOKECOMMANDINFOEX {
-                cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
-                fMask: CMIC_MASK_PTINVOKE,
-                hwnd: hwnd_invoke,
-                lpVerb: verb_offset as windows_sys::core::PCSTR,
-                lpParameters: std::ptr::null(),
-                lpDirectory: std::ptr::null(),
-                nShow: SW_SHOWNORMAL,
-                dwHotKey: 0,
-                hIcon: std::ptr::null_mut(),
-                lpTitle: std::ptr::null(),
-                lpVerbW: std::ptr::null(),
-                lpParametersW: std::ptr::null(),
-                lpDirectoryW: std::ptr::null(),
-                lpTitleW: std::ptr::null(),
-                ptInvoke: pt,
-            };
-            let hr = ((*pcm_vtbl).invoke_command)(pcm, &ici as *const _ as *const _);
-            DestroyMenu(hmenu);
-            com_release_any(pcm);
-            com_release_any(psf);
-            if !pidl_abs.is_null() {
-                ILFree(pidl_abs);
-            }
-            if hr < 0 {
-                return Err(format!("InvokeCommand: {hr}"));
-            }
-            Ok(())
-        }
-    }
-
-    /// Display and execute the native Shell context menu in one COM/menu lifetime.
-    ///
-    /// Keeping the same IContextMenu alive while TrackPopupMenuEx is running is
-    /// required for dynamic and owner-drawn Shell extensions.
-    pub fn show_native_shell_context_menu(
-        hwnd_fence: HWND,
-        path: Option<&str>,
-    ) -> Result<(), String> {
-        use windows_sys::Win32::Foundation::POINT;
-        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
-        use windows_sys::Win32::UI::Shell::{
-            CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, ILFree,
-        };
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            CreatePopupMenu, DestroyMenu, GetCursorPos, PostMessageW, SetForegroundWindow,
-            TrackPopupMenuEx, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_NULL,
-        };
-
-        const CMD_FIRST: u32 = 1;
-        const CMD_LAST: u32 = 0x7fff;
-        const IID_ICONTEXTMENU2: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x000214f4,
-            data2: 0x0000,
-            data3: 0x0000,
-            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-        };
-        const IID_ICONTEXTMENU3: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0xbcfce0a0,
-            data2: 0xec17,
-            data3: 0x11d0,
-            data4: [0x8d, 0x10, 0x00, 0xa0, 0xc9, 0x0f, 0x27, 0x19],
-        };
-
-        #[repr(C)]
-        struct IContextMenuVtbl {
-            query_interface: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-            add_ref: *const core::ffi::c_void,
-            release: *const core::ffi::c_void,
-            query_context_menu: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-                u32,
-                u32,
-                u32,
-                u32,
-            ) -> i32,
-            invoke_command: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *const windows_sys::Win32::UI::Shell::CMINVOKECOMMANDINFO,
-            ) -> i32,
-            get_command_string: *const core::ffi::c_void,
-        }
-
-        #[repr(C)]
-        struct IContextMenu2Vtbl {
-            base: IContextMenuVtbl,
-            handle_menu_msg: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                u32,
-                WPARAM,
-                LPARAM,
-            ) -> i32,
-        }
-
-        #[repr(C)]
-        struct IContextMenu3Vtbl {
-            base: IContextMenu2Vtbl,
-            handle_menu_msg2: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                u32,
-                WPARAM,
-                LPARAM,
-                *mut LRESULT,
-            ) -> i32,
-        }
-
-        unsafe {
-            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_fence, path)?;
-            let hmenu = CreatePopupMenu();
-            if hmenu.is_null() {
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err("创建原生菜单失败".into());
-            }
-
-            let pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
-            let hr =
-                ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, menu_flags_for(path));
-            if hr < 0 {
-                DestroyMenu(hmenu);
-                com_release_any(pcm);
-                com_release_any(psf);
-                if !pidl_abs.is_null() {
-                    ILFree(pidl_abs);
-                }
-                return Err(format!("QueryContextMenu: {hr}"));
-            }
-
-            let mut pcm2: *mut core::ffi::c_void = std::ptr::null_mut();
-            let mut pcm3: *mut core::ffi::c_void = std::ptr::null_mut();
-            let _ = ((*pcm_vtbl).query_interface)(pcm, &IID_ICONTEXTMENU2, &mut pcm2);
-            let _ = ((*pcm_vtbl).query_interface)(pcm, &IID_ICONTEXTMENU3, &mut pcm3);
-
-            let pcm2_handle_menu_msg = if pcm2.is_null() {
-                None
-            } else {
-                let vtbl = *(pcm2 as *mut *const IContextMenu2Vtbl);
-                Some((*vtbl).handle_menu_msg)
-            };
-            let pcm3_handle_menu_msg2 = if pcm3.is_null() {
-                None
-            } else {
-                let vtbl = *(pcm3 as *mut *const IContextMenu3Vtbl);
-                Some((*vtbl).handle_menu_msg2)
-            };
-            CTX_MENU_FWD.with(|slot| {
-                *slot.borrow_mut() = Some(CtxMenuFwd {
-                    pcm2,
-                    pcm2_handle_menu_msg,
-                    pcm3,
-                    pcm3_handle_menu_msg2,
-                });
-            });
-
-            let mut pt = POINT { x: 0, y: 0 };
-            let _ = GetCursorPos(&mut pt);
-            // The isolated host supplies its own top-level HWND. The in-process
-            // fallback still uses DefView because the fence HWND is a child.
-            let hwnd_popup = if hwnd_fence.is_null() {
-                desktop_defview_hwnd().unwrap_or(hwnd_fence)
-            } else {
-                hwnd_fence
-            };
-            let _ = SetForegroundWindow(hwnd_popup);
-            let command_id = TrackPopupMenuEx(
-                hmenu,
-                TPM_RETURNCMD | TPM_RIGHTBUTTON,
-                pt.x,
-                pt.y,
-                hwnd_popup,
-                std::ptr::null(),
-            ) as u32;
-
-            CTX_MENU_FWD.with(|slot| *slot.borrow_mut() = None);
-            let _ = PostMessageW(hwnd_popup, WM_NULL, 0, 0);
-
-            let invoke_result = if command_id >= CMD_FIRST {
-                let verb_offset = (command_id - CMD_FIRST) as usize;
-                let ici = CMINVOKECOMMANDINFOEX {
-                    cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
-                    fMask: CMIC_MASK_PTINVOKE,
-                    hwnd: hwnd_popup,
-                    lpVerb: verb_offset as windows_sys::core::PCSTR,
-                    lpParameters: std::ptr::null(),
-                    lpDirectory: std::ptr::null(),
-                    nShow: SW_SHOWNORMAL,
-                    dwHotKey: 0,
-                    hIcon: std::ptr::null_mut(),
-                    lpTitle: std::ptr::null(),
-                    lpVerbW: std::ptr::null(),
-                    lpParametersW: std::ptr::null(),
-                    lpDirectoryW: std::ptr::null(),
-                    lpTitleW: std::ptr::null(),
-                    ptInvoke: pt,
-                };
-                ((*pcm_vtbl).invoke_command)(pcm, &ici as *const _ as *const _)
-            } else {
-                0
-            };
-
-            DestroyMenu(hmenu);
-            com_release_any(pcm3);
-            com_release_any(pcm2);
-            com_release_any(pcm);
-            com_release_any(psf);
-            if !pidl_abs.is_null() {
-                ILFree(pidl_abs);
-            }
-
-            if invoke_result < 0 {
-                return Err(format!("InvokeCommand: {invoke_result}"));
-            }
-            Ok(())
-        }
     }
 }
 
 const SHELL_MENU_HOST_ARG: &str = "--lingscape-shell-menu-host";
 const SHELL_MENU_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn shell_host_stage(stage: &str) {
+pub(crate) fn shell_host_stage(stage: &str) {
     if let Some(path) = std::env::var_os("LINGSCAPE_SHELL_MENU_STATUS") {
         let _ = fs::write(path, stage);
     }
@@ -2899,18 +1514,19 @@ pub fn maybe_run_shell_menu_host() -> bool {
 
         #[cfg(windows)]
         {
-            let hwnd = win::create_shell_menu_host_window()?;
-            win::pump_shell_menu_host_messages();
+            let hwnd = crate::shell_menu::create_host_window()?;
+            crate::shell_menu::pump_messages();
             let result = match mode.as_str() {
-                "root" => win::list_shell_context_menu(hwnd, path),
-                "submenu" => win::list_shell_context_submenu(hwnd, path, &menu_path),
-                "native" => {
-                    win::show_native_shell_context_menu(hwnd, path).map(|_| Vec::new())
+                "root" => crate::shell_menu::list_shell_context_menu(hwnd, path),
+                "submenu" => {
+                    crate::shell_menu::list_shell_context_submenu(hwnd, path, &menu_path)
                 }
+                "native" => crate::shell_menu::show_native_shell_context_menu(hwnd, path)
+                    .map(|_| Vec::new()),
                 _ => Err("未知菜单模式".into()),
             };
-            win::pump_shell_menu_host_messages();
-            win::destroy_shell_menu_host_window(hwnd);
+            crate::shell_menu::pump_messages();
+            crate::shell_menu::destroy_host_window(hwnd);
             result
         }
         #[cfg(not(windows))]
@@ -3163,7 +1779,7 @@ pub async fn list_desktop_shell_context_submenu(
 
 /// Invoke a Shell COM context menu command previously listed for path/blank desktop.
 #[tauri::command]
-pub fn invoke_desktop_shell_context_command(
+pub async fn invoke_desktop_shell_context_command(
     app: AppHandle,
     path: String,
     command_id: u32,
@@ -3175,26 +1791,31 @@ pub fn invoke_desktop_shell_context_command(
     } else {
         Some(trimmed.to_string())
     };
-    let window = app
+    let _window = app
         .get_webview_window(FENCE_LABEL)
         .ok_or_else(|| "格子窗口未就绪".to_string())?;
 
     #[cfg(windows)]
     {
-        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
-        let handle = app.clone();
-        return run_on_ui(&handle, move || {
-            win::invoke_shell_context_command(
-                hwnd_raw as windows_sys::Win32::Foundation::HWND,
+        return tauri::async_runtime::spawn_blocking(move || {
+            let hwnd = crate::shell_menu::create_host_window()?;
+            crate::shell_menu::pump_messages();
+            let result = crate::shell_menu::invoke_shell_context_command(
+                hwnd,
                 path_opt.as_deref(),
                 command_id,
                 &menu_path,
-            )
-        })?;
+            );
+            crate::shell_menu::pump_messages();
+            crate::shell_menu::destroy_host_window(hwnd);
+            result
+        })
+        .await
+        .map_err(|e| format!("执行菜单命令任务失败: {e}"))?;
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, path_opt, command_id, menu_path);
+        let _ = (_window, path_opt, command_id, menu_path);
         Err("桌面整理仅支持 Windows".into())
     }
 }
@@ -3354,27 +1975,29 @@ pub fn delete_desktop_item(path: String) -> Result<(), String> {
     {
         use std::ffi::OsStr;
         use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::UI::Shell::{
+        use windows::core::{BOOL, PCWSTR};
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::{
             FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FO_DELETE, SHFILEOPSTRUCTW, SHFileOperationW,
         };
         unsafe {
-            let mut wpath: Vec<u16> = OsStr::new(trimmed)
+            let wpath: Vec<u16> = OsStr::new(trimmed)
                 .encode_wide()
                 .chain(std::iter::once(0))
                 .chain(std::iter::once(0))
                 .collect();
             let mut op = SHFILEOPSTRUCTW {
-                hwnd: std::ptr::null_mut(),
+                hwnd: HWND::default(),
                 wFunc: FO_DELETE,
-                pFrom: wpath.as_ptr(),
-                pTo: std::ptr::null(),
-                fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION) as u16,
-                fAnyOperationsAborted: 0,
+                pFrom: PCWSTR(wpath.as_ptr()),
+                pTo: PCWSTR::null(),
+                fFlags: (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0) as u16,
+                fAnyOperationsAborted: BOOL(0),
                 hNameMappings: std::ptr::null_mut(),
-                lpszProgressTitle: std::ptr::null(),
+                lpszProgressTitle: PCWSTR::null(),
             };
             let hr = SHFileOperationW(&mut op);
-            if hr != 0 || op.fAnyOperationsAborted != 0 {
+            if hr != 0 || op.fAnyOperationsAborted.as_bool() {
                 return Err(format!("删除失败: code={hr}"));
             }
         }
@@ -3585,11 +2208,11 @@ fn drag_preview_png(path: &Path, preview_data_url: Option<&str>) -> Vec<u8> {
 }
 
 #[cfg(windows)]
-fn window_class_name(hwnd: windows_sys::Win32::Foundation::HWND) -> String {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+fn window_class_name(hwnd: windows::Win32::Foundation::HWND) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::GetClassNameW;
     unsafe {
         let mut buf = [0u16; 256];
-        let n = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        let n = GetClassNameW(hwnd, &mut buf);
         if n <= 0 {
             return String::new();
         }
@@ -3607,8 +2230,8 @@ fn is_desktop_shell_class(class: &str) -> bool {
 
 #[cfg(windows)]
 fn is_lbutton_down() -> bool {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
-    unsafe { (GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000) != 0 }
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 }
 }
 
 #[cfg(windows)]
@@ -3629,25 +2252,25 @@ fn collect_own_hwnds(app: &AppHandle, fence_hwnd: isize) -> Vec<isize> {
 
 #[cfg(windows)]
 fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
-    use windows_sys::Win32::Foundation::{HWND, POINT};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetParent, WindowFromPoint};
+    use windows::Win32::Foundation::{HWND, POINT};
+    use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetParent, WindowFromPoint};
     unsafe {
-        let fence = fence_hwnd as HWND;
-        if fence.is_null() {
+        let fence = HWND(fence_hwnd as *mut _);
+        if fence.0.is_null() {
             return false;
         }
         let own = collect_own_hwnds(app, fence_hwnd);
         let mut pt = POINT { x: 0, y: 0 };
-        if GetCursorPos(&mut pt) == 0 {
+        if GetCursorPos(&mut pt).is_err() {
             return false;
         }
         let mut hwnd = WindowFromPoint(pt);
         // Fence is a WS_CHILD of the desktop DefView — walk parents instead of GA_ROOT.
         for _ in 0..24 {
-            if hwnd.is_null() {
+            if hwnd.0.is_null() {
                 return true;
             }
-            let id = hwnd as isize;
+            let id = hwnd.0 as isize;
             if own.contains(&id) {
                 return false;
             }
@@ -3655,7 +2278,7 @@ fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
             if is_desktop_shell_class(&class) {
                 return false;
             }
-            hwnd = GetParent(hwnd);
+            hwnd = GetParent(hwnd).unwrap_or_default();
         }
         true
     }

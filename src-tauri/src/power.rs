@@ -8,11 +8,11 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 
 #[cfg(windows)]
 mod win {
-    use windows_sys::Win32::Foundation::RECT;
-    use windows_sys::Win32::Graphics::Gdi::{
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
+    use windows::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetForegroundWindow, GetSystemMetrics, GetWindowLongW, GetWindowRect,
         GWL_EXSTYLE, GWL_STYLE, SM_REMOTESESSION, WS_CAPTION, WS_EX_TOPMOST, WS_MAXIMIZE, WS_POPUP,
         WS_THICKFRAME,
@@ -22,10 +22,10 @@ mod win {
         unsafe { GetSystemMetrics(SM_REMOTESESSION) != 0 }
     }
 
-    fn class_name(hwnd: windows_sys::Win32::Foundation::HWND) -> String {
+    fn class_name(hwnd: HWND) -> String {
         unsafe {
             let mut buf = [0u16; 256];
-            let n = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+            let n = GetClassNameW(hwnd, &mut buf);
             if n <= 0 {
                 return String::new();
             }
@@ -33,7 +33,7 @@ mod win {
         }
     }
 
-    fn is_shell_or_system_window(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
+    fn is_shell_or_system_window(hwnd: HWND) -> bool {
         let cls = class_name(hwnd);
         matches!(
             cls.as_str(),
@@ -54,7 +54,7 @@ mod win {
     pub fn is_foreground_fullscreen() -> bool {
         unsafe {
             let hwnd = GetForegroundWindow();
-            if hwnd.is_null() || is_shell_or_system_window(hwnd) {
+            if hwnd.0.is_null() || is_shell_or_system_window(hwnd) {
                 return false;
             }
             let mut rect = RECT {
@@ -63,18 +63,20 @@ mod win {
                 right: 0,
                 bottom: 0,
             };
-            if GetWindowRect(hwnd, &mut rect) == 0 {
+            if GetWindowRect(hwnd, &mut rect).is_err() {
                 return false;
             }
             let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            if mon.is_null() {
+            if mon.is_invalid() {
                 return false;
             }
             let mut mi = MONITORINFO {
                 cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-                ..Default::default()
+                rcMonitor: RECT::default(),
+                rcWork: RECT::default(),
+                dwFlags: 0,
             };
-            if GetMonitorInfoW(mon, &mut mi) == 0 {
+            if !GetMonitorInfoW(mon, &mut mi).as_bool() {
                 return false;
             }
             let mr = mi.rcMonitor;
@@ -101,11 +103,11 @@ mod win {
 
             let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
             let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-            let maximized = style & WS_MAXIMIZE != 0;
-            let popup = style & WS_POPUP != 0;
-            let has_caption = style & WS_CAPTION != 0;
-            let thickframe = style & WS_THICKFRAME != 0;
-            let topmost = ex & WS_EX_TOPMOST != 0;
+            let maximized = style & WS_MAXIMIZE.0 != 0;
+            let popup = style & WS_POPUP.0 != 0;
+            let has_caption = style & WS_CAPTION.0 != 0;
+            let thickframe = style & WS_THICKFRAME.0 != 0;
+            let topmost = ex & WS_EX_TOPMOST.0 != 0;
 
             // Ordinary maximized desktop apps (browser, explorer, IDE) → not "fullscreen mode".
             if maximized && has_caption && !popup {
@@ -309,10 +311,10 @@ pub fn start_watcher(app: AppHandle) {
 fn read_battery_state() -> Option<bool> {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+        use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
         unsafe {
             let mut status: SYSTEM_POWER_STATUS = std::mem::zeroed();
-            if GetSystemPowerStatus(&mut status) == 0 {
+            if GetSystemPowerStatus(&mut status).is_err() {
                 return None;
             }
             // 0 = offline (battery), 1 = AC, 255 = unknown
