@@ -1498,8 +1498,12 @@ pub fn reassert(app: &AppHandle) {
         return;
     };
     #[cfg(windows)]
-    if let Ok(hwnd) = window.hwnd() {
-        win::touch_fence_chrome(hwnd.0 as isize);
+    {
+        if let Ok(hwnd) = window.hwnd() {
+            let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
+            win::touch_fence_chrome(hwnd.0 as isize);
+        }
+        let _ = window.set_ignore_cursor_events(false);
     }
 }
 

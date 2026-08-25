@@ -246,12 +246,13 @@
         }
 
         if (cmd === "play") {
-          const vid = primaryVideo();
-          if (vid && vid.classList.contains("on")) {
+          if (panes.some((pane) => pane.vid.classList.contains("on"))) {
             panes.forEach((pane) => {
-              safePlay(pane.vid);
+              if (pane.vid.classList.contains("on")) safePlay(pane.vid);
             });
             startVideoReport();
+          } else if (lastState) {
+            applyMedia(lastState, "set");
           } else {
             report({ currentTime: 0, duration: 0, playing: true });
           }
@@ -300,6 +301,16 @@
         }
       }
 
+      function resumeIfNeeded() {
+        if (!lastState || lastState.playing === false || lastState.userPaused) return;
+        const needsResume = panes.some(
+          (pane) => pane.vid.classList.contains("on") && pane.vid.paused,
+        );
+        if (needsResume) {
+          applyMedia(lastState, "play");
+        }
+      }
+
       window.__wallpaperApply = function (state, cmd, layout) {
         lastState = state || lastState;
         applyLayout(layout);
@@ -311,6 +322,13 @@
           document.addEventListener("DOMContentLoaded", doApply, { once: true });
         }
       };
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") resumeIfNeeded();
+      });
+      window.addEventListener("focus", resumeIfNeeded);
+      // After long sleep, primary decoder often stays paused while secondary keeps going.
+      setInterval(resumeIfNeeded, 4000);
 
       (async () => {
         try {

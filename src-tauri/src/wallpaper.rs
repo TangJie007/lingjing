@@ -518,6 +518,27 @@ pub fn cleanup(app: &AppHandle) {
     eprintln!("[wallpaper] cleanup detached from desktop");
 }
 
+/// After sleep/hibernate, WorkerW may be recreated and video elements may stay paused.
+/// Force re-attach and push play when the engine should still be playing.
+pub fn on_system_resume(app: &AppHandle, should_play: bool, state: &EngineState) {
+    eprintln!(
+        "[wallpaper] system resume should_play={should_play} media={:?}",
+        state.media_id
+    );
+    ATTACHED.store(false, Ordering::SeqCst);
+    if let Err(e) = attach_existing(app) {
+        eprintln!("[wallpaper] resume reattach failed: {e}");
+        return;
+    }
+    if should_play && state.media_id.is_some() {
+        let mut snap = state.clone();
+        snap.playing = true;
+        let _ = push_command(app, "play", &snap);
+    } else if state.media_id.is_some() {
+        let _ = push_command(app, "set", state);
+    }
+}
+
 fn ensure_wallpaper_inner(app: &AppHandle) -> Result<WebviewWindow, String> {
     let window = app
         .get_webview_window(WALLPAPER_LABEL)

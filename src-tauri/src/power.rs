@@ -1,8 +1,10 @@
+use crate::desktop_organize;
 use crate::settings;
+use crate::wallpaper::{self, EngineHandle};
 use serde::Serialize;
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, Listener};
+use std::time::{Duration, SystemTime};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 
 #[cfg(windows)]
 mod win {
@@ -118,6 +120,40 @@ fn spawn_settings_listener(app: AppHandle, flags: Arc<RwLock<Flags>>) {
     });
 }
 
+fn handle_system_resume(app: &AppHandle) {
+    eprintln!("[power] system resume detected");
+    let _ = app.emit(
+        "engine-pause-recommend",
+        &PauseRecommendPayload {
+            action: "resume-system",
+            reason: "resume",
+        },
+    );
+
+    let (should_play, snap) = app
+        .try_state::<EngineHandle>()
+        .and_then(|engine| {
+            engine.state.lock().ok().map(|s| {
+                let play = s.media_id.is_some() && !s.user_paused;
+                (play, s.clone())
+            })
+        })
+        .unwrap_or_else(|| (false, Default::default()));
+
+    let app_clone = app.clone();
+    let snap_clone = snap.clone();
+    // Give Explorer a moment to rebuild WorkerW after wake.
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        wallpaper::on_system_resume(&app_clone, should_play, &snap_clone);
+        desktop_organize::reassert(&app_clone);
+        // Second pass: some machines rebuild desktop layers slowly.
+        tokio::time::sleep(Duration::from_millis(1600)).await;
+        wallpaper::on_system_resume(&app_clone, should_play, &snap_clone);
+        desktop_organize::reassert(&app_clone);
+    });
+}
+
 pub fn start_watcher(app: AppHandle) {
     let flags = Arc::new(RwLock::new(
         settings::load_settings(&app)
@@ -130,9 +166,27 @@ pub fn start_watcher(app: AppHandle) {
         let mut last_fullscreen = false;
         let mut last_remote = false;
         let mut last_battery_state: Option<bool> = None;
+        let mut last_wall = SystemTime::now();
+        let mut resume_grace_until = SystemTime::UNIX_EPOCH;
         loop {
+            let now = SystemTime::now();
+            if let Ok(gap) = now.duration_since(last_wall) {
+                // Instant does not advance during sleep; wall clock does.
+                if gap > Duration::from_secs(4) {
+                    resume_grace_until = now + Duration::from_secs(8);
+                    handle_system_resume(&app);
+                    // Reset edge detectors so wake-time fullscreen/lock UI
+                    // does not leave the engine stuck paused.
+                    last_fullscreen = false;
+                    last_remote = win::is_remote_session();
+                    last_battery_state = Some(read_battery_state());
+                }
+            }
+            last_wall = now;
+
+            let in_grace = now < resume_grace_until;
             let flags = flags.read().map(|g| *g).unwrap_or_default();
-            if flags.pause_on_fullscreen {
+            if flags.pause_on_fullscreen && !in_grace {
                 let fs = win::is_foreground_fullscreen();
                 if fs != last_fullscreen {
                     last_fullscreen = fs;

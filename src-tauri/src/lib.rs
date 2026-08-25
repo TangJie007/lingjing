@@ -211,7 +211,11 @@ fn engine_report_progress(
     state.current_time = payload.current_time;
     state.duration = payload.duration;
     if let Some(p) = payload.playing {
-        state.playing = p;
+        // Don't let a single stalled primary decoder flip global "playing"
+        // to false after sleep; only honor explicit pause/play commands.
+        if p || state.user_paused {
+            state.playing = p;
+        }
     }
     if let Some(err) = payload.error.as_ref() {
         if !is_benign_play_error(err) {
@@ -472,8 +476,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         {
             let app = tray.app_handle();
             if let Some(win) = app.get_webview_window("main") {
+                // After sleep, is_visible() is often stale (true while window is
+                // not actually interactable). Prefer "bring to front" over toggle.
                 let visible = win.is_visible().unwrap_or(false);
-                if visible {
+                let minimized = win.is_minimized().unwrap_or(false);
+                let focused = win.is_focused().unwrap_or(false);
+                if visible && !minimized && focused {
                     let _ = win.hide();
                 } else {
                     let _ = win.show();

@@ -303,6 +303,7 @@
           const map = new Map(items.map((a) => [a.path, a]));
           const out = [];
           for (const p of saved) {
+            if (typeof p !== "string" || p.startsWith("::")) continue;
             if (map.has(p)) {
               out.push(map.get(p));
               map.delete(p);
@@ -317,31 +318,80 @@
         }
       }
 
+      function cellForPath(container, path) {
+        for (const cell of container.querySelectorAll(".cell[data-path]")) {
+          if (cell.dataset.path === path) return cell;
+        }
+        return null;
+      }
+
+      function swapDomNodes(a, b) {
+        if (a === b) return;
+        const parent = a.parentNode;
+        if (!parent || b.parentNode !== parent) return;
+        const aNext = a.nextSibling;
+        const bNext = b.nextSibling;
+        if (aNext === b) {
+          parent.insertBefore(b, a);
+          return;
+        }
+        if (bNext === a) {
+          parent.insertBefore(a, b);
+          return;
+        }
+        parent.insertBefore(a, bNext);
+        parent.insertBefore(b, aNext);
+      }
+
+      function syncItemsFromDom(group) {
+        const map = new Map(group.items.map((i) => [i.path, i]));
+        const next = [];
+        for (const cell of group.container.querySelectorAll(".cell[data-path]")) {
+          const item = map.get(cell.dataset.path);
+          if (item) next.push(item);
+        }
+        group.items = next;
+      }
+
       function findSwapTarget(x, y, sourceCell, container) {
         for (const el of document.elementsFromPoint(x, y)) {
           const cell = el.closest?.(".cell.draggable");
           if (cell && cell !== sourceCell && container.contains(cell)) return cell;
         }
+        let best = null;
+        let bestDist = Infinity;
+        for (const cell of container.querySelectorAll(".cell.draggable")) {
+          if (cell === sourceCell) continue;
+          const rect = cell.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const dist = Math.hypot(x - cx, y - cy);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = cell;
+          }
+        }
+        if (best && bestDist < 56) return best;
         return null;
       }
 
-      function swapInPlace(group, fromIndex, toIndex) {
+      function swapInPlace(group, fromPath, toPath) {
         const { container, items, orderKey } = group;
-        const cells = container.querySelectorAll(".cell.draggable");
-        const fromCell = cells[fromIndex];
-        const toCell = cells[toIndex];
+        const fromItem = items.find((a) => a.path === fromPath);
+        const toItem = items.find((a) => a.path === toPath);
+        if (!fromItem || !toItem || fromPath === toPath) return;
+        if (fromItem.builtin || toItem.builtin) return;
+
+        const fromCell = cellForPath(container, fromPath);
+        const toCell = cellForPath(container, toPath);
         if (!fromCell || !toCell || fromCell === toCell) return;
 
-        if (fromIndex < toIndex) {
-          container.insertBefore(fromCell, toCell.nextSibling);
-        } else {
-          container.insertBefore(fromCell, toCell);
-        }
-
-        const next = [...items];
-        [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
-        group.items = next;
-        saveOrder(orderKey, next.map((a) => a.path));
+        swapDomNodes(fromCell, toCell);
+        syncItemsFromDom(group);
+        saveOrder(
+          orderKey,
+          group.items.filter((a) => !a.builtin).map((a) => a.path),
+        );
       }
 
       function beginDragVisuals(drag) {
@@ -425,12 +475,19 @@
         }
 
         const target = findSwapTarget(e.clientX, e.clientY, drag.cell, drag.group.container);
-        const toIndex = target
-          ? drag.group.items.findIndex((a) => a.path === target.dataset.path)
-          : -1;
+        const toPath = target?.dataset?.path || "";
+        const fromItem = drag.group.items.find((a) => a.path === drag.itemPath);
+        const toItem = toPath ? drag.group.items.find((a) => a.path === toPath) : null;
 
-        if (toIndex >= 0 && toIndex !== drag.fromIndex) {
-          swapInPlace(drag.group, drag.fromIndex, toIndex);
+        if (
+          fromItem &&
+          toItem &&
+          toPath &&
+          toPath !== drag.itemPath &&
+          !fromItem.builtin &&
+          !toItem.builtin
+        ) {
+          swapInPlace(drag.group, drag.itemPath, toPath);
           if (drag.ghost) drag.ghost.remove();
           endDragVisuals(drag);
           return;
@@ -454,7 +511,7 @@
           e.preventDefault();
           e.stopPropagation();
           const fromIndex = group.items.findIndex((a) => a.path === item.path);
-          if (fromIndex < 0) return;
+          if (fromIndex < 0 || item.builtin) return;
           try {
             cell.setPointerCapture(e.pointerId);
           } catch (_) {}
@@ -462,9 +519,9 @@
           activeDrag = {
             group,
             cell,
+            itemPath: item.path,
             fenceSection: null,
             pointerId: e.pointerId,
-            fromIndex,
             startX: e.clientX,
             startY: e.clientY,
             moved: false,

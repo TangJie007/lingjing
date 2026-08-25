@@ -469,6 +469,11 @@ let lastUserAction = 0;
 
 async function applyPauseRecommend(p: PauseRecommendPayload) {
   const now = Date.now();
+  if (p.reason === "resume") {
+    // Wallpaper recovery is handled in Rust; avoid toast spam.
+    lastRecommend = { reason: p.reason, at: now };
+    return;
+  }
   if (p.reason === lastRecommend.reason && now - lastRecommend.at < 1500) return;
   lastRecommend = { reason: p.reason, at: now };
   if (p.action === "pause") {
