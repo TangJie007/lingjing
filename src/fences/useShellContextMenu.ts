@@ -9,6 +9,7 @@ export function useShellContextMenu() {
   const entries = ref<ShellMenuEntry[]>([]);
   const path = ref("");
   const loading = ref(false);
+  const error = ref("");
   let generation = 0;
   let lastPrepareAt = 0;
   let lastPreparePath = "\0";
@@ -17,6 +18,7 @@ export function useShellContextMenu() {
     entries.value = [];
     path.value = "";
     loading.value = false;
+    error.value = "";
   }
 
   function onOpenChange(open: boolean) {
@@ -44,6 +46,7 @@ export function useShellContextMenu() {
     const myGen = ++generation;
     path.value = targetPath;
     loading.value = true;
+    error.value = "";
     // Clear immediately so we never show another item's shell commands.
     entries.value = [];
 
@@ -61,13 +64,52 @@ export function useShellContextMenu() {
       }
     } catch (e) {
       console.warn("shell context menu failed", e);
-      if (myGen === generation) entries.value = [];
+      if (myGen === generation) {
+        entries.value = [];
+        error.value = String(e);
+      }
     } finally {
       if (myGen === generation) loading.value = false;
     }
   }
 
-  async function runCommand(commandId: number) {
+  function samePath(a: number[] | undefined, b: number[]) {
+    return !!a && a.length === b.length && a.every((n, i) => n === b[i]);
+  }
+
+  function findSubmenu(
+    list: ShellMenuEntry[],
+    menuPath: number[],
+  ): ShellMenuEntry | undefined {
+    for (const entry of list) {
+      if (entry.children && samePath(entry.menuPath, menuPath)) return entry;
+      const nested = entry.children && findSubmenu(entry.children, menuPath);
+      if (nested) return nested;
+    }
+  }
+
+  async function loadSubmenu(menuPath: number[]) {
+    const entry = findSubmenu(entries.value, menuPath);
+    if (!entry || entry.loading || entry.children?.length) return;
+    const myGen = generation;
+    entry.loading = true;
+    try {
+      const list = await window.__TAURI__?.core.invoke<ShellMenuEntry[]>(
+        "list_desktop_shell_context_submenu",
+        { path: path.value, menuPath },
+      );
+      if (myGen === generation) entry.children = list || [];
+    } catch (e) {
+      console.warn("load shell submenu failed", e);
+      if (myGen === generation) {
+        entry.children = [{ label: "加载超时", disabled: true }];
+      }
+    } finally {
+      if (myGen === generation) entry.loading = false;
+    }
+  }
+
+  async function runCommand(commandId: number, menuPath: number[] = []) {
     const p = path.value;
     generation += 1;
     clear();
@@ -76,11 +118,21 @@ export function useShellContextMenu() {
       await window.__TAURI__.core.invoke("invoke_desktop_shell_context_command", {
         path: p || "",
         commandId,
+        menuPath,
       });
     } catch (e) {
       console.warn("invoke shell command failed", e);
     }
   }
 
-  return { entries, path, loading, prepare, runCommand, onOpenChange };
+  return {
+    entries,
+    path,
+    loading,
+    error,
+    prepare,
+    loadSubmenu,
+    runCommand,
+    onOpenChange,
+  };
 }

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -25,7 +25,7 @@ pub struct DesktopItem {
     pub icon: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellMenuEntry {
     pub id: u32,
@@ -36,6 +36,7 @@ pub struct ShellMenuEntry {
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<ShellMenuEntry>>,
+    pub menu_path: Vec<u32>,
 }
 
 
@@ -261,6 +262,62 @@ mod win {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect()
+    }
+
+    pub fn create_shell_menu_host_window() -> Result<HWND, String> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
+        };
+
+        unsafe {
+            let class_name = wide("STATIC");
+            let title = wide("LingScape Shell Menu Host");
+            let hwnd = CreateWindowExW(
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                class_name.as_ptr(),
+                title.as_ptr(),
+                WS_POPUP,
+                0,
+                0,
+                1,
+                1,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            );
+            if hwnd.is_null() {
+                Err("创建 Shell 菜单宿主窗口失败".into())
+            } else {
+                install_subclass(hwnd);
+                Ok(hwnd)
+            }
+        }
+    }
+
+    pub fn pump_shell_menu_host_messages() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE, WM_QUIT,
+        };
+
+        unsafe {
+            let mut msg: MSG = std::mem::zeroed();
+            while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                if msg.message == WM_QUIT {
+                    break;
+                }
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+    }
+
+    pub fn destroy_shell_menu_host_window(hwnd: HWND) {
+        if !hwnd.is_null() {
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd);
+            }
+        }
     }
 
     fn wide_path(path: &std::path::Path) -> Vec<u16> {
@@ -1526,8 +1583,10 @@ mod win {
 
     fn menu_flags() -> u32 {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
-        use windows_sys::Win32::UI::Shell::{CMF_EXPLORE, CMF_EXTENDEDVERBS, CMF_NORMAL};
-        let mut flags = CMF_NORMAL | CMF_EXPLORE;
+        use windows_sys::Win32::UI::Shell::{CMF_EXTENDEDVERBS, CMF_NORMAL};
+        // CMF_EXPLORE is unnecessary for the custom menu and causes some
+        // folder extensions to wait for a real Explorer view indefinitely.
+        let mut flags = CMF_NORMAL;
         unsafe {
             if (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0 {
                 flags |= CMF_EXTENDEDVERBS;
@@ -1659,9 +1718,10 @@ mod win {
         rgba_to_png_data_url(&rgba, w as u32, h_abs as u32)
     }
 
-    unsafe fn enumerate_hmenu(
+    unsafe fn enumerate_hmenu_level(
         pcm: *mut core::ffi::c_void,
         hmenu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+        parent_path: &[u32],
         depth: u32,
     ) -> Vec<super::ShellMenuEntry> {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -1669,7 +1729,7 @@ mod win {
             MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MFS_DISABLED, MFS_GRAYED, MFT_SEPARATOR,
         };
 
-        if depth > 4 || hmenu.is_null() {
+        if hmenu.is_null() {
             return Vec::new();
         }
 
@@ -1699,6 +1759,7 @@ mod win {
                     separator: true,
                     icon: None,
                     children: None,
+                    menu_path: parent_path.to_vec(),
                 });
                 continue;
             }
@@ -1734,24 +1795,22 @@ mod win {
                 None
             };
 
-            let mut children = None;
             let sub = if !mii.hSubMenu.is_null() {
                 mii.hSubMenu
             } else {
                 GetSubMenu(hmenu, i)
             };
-            if !sub.is_null() {
-                // Some Shell verbs (e.g. "新建") only populate their popup after
-                // receiving WM_INITMENUPOPUP via IContextMenu2/3. IContextMenu
-                // is apartment-threaded, so this must run on the same thread
-                // that acquired and queried the context menu.
-                if depth + 1 <= 2 {
-                    init_submenu(pcm, sub, i);
+            let mut menu_path = parent_path.to_vec();
+            let children = if !sub.is_null() {
+                menu_path.push(i as u32);
+                if depth < 4 && GetMenuItemCount(sub) > 0 {
+                    Some(enumerate_hmenu_level(pcm, sub, &menu_path, depth + 1))
+                } else {
+                    Some(Vec::new())
                 }
-                // Keep Some([...]) even when empty so "新建" stays a submenu in
-                // custom UI instead of a leaf command that invokes a parent id.
-                children = Some(enumerate_hmenu(pcm, sub, depth + 1));
-            }
+            } else {
+                None
+            };
 
             out.push(super::ShellMenuEntry {
                 id: if children.is_some() { 0 } else { mii.wID },
@@ -1760,35 +1819,30 @@ mod win {
                 separator: false,
                 icon,
                 children,
+                menu_path,
             });
         }
         out
     }
 
-    /// Forward WM_INITMENUPOPUP in the owning COM apartment.
     unsafe fn init_submenu(
         pcm: *mut core::ffi::c_void,
         submenu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
-        position: i32,
+        position: u32,
     ) {
-        if pcm.is_null() || submenu.is_null() {
-            return;
-        }
-
         const WM_INITMENUPOPUP: u32 = 0x0117;
         const IID_ICONTEXTMENU2: windows_sys::core::GUID = windows_sys::core::GUID {
             data1: 0x000214f4,
-            data2: 0x0000,
-            data3: 0x0000,
-            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+            data2: 0,
+            data3: 0,
+            data4: [0xc0, 0, 0, 0, 0, 0, 0, 0x46],
         };
         const IID_ICONTEXTMENU3: windows_sys::core::GUID = windows_sys::core::GUID {
             data1: 0xbcfce0a0,
             data2: 0xec17,
             data3: 0x11d0,
-            data4: [0x8d, 0x10, 0x00, 0xa0, 0xc9, 0x0f, 0x27, 0x19],
+            data4: [0x8d, 0x10, 0, 0xa0, 0xc9, 0x0f, 0x27, 0x19],
         };
-
         #[repr(C)]
         struct IUnknownVtbl {
             query_interface: unsafe extern "system" fn(
@@ -1796,18 +1850,14 @@ mod win {
                 *const windows_sys::core::GUID,
                 *mut *mut core::ffi::c_void,
             ) -> i32,
-            add_ref: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+            add_ref: *const core::ffi::c_void,
             release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
         }
         #[repr(C)]
         struct IContextMenu2Vtbl {
             base: [*const core::ffi::c_void; 6],
-            handle_menu_msg: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                u32,
-                WPARAM,
-                LPARAM,
-            ) -> i32,
+            handle_menu_msg:
+                unsafe extern "system" fn(*mut core::ffi::c_void, u32, WPARAM, LPARAM) -> i32,
         }
         #[repr(C)]
         struct IContextMenu3Vtbl {
@@ -1821,40 +1871,68 @@ mod win {
             ) -> i32,
         }
 
-        let pcm_vtbl = *(pcm as *mut *const IUnknownVtbl);
+        let unknown = *(pcm as *mut *const IUnknownVtbl);
         let lparam = (position as u16 as usize) as LPARAM;
-        let mut pcm3: *mut core::ffi::c_void = std::ptr::null_mut();
-        if ((*pcm_vtbl).query_interface)(pcm, &IID_ICONTEXTMENU3, &mut pcm3) >= 0
+        let mut pcm3 = std::ptr::null_mut();
+        if ((*unknown).query_interface)(pcm, &IID_ICONTEXTMENU3, &mut pcm3) >= 0
             && !pcm3.is_null()
         {
-            let vtbl3 = *(pcm3 as *mut *const IContextMenu3Vtbl);
-            let mut result: LRESULT = 0;
-            let _ = ((*vtbl3).handle_menu_msg2)(
+            let vtbl = *(pcm3 as *mut *const IContextMenu3Vtbl);
+            let mut result = 0;
+            let _ = ((*vtbl).handle_menu_msg2)(
                 pcm3,
                 WM_INITMENUPOPUP,
                 submenu as WPARAM,
                 lparam,
                 &mut result,
             );
-            let vtbl_unknown = *(pcm3 as *mut *const IUnknownVtbl);
-            ((*vtbl_unknown).release)(pcm3);
+            let vtbl = *(pcm3 as *mut *const IUnknownVtbl);
+            ((*vtbl).release)(pcm3);
             return;
         }
 
-        let mut pcm2: *mut core::ffi::c_void = std::ptr::null_mut();
-        if ((*pcm_vtbl).query_interface)(pcm, &IID_ICONTEXTMENU2, &mut pcm2) >= 0
+        let mut pcm2 = std::ptr::null_mut();
+        if ((*unknown).query_interface)(pcm, &IID_ICONTEXTMENU2, &mut pcm2) >= 0
             && !pcm2.is_null()
         {
-            let vtbl2 = *(pcm2 as *mut *const IContextMenu2Vtbl);
-            let _ = ((*vtbl2).handle_menu_msg)(
+            let vtbl = *(pcm2 as *mut *const IContextMenu2Vtbl);
+            let _ = ((*vtbl).handle_menu_msg)(
                 pcm2,
                 WM_INITMENUPOPUP,
                 submenu as WPARAM,
                 lparam,
             );
-            let vtbl_unknown = *(pcm2 as *mut *const IUnknownVtbl);
-            ((*vtbl_unknown).release)(pcm2);
+            let vtbl = *(pcm2 as *mut *const IUnknownVtbl);
+            ((*vtbl).release)(pcm2);
         }
+    }
+
+    unsafe fn initialize_submenu_path(
+        pcm: *mut core::ffi::c_void,
+        root: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+        menu_path: &[u32],
+    ) -> Result<windows_sys::Win32::UI::WindowsAndMessaging::HMENU, String> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetMenuItemCount, GetSubMenu};
+
+        if menu_path.len() > 4 {
+            return Err("菜单层级过深".into());
+        }
+        let mut current = root;
+        for &position in menu_path {
+            let submenu = GetSubMenu(current, position as i32);
+            if submenu.is_null() {
+                return Err("二级菜单已失效，请重新打开".into());
+            }
+            // Most static cascades are populated by QueryContextMenu already.
+            // Calling WM_INITMENUPOPUP again outside a native TrackPopupMenu loop
+            // makes some extensions wait forever. Initialize only truly dynamic,
+            // currently-empty cascades such as "发送到".
+            if GetMenuItemCount(submenu) <= 0 {
+                init_submenu(pcm, submenu, position);
+            }
+            current = submenu;
+        }
+        Ok(current)
     }
 
     unsafe fn acquire_context_menu(
@@ -1869,8 +1947,7 @@ mod win {
         String,
     > {
         use windows_sys::Win32::UI::Shell::{
-            BHID_SFUIObject, CSIDL_DESKTOP, DEFCONTEXTMENU, ILFree, SHBindToParent,
-            SHCreateDefaultContextMenu, SHCreateShellItemArrayFromIDLists,
+            CSIDL_DESKTOP, DEFCONTEXTMENU, ILFree, SHBindToParent, SHCreateDefaultContextMenu,
             SHGetSpecialFolderLocation, SHParseDisplayName, Common::ITEMIDLIST,
         };
 
@@ -1924,21 +2001,6 @@ mod win {
             get_display_name_of: *const core::ffi::c_void,
             set_name_of: *const core::ffi::c_void,
         }
-        #[repr(C)]
-        struct IShellItemArrayVtbl {
-            base: IUnknownVtbl,
-            get_count: *const core::ffi::c_void,
-            get_item_at: *const core::ffi::c_void,
-            enum_items: *const core::ffi::c_void,
-            bind_to_handler: unsafe extern "system" fn(
-                *mut core::ffi::c_void,
-                *mut core::ffi::c_void,
-                *const windows_sys::core::GUID,
-                *const windows_sys::core::GUID,
-                *mut *mut core::ffi::c_void,
-            ) -> i32,
-        }
-
         unsafe fn com_release(obj: *mut core::ffi::c_void) {
             if obj.is_null() {
                 return;
@@ -2025,52 +2087,21 @@ mod win {
         }
 
         let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
-        let mut apidl: [*mut ITEMIDLIST; 1] = [pidl_child];
-        let dcm = DEFCONTEXTMENU {
-            hwnd: hwnd_invoke,
-            pcmcb: std::ptr::null_mut(),
-            pidlFolder: std::ptr::null_mut(),
+        let child_array: [*const ITEMIDLIST; 1] = [pidl_child];
+        let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
+        let hr_ui = ((*psf_vtbl).get_ui_object_of)(
             psf,
-            cidl: 1,
-            apidl: apidl.as_mut_ptr(),
-            punkAssociationInfo: std::ptr::null_mut(),
-            cKeys: 0,
-            aKeys: std::ptr::null(),
-        };
-        let hr_def = SHCreateDefaultContextMenu(&dcm, &IID_ICONTEXTMENU, &mut pcm);
-        if hr_def < 0 || pcm.is_null() {
-            let pidl_ptr: *const ITEMIDLIST = pidl_abs;
-            let mut psia: *mut core::ffi::c_void = std::ptr::null_mut();
-            if SHCreateShellItemArrayFromIDLists(1, &pidl_ptr, &mut psia) >= 0 && !psia.is_null()
-            {
-                let psia_vtbl = *(psia as *mut *const IShellItemArrayVtbl);
-                let _ = ((*psia_vtbl).bind_to_handler)(
-                    psia,
-                    std::ptr::null_mut(),
-                    &BHID_SFUIObject,
-                    &IID_ICONTEXTMENU,
-                    &mut pcm,
-                );
-                com_release(psia);
-            }
-        }
-        if pcm.is_null() {
-            let child_array: [*const ITEMIDLIST; 1] = [pidl_child];
-            let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
-            let hr_ui = ((*psf_vtbl).get_ui_object_of)(
-                psf,
-                hwnd_invoke,
-                1,
-                child_array.as_ptr(),
-                &IID_ICONTEXTMENU,
-                std::ptr::null_mut(),
-                &mut pcm,
-            );
-            if hr_ui < 0 {
-                com_release(psf);
-                ILFree(pidl_abs);
-                return Err(format!("GetUIObjectOf: {hr_ui}"));
-            }
+            hwnd_invoke,
+            1,
+            child_array.as_ptr(),
+            &IID_ICONTEXTMENU,
+            std::ptr::null_mut(),
+            &mut pcm,
+        );
+        if hr_ui < 0 || pcm.is_null() {
+            com_release(psf);
+            ILFree(pidl_abs);
+            return Err(format!("GetUIObjectOf: {hr_ui}"));
         }
         Ok((pcm, psf, pidl_abs))
     }
@@ -2214,11 +2245,17 @@ mod win {
 
         unsafe {
             let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-            let hwnd_invoke = desktop_defview_hwnd().unwrap_or(hwnd_fence);
+            let hwnd_invoke = if hwnd_fence.is_null() {
+                desktop_defview_hwnd().unwrap_or(hwnd_fence)
+            } else {
+                hwnd_fence
+            };
             // Enumeration and invocation must use identical flags or command
             // offsets can point at a different verb when the menu is rebuilt.
             let flags = menu_flags_for(path);
+            super::shell_host_stage("获取 IContextMenu");
             let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
+            super::shell_host_stage("创建菜单句柄");
 
             let hmenu = CreatePopupMenu();
             if hmenu.is_null() {
@@ -2230,6 +2267,7 @@ mod win {
                 return Err("创建菜单失败".into());
             }
             let pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
+            super::shell_host_stage("QueryContextMenu");
             let hr = ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, flags);
             if hr < 0 {
                 DestroyMenu(hmenu);
@@ -2241,7 +2279,9 @@ mod win {
                 return Err(format!("QueryContextMenu: {hr}"));
             }
 
-            let mut items = enumerate_hmenu(pcm, hmenu, 0);
+            super::shell_host_stage("读取菜单项");
+            let mut items = enumerate_hmenu_level(pcm, hmenu, &[], 0);
+            super::shell_host_stage("完成");
             let raw_count = {
                 use windows_sys::Win32::UI::WindowsAndMessaging::GetMenuItemCount;
                 GetMenuItemCount(hmenu)
@@ -2275,7 +2315,7 @@ mod win {
                                         pcm2, hmenu2, 0, CMD_FIRST, CMD_LAST, flags,
                                     );
                                     if hr2 >= 0 {
-                                        items = enumerate_hmenu(pcm2, hmenu2, 0);
+                                        items = enumerate_hmenu_level(pcm2, hmenu2, &[], 0);
                                     }
                                     DestroyMenu(hmenu2);
                                 }
@@ -2309,11 +2349,86 @@ mod win {
         }
     }
 
+    /// Populate only the submenu currently being opened by the pointer.
+    pub fn list_shell_context_submenu(
+        hwnd_fence: HWND,
+        path: Option<&str>,
+        menu_path: &[u32],
+    ) -> Result<Vec<super::ShellMenuEntry>, String> {
+        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        use windows_sys::Win32::UI::Shell::ILFree;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
+
+        const CMD_FIRST: u32 = 1;
+        const CMD_LAST: u32 = 0x7fff;
+        #[repr(C)]
+        struct IContextMenuVtbl {
+            base: [*const core::ffi::c_void; 3],
+            query_context_menu: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+                u32,
+                u32,
+                u32,
+                u32,
+            ) -> i32,
+        }
+
+        unsafe {
+            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+            let hwnd_invoke = if hwnd_fence.is_null() {
+                desktop_defview_hwnd().unwrap_or(hwnd_fence)
+            } else {
+                hwnd_fence
+            };
+            super::shell_host_stage("二级菜单：获取 IContextMenu");
+            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
+            let hmenu = CreatePopupMenu();
+            if hmenu.is_null() {
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err("创建二级菜单失败".into());
+            }
+
+            let result = (|| {
+                let vtbl = *(pcm as *mut *const IContextMenuVtbl);
+                super::shell_host_stage("二级菜单：QueryContextMenu");
+                let hr = ((*vtbl).query_context_menu)(
+                    pcm,
+                    hmenu,
+                    0,
+                    CMD_FIRST,
+                    CMD_LAST,
+                    menu_flags_for(path),
+                );
+                if hr < 0 {
+                    return Err(format!("QueryContextMenu submenu: {hr}"));
+                }
+                super::shell_host_stage("二级菜单：初始化");
+                let submenu = initialize_submenu_path(pcm, hmenu, menu_path)?;
+                super::shell_host_stage("二级菜单：读取菜单项");
+                Ok(enumerate_hmenu_level(pcm, submenu, menu_path, 0))
+            })();
+
+            DestroyMenu(hmenu);
+            com_release_any(pcm);
+            com_release_any(psf);
+            if !pidl_abs.is_null() {
+                ILFree(pidl_abs);
+            }
+            result
+        }
+    }
+
     /// Invoke a shell menu command id previously returned by list_shell_context_menu.
     pub fn invoke_shell_context_command(
         hwnd_fence: HWND,
         path: Option<&str>,
         command_id: u32,
+        menu_path: &[u32],
     ) -> Result<(), String> {
         use windows_sys::Win32::Foundation::POINT;
         use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
@@ -2352,7 +2467,11 @@ mod win {
 
         unsafe {
             let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
-            let hwnd_invoke = desktop_defview_hwnd().unwrap_or(hwnd_fence);
+            let hwnd_invoke = if hwnd_fence.is_null() {
+                desktop_defview_hwnd().unwrap_or(hwnd_fence)
+            } else {
+                hwnd_fence
+            };
             let flags = menu_flags_for(path);
             let mut pt = POINT { x: 0, y: 0 };
             let _ = GetCursorPos(&mut pt);
@@ -2439,6 +2558,16 @@ mod win {
                     ILFree(pidl_abs);
                 }
                 return Err("Shell 菜单已失效，请重新打开菜单".into());
+            }
+
+            if let Err(e) = initialize_submenu_path(pcm, hmenu, menu_path) {
+                DestroyMenu(hmenu);
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err(e);
             }
 
             let verb_offset = (command_id - CMD_FIRST) as usize;
@@ -2607,9 +2736,13 @@ mod win {
 
             let mut pt = POINT { x: 0, y: 0 };
             let _ = GetCursorPos(&mut pt);
-            // Prefer DefView as popup owner — fence HWND is a child of the desktop
-            // and TrackPopupMenuEx often fails silently on it.
-            let hwnd_popup = desktop_defview_hwnd().unwrap_or(hwnd_fence);
+            // The isolated host supplies its own top-level HWND. The in-process
+            // fallback still uses DefView because the fence HWND is a child.
+            let hwnd_popup = if hwnd_fence.is_null() {
+                desktop_defview_hwnd().unwrap_or(hwnd_fence)
+            } else {
+                hwnd_fence
+            };
             let _ = SetForegroundWindow(hwnd_popup);
             let command_id = TrackPopupMenuEx(
                 hmenu,
@@ -2662,6 +2795,137 @@ mod win {
             Ok(())
         }
     }
+}
+
+const SHELL_MENU_HOST_ARG: &str = "--lingscape-shell-menu-host";
+const SHELL_MENU_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn shell_host_stage(stage: &str) {
+    if let Some(path) = std::env::var_os("LINGSCAPE_SHELL_MENU_STATUS") {
+        let _ = fs::write(path, stage);
+    }
+}
+
+#[cfg(windows)]
+fn run_shell_menu_host(
+    mode: &str,
+    path: Option<&str>,
+    menu_path: &[u32],
+) -> Result<Vec<ShellMenuEntry>, String> {
+    use std::process::{Command, Stdio};
+
+    let output_path = std::env::temp_dir().join(format!(
+        "lingscape-shell-menu-{}-{}.json",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let status_path = output_path.with_extension("status");
+    let menu_path_json =
+        serde_json::to_string(menu_path).map_err(|e| format!("序列化菜单路径失败: {e}"))?;
+    let mut child = Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+        .arg(SHELL_MENU_HOST_ARG)
+        .arg(mode)
+        .arg(path.unwrap_or(""))
+        .arg(menu_path_json)
+        .arg(&output_path)
+        .env("LINGSCAPE_SHELL_MENU_STATUS", &status_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("启动 Shell 菜单进程失败: {e}"))?;
+
+    let timeout = if mode == "native" {
+        Duration::from_secs(300)
+    } else {
+        SHELL_MENU_TIMEOUT
+    };
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let bytes = fs::read(&output_path)
+                    .map_err(|e| format!("读取 Shell 菜单结果失败: {e}"));
+                let _ = fs::remove_file(&output_path);
+                let _ = fs::remove_file(&status_path);
+                if !status.success() {
+                    return Err(format!("Shell 菜单进程异常退出: {status}"));
+                }
+                let result: Result<Vec<ShellMenuEntry>, String> = serde_json::from_slice(
+                    &bytes?,
+                )
+                .map_err(|e| format!("解析 Shell 菜单结果失败: {e}"))?;
+                return result;
+            }
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&output_path);
+                let stage = fs::read_to_string(&status_path)
+                    .unwrap_or_else(|_| "未知阶段".into());
+                let _ = fs::remove_file(&status_path);
+                eprintln!("[desktop-organize] shell menu timeout stage={stage}");
+                return Err(format!("菜单加载超时（{stage}）"));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&output_path);
+                let _ = fs::remove_file(&status_path);
+                return Err(format!("等待 Shell 菜单进程失败: {e}"));
+            }
+        }
+    }
+}
+
+/// Handle the isolated Shell-menu subprocess before Tauri starts.
+pub fn maybe_run_shell_menu_host() -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) != Some(SHELL_MENU_HOST_ARG) {
+        return false;
+    }
+
+    let result = (|| -> Result<Vec<ShellMenuEntry>, String> {
+        let mode = args.get(2).ok_or_else(|| "缺少菜单模式".to_string())?;
+        let path = args.get(3).ok_or_else(|| "缺少菜单路径".to_string())?;
+        let menu_path: Vec<u32> = serde_json::from_str(
+            args.get(4).ok_or_else(|| "缺少二级菜单路径".to_string())?,
+        )
+        .map_err(|e| format!("解析二级菜单路径失败: {e}"))?;
+        let path = (!path.is_empty()).then_some(path.as_str());
+
+        #[cfg(windows)]
+        {
+            let hwnd = win::create_shell_menu_host_window()?;
+            win::pump_shell_menu_host_messages();
+            let result = match mode.as_str() {
+                "root" => win::list_shell_context_menu(hwnd, path),
+                "submenu" => win::list_shell_context_submenu(hwnd, path, &menu_path),
+                "native" => {
+                    win::show_native_shell_context_menu(hwnd, path).map(|_| Vec::new())
+                }
+                _ => Err("未知菜单模式".into()),
+            };
+            win::pump_shell_menu_host_messages();
+            win::destroy_shell_menu_host_window(hwnd);
+            result
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (mode, path, menu_path);
+            Err("桌面整理仅支持 Windows".into())
+        }
+    })();
+
+    if let Some(output) = args.get(5) {
+        if let Ok(json) = serde_json::to_vec(&result) {
+            let _ = fs::write(output, json);
+        }
+    }
+    true
 }
 
 fn push_items_to_fence(app: &AppHandle, items: &[DesktopItem]) -> Result<(), String> {
@@ -2837,7 +3101,7 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
 
 /// List Shell COM context menu entries (custom UI; includes icons when available).
 #[tauri::command]
-pub fn list_desktop_shell_context_menu(
+pub async fn list_desktop_shell_context_menu(
     app: AppHandle,
     path: String,
 ) -> Result<Vec<ShellMenuEntry>, String> {
@@ -2847,24 +3111,52 @@ pub fn list_desktop_shell_context_menu(
     } else {
         Some(trimmed.to_string())
     };
-    let window = app
+    let _window = app
         .get_webview_window(FENCE_LABEL)
         .ok_or_else(|| "格子窗口未就绪".to_string())?;
 
     #[cfg(windows)]
     {
-        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
-        let handle = app.clone();
-        return run_on_ui(&handle, move || {
-            win::list_shell_context_menu(
-                hwnd_raw as windows_sys::Win32::Foundation::HWND,
-                path_opt.as_deref(),
-            )
-        })?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            run_shell_menu_host("root", path_opt.as_deref(), &[])
+        })
+        .await
+        .map_err(|e| format!("加载右键菜单任务失败: {e}"))?;
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, path_opt);
+        let _ = (_window, path_opt);
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+#[tauri::command]
+pub async fn list_desktop_shell_context_submenu(
+    app: AppHandle,
+    path: String,
+    menu_path: Vec<u32>,
+) -> Result<Vec<ShellMenuEntry>, String> {
+    let trimmed = path.trim();
+    let path_opt = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    let _window = app
+        .get_webview_window(FENCE_LABEL)
+        .ok_or_else(|| "格子窗口未就绪".to_string())?;
+
+    #[cfg(windows)]
+    {
+        return tauri::async_runtime::spawn_blocking(move || {
+            run_shell_menu_host("submenu", path_opt.as_deref(), &menu_path)
+        })
+        .await
+        .map_err(|e| format!("加载二级菜单任务失败: {e}"))?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (_window, path_opt, menu_path);
         Err("桌面整理仅支持 Windows".into())
     }
 }
@@ -2875,6 +3167,7 @@ pub fn invoke_desktop_shell_context_command(
     app: AppHandle,
     path: String,
     command_id: u32,
+    menu_path: Vec<u32>,
 ) -> Result<(), String> {
     let trimmed = path.trim();
     let path_opt = if trimmed.is_empty() {
@@ -2895,12 +3188,13 @@ pub fn invoke_desktop_shell_context_command(
                 hwnd_raw as windows_sys::Win32::Foundation::HWND,
                 path_opt.as_deref(),
                 command_id,
+                &menu_path,
             )
         })?;
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, path_opt, command_id);
+        let _ = (window, path_opt, command_id, menu_path);
         Err("桌面整理仅支持 Windows".into())
     }
 }
@@ -2908,31 +3202,31 @@ pub fn invoke_desktop_shell_context_command(
 /// Show the real Windows Shell menu and execute the selected command before
 /// releasing its COM objects, preserving dynamic/owner-drawn menu behavior.
 #[tauri::command]
-pub fn show_desktop_native_context_menu(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn show_desktop_native_context_menu(
+    app: AppHandle,
+    path: String,
+) -> Result<(), String> {
     let trimmed = path.trim();
     let path_opt = if trimmed.is_empty() {
         None
     } else {
         Some(trimmed.to_string())
     };
-    let window = app
+    let _window = app
         .get_webview_window(FENCE_LABEL)
         .ok_or_else(|| "格子窗口未就绪".to_string())?;
 
     #[cfg(windows)]
     {
-        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
-        let handle = app.clone();
-        return run_on_ui(&handle, move || {
-            win::show_native_shell_context_menu(
-                hwnd_raw as windows_sys::Win32::Foundation::HWND,
-                path_opt.as_deref(),
-            )
-        })?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            run_shell_menu_host("native", path_opt.as_deref(), &[]).map(|_| ())
+        })
+        .await
+        .map_err(|e| format!("显示原生右键菜单任务失败: {e}"))?;
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, path_opt);
+        let _ = (_window, path_opt);
         Err("桌面整理仅支持 Windows".into())
     }
 }

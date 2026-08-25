@@ -101,7 +101,9 @@ const fenceDraggingKey = ref<FenceGroupKey | null>(null);
 const {
   entries: shellEntries,
   loading: shellLoading,
+  error: shellError,
   prepare: prepareShellMenu,
+  loadSubmenu: loadShellSubmenu,
   runCommand: runShellCommand,
   onOpenChange: onShellOpenChange,
 } = useShellContextMenu();
@@ -194,9 +196,18 @@ function pathFromEvent(e: Event): string {
   return cell?.dataset?.path || "";
 }
 
-/** Do not preventDefault — ContextMenuTrigger opens only if default is intact. */
+/** Load the isolated custom menu for icons and no menu on blank fence space. */
 function onStageContextMenu(e: MouseEvent) {
-  void prepareShellMenu(pathFromEvent(e));
+  const target = e.target as HTMLElement | null;
+  const path = pathFromEvent(e);
+  const isBlankFenceArea =
+    !!target?.closest?.(".fence") && !path;
+  if (isBlankFenceArea) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+  void prepareShellMenu(path);
 }
 
 onMounted(async () => {
@@ -226,7 +237,7 @@ onUnmounted(() => {
     <ContextMenuTrigger as-child>
       <div
         id="stage"
-        @contextmenu="onStageContextMenu"
+        @contextmenu.capture="onStageContextMenu"
       >
         <FenceGroup
           group-key="app"
@@ -277,10 +288,14 @@ onUnmounted(() => {
         <ContextMenuItem v-if="shellLoading && !shellEntries.length" class="item" disabled>
           <span class="lbl">加载中…</span>
         </ContextMenuItem>
+        <ContextMenuItem v-else-if="shellError" class="item" disabled>
+          <span class="lbl">{{ shellError }}</span>
+        </ContextMenuItem>
         <ShellMenuEntries
           v-else
           :entries="shellEntries"
           @command="runShellCommand"
+          @submenu="loadShellSubmenu"
         />
       </ContextMenuContent>
     </ContextMenuPortal>

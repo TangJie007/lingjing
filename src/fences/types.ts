@@ -22,6 +22,8 @@ export interface ShellMenuEntry {
   disabled?: boolean;
   separator?: boolean;
   children?: ShellMenuEntry[];
+  menuPath?: number[];
+  loading?: boolean;
 }
 
 export interface FenceGroupState {

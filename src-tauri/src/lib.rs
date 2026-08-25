@@ -8,6 +8,8 @@ pub mod settings;
 mod system;
 mod wallpaper;
 
+pub use desktop_organize::maybe_run_shell_menu_host;
+
 use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{
@@ -684,6 +686,7 @@ pub fn run() {
             export_wallpaper,
             desktop_organize::open_desktop_item,
             desktop_organize::list_desktop_shell_context_menu,
+            desktop_organize::list_desktop_shell_context_submenu,
             desktop_organize::invoke_desktop_shell_context_command,
             desktop_organize::show_desktop_native_context_menu,
             desktop_organize::show_desktop_item_in_folder,
