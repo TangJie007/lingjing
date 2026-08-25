@@ -480,7 +480,14 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
     if (now - lastUserAction < 1200) return;
     try {
       engine.value = await enginePause(false);
-      const label = p.reason === "fullscreen" ? "全屏应用" : p.reason === "battery" ? "电池模式" : p.reason === "rdp" ? "远程桌面" : "自动";
+      const label =
+        p.reason === "fullscreen"
+          ? "全屏应用"
+          : p.reason === "battery"
+            ? "电池模式"
+            : p.reason === "rdp"
+              ? "远程桌面"
+              : "自动";
       showToast(`已自动暂停：${label}`);
     } catch {
       /* ignore */
@@ -490,7 +497,7 @@ async function applyPauseRecommend(p: PauseRecommendPayload) {
     if (engine.value?.userPaused) return;
     try {
       engine.value = await enginePlay();
-      showToast("已自动恢复播放");
+      if (p.reason !== "settings") showToast("已自动恢复播放");
     } catch {
       /* ignore */
     }

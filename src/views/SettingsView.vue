@@ -65,6 +65,11 @@ function flip(key: "autostart" | "hideIconsOnDoubleClick" | "pauseOnFullscreen" 
   }
   if (key === "pauseOnFullscreen") {
     settings.value.pauseOnFullscreen = !settings.value.pauseOnFullscreen;
+    showToast(
+      settings.value.pauseOnFullscreen
+        ? "已开启：其他程序全屏时自动暂停壁纸"
+        : "已关闭全屏自动暂停（电池/远程桌面暂停仍由下方开关控制）",
+    );
   }
   if (key === "sound") {
     settings.value.soundOn = !settings.value.soundOn;
@@ -175,7 +180,7 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
       <div class="set-row">
         <div class="lead">
           <div class="t">其他程序全屏时变为静态</div>
-          <div class="d">节省资源，游戏 / 观影更流畅</div>
+          <div class="d">仅在游戏/观影等真正全屏时暂停；与下方「电池 / 远程桌面」开关相互独立</div>
         </div>
         <div
           class="toggle"
