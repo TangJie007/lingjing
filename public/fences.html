@@ -49,7 +49,9 @@
         z-index: 2;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 12px;
+        overflow-y: auto;
+        overflow-x: hidden;
         background: transparent;
         border: none;
         box-shadow: none;
@@ -57,7 +59,7 @@
       }
       .fence {
         flex: 1 1 0;
-        min-height: 180px;
+        min-height: 160px;
         padding: 12px 12px 14px;
         border-radius: 16px;
         background: rgba(16, 18, 24, 0.42);
@@ -70,6 +72,17 @@
       }
       .fence.fence-dragging {
         overflow: hidden;
+      }
+      .fence.compact {
+        flex: 0 1 auto;
+        min-height: 120px;
+        max-height: 220px;
+      }
+      .drag-host.drag-over {
+        outline: 2px dashed rgba(120, 180, 255, 0.75);
+        outline-offset: -4px;
+        border-radius: 12px;
+        background: rgba(80, 140, 220, 0.08);
       }
       .fence-title {
         font-size: 13px;
@@ -220,6 +233,41 @@
         overflow: hidden;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.35);
       }
+      .ctx-menu {
+        position: fixed;
+        z-index: 10050;
+        display: block;
+        min-width: 168px;
+        padding: 6px;
+        border-radius: 10px;
+        background: rgba(22, 24, 32, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        pointer-events: auto;
+      }
+      .ctx-menu.hidden {
+        display: none;
+      }
+      .ctx-menu button {
+        display: block;
+        width: 100%;
+        padding: 8px 12px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: #f4f6fb;
+        font-size: 13px;
+        text-align: left;
+        cursor: default;
+      }
+      .ctx-menu button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .ctx-menu button.danger:hover {
+        background: rgba(220, 80, 80, 0.22);
+      }
     </style>
   </head>
   <body>
@@ -234,21 +282,47 @@
           <div class="fence-title">文档</div>
           <div class="fence-grid drag-host" id="documents"></div>
         </section>
+        <section class="fence compact" data-kind="folder">
+          <div class="fence-title">文件夹</div>
+          <div class="fence-grid drag-host" id="folders"></div>
+        </section>
+        <section class="fence compact" data-kind="media">
+          <div class="fence-title">媒体</div>
+          <div class="fence-grid drag-host" id="media"></div>
+        </section>
+        <section class="fence compact" data-kind="archive">
+          <div class="fence-title">压缩包</div>
+          <div class="fence-grid drag-host" id="archives"></div>
+        </section>
       </div>
     </div>
+    <div id="ctx-menu" class="ctx-menu hidden" role="menu"></div>
     <script>
       const appsEl = document.getElementById("apps");
       const imagesEl = document.getElementById("images");
       const documentsEl = document.getElementById("documents");
+      const foldersEl = document.getElementById("folders");
+      const mediaEl = document.getElementById("media");
+      const archivesEl = document.getElementById("archives");
+      const ctxMenuEl = document.getElementById("ctx-menu");
       const APP_ORDER_KEY = "lingscape-fence-app-order";
       const IMAGE_ORDER_KEY = "lingscape-fence-image-order";
       const DOC_ORDER_KEY = "lingscape-fence-document-order";
+      const FOLDER_ORDER_KEY = "lingscape-fence-folder-order";
+      const MEDIA_ORDER_KEY = "lingscape-fence-media-order";
+      const ARCHIVE_ORDER_KEY = "lingscape-fence-archive-order";
+      const CATEGORY_KEY = "lingscape-fence-category";
 
       const groups = {
-        app: { container: appsEl, orderKey: APP_ORDER_KEY, items: [] },
-        image: { container: imagesEl, orderKey: IMAGE_ORDER_KEY, items: [] },
-        document: { container: documentsEl, orderKey: DOC_ORDER_KEY, items: [] },
+        app: { key: "app", container: appsEl, orderKey: APP_ORDER_KEY, items: [] },
+        image: { key: "image", container: imagesEl, orderKey: IMAGE_ORDER_KEY, items: [] },
+        document: { key: "document", container: documentsEl, orderKey: DOC_ORDER_KEY, items: [] },
+        folder: { key: "folder", container: foldersEl, orderKey: FOLDER_ORDER_KEY, items: [] },
+        media: { key: "media", container: mediaEl, orderKey: MEDIA_ORDER_KEY, items: [] },
+        archive: { key: "archive", container: archivesEl, orderKey: ARCHIVE_ORDER_KEY, items: [] },
       };
+
+      let lastItems = [];
 
       let activeDrag = null;
       let dragListenersBound = false;
@@ -326,6 +400,80 @@
         }
       }
 
+      function loadCategoryOverrides() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(CATEGORY_KEY) || "{}");
+          return raw && typeof raw === "object" ? raw : {};
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function saveCategoryOverride(path, category) {
+        try {
+          const map = loadCategoryOverrides();
+          map[path] = category;
+          localStorage.setItem(CATEGORY_KEY, JSON.stringify(map));
+        } catch (_) {}
+      }
+
+      function effectiveCategory(item) {
+        if (!item) return "other";
+        const overrides = loadCategoryOverrides();
+        if (overrides[item.path]) return overrides[item.path];
+        return item.kind || "other";
+      }
+
+      function groupForContainer(container) {
+        if (!container) return null;
+        for (const group of Object.values(groups)) {
+          if (group.container === container) return group;
+        }
+        return null;
+      }
+
+      function groupForCell(cell) {
+        const host = cell?.closest?.(".drag-host");
+        return groupForContainer(host);
+      }
+
+      function groupAtPoint(x, y) {
+        for (const el of document.elementsFromPoint(x, y)) {
+          const host = el.closest?.(".drag-host");
+          const group = groupForContainer(host);
+          if (group) return group;
+        }
+        return null;
+      }
+
+      function findItem(path) {
+        for (const group of Object.values(groups)) {
+          const item = group.items.find((i) => i.path === path);
+          if (item) return item;
+        }
+        return lastItems.find((i) => i.path === path) || null;
+      }
+
+      function canDropOnGroup(item, group) {
+        if (!item || !group || item.builtin) return false;
+        if (group.key === "app") return effectiveCategory(item) === "app";
+        return group.key !== "app";
+      }
+
+      function clearDragOverHosts() {
+        document.querySelectorAll(".drag-host.drag-over").forEach((el) => {
+          el.classList.remove("drag-over");
+        });
+      }
+
+      function updateDragOverHost(x, y, sourceGroup, itemPath) {
+        clearDragOverHosts();
+        const item = findItem(itemPath);
+        const targetGroup = groupAtPoint(x, y);
+        if (!targetGroup || targetGroup === sourceGroup || !canDropOnGroup(item, targetGroup)) return;
+        targetGroup.container.classList.add("drag-over");
+      }
+
       function cellForPath(container, path) {
         for (const cell of container.querySelectorAll(".cell[data-path]")) {
           if (cell.dataset.path === path) return cell;
@@ -361,14 +509,23 @@
         group.items = next;
       }
 
-      function findSwapTarget(x, y, sourceCell, container) {
+      function findSwapTarget(x, y, sourceCell) {
         for (const el of document.elementsFromPoint(x, y)) {
           const cell = el.closest?.(".cell.draggable");
-          if (cell && cell !== sourceCell && container.contains(cell)) return cell;
+          if (cell && cell !== sourceCell) return cell;
         }
+        let host = null;
+        for (const el of document.elementsFromPoint(x, y)) {
+          const h = el.closest?.(".drag-host");
+          if (h) {
+            host = h;
+            break;
+          }
+        }
+        if (!host) return null;
         let best = null;
         let bestDist = Infinity;
-        for (const cell of container.querySelectorAll(".cell.draggable")) {
+        for (const cell of host.querySelectorAll(".cell.draggable")) {
           if (cell === sourceCell) continue;
           const rect = cell.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
@@ -381,6 +538,71 @@
         }
         if (best && bestDist < 56) return best;
         return null;
+      }
+
+      function showGroupEmpty(group, text) {
+        group.container.innerHTML = "";
+        const empty = document.createElement("div");
+        empty.className = "fence-empty";
+        empty.textContent = text;
+        group.container.appendChild(empty);
+      }
+
+      function moveItemToGroup(fromGroup, toGroup, path, beforePath) {
+        const item = fromGroup.items.find((i) => i.path === path);
+        if (!item || !canDropOnGroup(item, toGroup)) return false;
+
+        saveCategoryOverride(path, toGroup.key);
+
+        const fromCell = cellForPath(fromGroup.container, path);
+        if (fromCell) fromCell.remove();
+        fromGroup.items = fromGroup.items.filter((i) => i.path !== path);
+        syncItemsFromDom(fromGroup);
+        saveOrder(
+          fromGroup.orderKey,
+          fromGroup.items.filter((a) => !a.builtin).map((a) => a.path),
+        );
+        if (!fromGroup.items.length) {
+          showGroupEmpty(fromGroup, emptyTextFor(fromGroup.key));
+        }
+
+        const moved = { ...item, kind: toGroup.key };
+        if (beforePath) {
+          const idx = toGroup.items.findIndex((i) => i.path === beforePath);
+          if (idx >= 0) toGroup.items.splice(idx, 0, moved);
+          else toGroup.items.push(moved);
+        } else {
+          toGroup.items.push(moved);
+        }
+
+        if (toGroup.container.querySelector(".fence-empty")) {
+          toGroup.container.innerHTML = "";
+        }
+        const newCell = makeCell(moved, toGroup.key === "app", toGroup);
+        if (beforePath) {
+          const beforeCell = cellForPath(toGroup.container, beforePath);
+          if (beforeCell) toGroup.container.insertBefore(newCell, beforeCell);
+          else toGroup.container.appendChild(newCell);
+        } else {
+          toGroup.container.appendChild(newCell);
+        }
+        syncItemsFromDom(toGroup);
+        saveOrder(
+          toGroup.orderKey,
+          toGroup.items.filter((a) => !a.builtin).map((a) => a.path),
+        );
+        return true;
+      }
+
+      function emptyTextFor(key) {
+        const map = {
+          image: "暂无图片",
+          document: "暂无文档",
+          folder: "暂无文件夹",
+          media: "暂无媒体",
+          archive: "暂无压缩包",
+        };
+        return map[key] || "";
       }
 
       function swapInPlace(group, fromPath, toPath) {
@@ -420,6 +642,7 @@
         document.body.style.cursor = "";
         if (drag.swapTarget) drag.swapTarget.classList.remove("swap-target");
         drag.cell.classList.remove("is-dragging-source", "is-dragging");
+        clearDragOverHosts();
       }
 
       function createDragGhost(cell) {
@@ -470,7 +693,7 @@
           drag.ghost.style.transform = `translate(${e.clientX - drag.offsetX}px, ${e.clientY - drag.offsetY}px)`;
         }
 
-        const target = findSwapTarget(e.clientX, e.clientY, drag.cell, drag.group.container);
+        const target = findSwapTarget(e.clientX, e.clientY, drag.cell);
         if (drag.swapTarget && drag.swapTarget !== target) {
           drag.swapTarget.classList.remove("swap-target");
         }
@@ -479,6 +702,7 @@
           drag.swapTarget.classList.add("swap-target");
           drag.foreignHits = 0;
         }
+        updateDragOverHost(e.clientX, e.clientY, drag.group, drag.itemPath);
 
         // Fullscreen fence: leaving for another app is detected via Win32 hit-test.
         // Prefer icon swap when hovering a peer; otherwise try shell file drag-out.
@@ -567,20 +791,44 @@
           return;
         }
 
-        const target = findSwapTarget(e.clientX, e.clientY, drag.cell, drag.group.container);
-        const toPath = target?.dataset?.path || "";
-        const fromItem = drag.group.items.find((a) => a.path === drag.itemPath);
-        const toItem = toPath ? drag.group.items.find((a) => a.path === toPath) : null;
+        const targetCell = findSwapTarget(e.clientX, e.clientY, drag.cell);
+        if (targetCell) {
+          const targetGroup = groupForCell(targetCell);
+          const toPath = targetCell.dataset?.path || "";
+          const fromItem = drag.group.items.find((a) => a.path === drag.itemPath);
+          const toItem = toPath ? findItem(toPath) : null;
 
+          if (
+            targetGroup === drag.group &&
+            fromItem &&
+            toItem &&
+            toPath &&
+            toPath !== drag.itemPath &&
+            !fromItem.builtin &&
+            !toItem.builtin
+          ) {
+            swapInPlace(drag.group, drag.itemPath, toPath);
+          } else if (
+            targetGroup &&
+            targetGroup !== drag.group &&
+            canDropOnGroup(fromItem, targetGroup)
+          ) {
+            moveItemToGroup(drag.group, targetGroup, drag.itemPath, toPath);
+          }
+          if (drag.ghost) drag.ghost.remove();
+          endDragVisuals(drag);
+          flushPendingFenceItems();
+          return;
+        }
+
+        const dropGroup = groupAtPoint(e.clientX, e.clientY);
+        const fromItem = drag.group.items.find((a) => a.path === drag.itemPath);
         if (
-          fromItem &&
-          toItem &&
-          toPath &&
-          toPath !== drag.itemPath &&
-          !fromItem.builtin &&
-          !toItem.builtin
+          dropGroup &&
+          dropGroup !== drag.group &&
+          canDropOnGroup(fromItem, dropGroup)
         ) {
-          swapInPlace(drag.group, drag.itemPath, toPath);
+          moveItemToGroup(drag.group, dropGroup, drag.itemPath, null);
           if (drag.ghost) drag.ghost.remove();
           endDragVisuals(drag);
           flushPendingFenceItems();
@@ -671,11 +919,30 @@
         return idx >= 0 ? idx : 99;
       }
 
+      function partitionByCategory(list) {
+        const buckets = {
+          image: [],
+          document: [],
+          folder: [],
+          media: [],
+          archive: [],
+        };
+        for (const item of list) {
+          if (item.builtin) continue;
+          const cat = effectiveCategory(item);
+          if (cat === "app") continue;
+          if (buckets[cat]) buckets[cat].push(item);
+          else buckets.document.push(item);
+        }
+        return buckets;
+      }
+
       function partitionApps(list) {
         const builtins = [];
         const regular = [];
         for (const item of list) {
-          if (item.kind !== "app") continue;
+          const cat = effectiveCategory(item);
+          if (cat !== "app") continue;
           if (item.builtin) builtins.push(item);
           else regular.push(item);
         }
@@ -715,6 +982,7 @@
         cell.appendChild(iconWrap);
         cell.appendChild(name);
         cell.addEventListener("dblclick", () => openItem(item.path));
+        bindCellContextMenu(cell, item);
         if (group && !item.builtin) setupCellDrag(cell, item, group);
         return cell;
       }
@@ -745,16 +1013,157 @@
       function render(items) {
         applyAppInset();
         const list = items || [];
+        lastItems = list;
         const apps = partitionApps(list);
-        const images = loadOrder(IMAGE_ORDER_KEY, list.filter((i) => i.kind === "image"));
-        const documents = loadOrder(
-          DOC_ORDER_KEY,
-          list.filter((i) => i.kind === "document" || i.kind === "other"),
-        );
+        const buckets = partitionByCategory(list);
         renderApps(apps);
-        fillGrid(groups.image, images, "暂无图片");
-        fillGrid(groups.document, documents, "暂无文档");
+        fillGrid(groups.image, loadOrder(IMAGE_ORDER_KEY, buckets.image), "暂无图片");
+        fillGrid(groups.document, loadOrder(DOC_ORDER_KEY, buckets.document), "暂无文档");
+        fillGrid(groups.folder, loadOrder(FOLDER_ORDER_KEY, buckets.folder), "暂无文件夹");
+        fillGrid(groups.media, loadOrder(MEDIA_ORDER_KEY, buckets.media), "暂无媒体");
+        fillGrid(groups.archive, loadOrder(ARCHIVE_ORDER_KEY, buckets.archive), "暂无压缩包");
       }
+
+      function bindCellContextMenu(cell, item) {
+        let lastOpenAt = 0;
+        const open = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const now = Date.now();
+          if (now - lastOpenAt < 250) return;
+          lastOpenAt = now;
+          showContextMenu(e.clientX, e.clientY, item);
+        };
+        cell.addEventListener("contextmenu", open);
+        cell.addEventListener("pointerdown", (e) => {
+          if (e.button !== 2) return;
+          open(e);
+        });
+      }
+
+      let ctxItem = null;
+
+      function hideContextMenu() {
+        ctxMenuEl.classList.add("hidden");
+        ctxItem = null;
+      }
+
+      function showContextMenu(x, y, item) {
+        ctxItem = item;
+        const builtin = item.builtin || String(item.path || "").startsWith("::");
+        const actions = builtin
+          ? [{ id: "open", label: "打开" }]
+          : [
+              { id: "open", label: "打开" },
+              { id: "openWith", label: "打开方式" },
+              { id: "showInFolder", label: "在文件夹中显示" },
+              { id: "rename", label: "重命名" },
+              { id: "delete", label: "删除", danger: true },
+              { id: "properties", label: "属性" },
+            ];
+        ctxMenuEl.innerHTML = "";
+        for (const act of actions) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = act.label;
+          if (act.danger) btn.classList.add("danger");
+          const run = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            runContextAction(act.id, item);
+          };
+          btn.addEventListener("pointerdown", run);
+          ctxMenuEl.appendChild(btn);
+        }
+        ctxMenuEl.classList.remove("hidden");
+        const pad = 8;
+        let left = x;
+        let top = y;
+        ctxMenuEl.style.left = `${left}px`;
+        ctxMenuEl.style.top = `${top}px`;
+        const rect = ctxMenuEl.getBoundingClientRect();
+        if (left + rect.width > window.innerWidth - pad) {
+          left = window.innerWidth - rect.width - pad;
+        }
+        if (top + rect.height > window.innerHeight - pad) {
+          top = window.innerHeight - rect.height - pad;
+        }
+        ctxMenuEl.style.left = `${left}px`;
+        ctxMenuEl.style.top = `${top}px`;
+      }
+
+      async function refreshDesktop() {
+        if (!window.__TAURI__) return;
+        try {
+          await window.__TAURI__.core.invoke("refresh_desktop_organize");
+        } catch (e) {
+          console.warn("refresh_desktop_organize failed", e);
+        }
+      }
+
+      async function runContextAction(action, item) {
+        hideContextMenu();
+        if (!window.__TAURI__) return;
+        const path = item.path;
+        try {
+          switch (action) {
+            case "open":
+              await openItem(path);
+              break;
+            case "openWith":
+              await window.__TAURI__.core.invoke("open_desktop_item_with", { path });
+              break;
+            case "showInFolder":
+              await window.__TAURI__.core.invoke("show_desktop_item_in_folder", { path });
+              break;
+            case "rename": {
+              const newName = prompt("新名称", item.name);
+              if (!newName || newName.trim() === item.name) return;
+              const trimmed = newName.trim();
+              const overrides = loadCategoryOverrides();
+              const oldCat = overrides[path];
+              await window.__TAURI__.core.invoke("rename_desktop_item", {
+                path,
+                newName: trimmed,
+              });
+              if (oldCat) {
+                const sep = path.includes("\\") ? "\\" : "/";
+                const parent = path.includes(sep) ? path.slice(0, path.lastIndexOf(sep) + 1) : "";
+                delete overrides[path];
+                overrides[parent + trimmed] = oldCat;
+                localStorage.setItem(CATEGORY_KEY, JSON.stringify(overrides));
+              }
+              await refreshDesktop();
+              break;
+            }
+            case "delete": {
+              if (!confirm(`确定删除「${item.name}」？将移入回收站。`)) return;
+              await window.__TAURI__.core.invoke("delete_desktop_item", { path });
+              await refreshDesktop();
+              break;
+            }
+            case "properties":
+              await window.__TAURI__.core.invoke("open_desktop_item_properties", { path });
+              break;
+          }
+        } catch (e) {
+          console.warn("context action failed", e);
+          const msg = typeof e === "string" ? e : e?.message || "操作失败";
+          alert(msg);
+        }
+      }
+
+      document.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        if (!ctxMenuEl.contains(e.target)) hideContextMenu();
+      });
+      document.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        if (!ctxMenuEl.contains(e.target)) hideContextMenu();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") hideContextMenu();
+      });
 
       function applyFenceItems(items) {
         if (activeDrag) {

@@ -87,7 +87,7 @@ fn file_ext(file_name: &str) -> String {
 
 fn classify_kind(file_name: &str, is_dir: bool) -> String {
     if is_dir {
-        return "other".into();
+        return "folder".into();
     }
     let ext = file_ext(file_name);
     const APPS: &[&str] = &["lnk", "url", "exe", "bat", "cmd", "msi", "com", "appref-ms"];
@@ -99,12 +99,23 @@ fn classify_kind(file_name: &str, is_dir: bool) -> String {
         "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "rtf", "odt",
         "ods", "odp", "epub", "wps", "et", "dps",
     ];
+    const ARCHIVES: &[&str] = &[
+        "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "cab", "arj", "lzh",
+    ];
+    const MEDIA: &[&str] = &[
+        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp",
+        "mp3", "wav", "flac", "aac", "m4a", "wma", "ogg", "opus", "aiff", "mid",
+    ];
     if APPS.contains(&ext.as_str()) {
         "app".into()
     } else if IMAGES.contains(&ext.as_str()) {
         "image".into()
     } else if DOCS.contains(&ext.as_str()) {
         "document".into()
+    } else if ARCHIVES.contains(&ext.as_str()) {
+        "archive".into()
+    } else if MEDIA.contains(&ext.as_str()) {
+        "media".into()
     } else {
         "other".into()
     }
@@ -1393,6 +1404,27 @@ mod win {
             );
         }
     }
+
+    pub fn shell_show_properties(path: &str) -> Result<(), String> {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOW;
+        unsafe {
+            let wpath = wide(path);
+            let verb = wide("properties");
+            let ret = ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                wpath.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOW,
+            );
+            if ret as isize <= 32 {
+                return Err(format!("打开属性失败: code={}", ret as isize));
+            }
+        }
+        Ok(())
+    }
 }
 
 fn push_items_to_fence(app: &AppHandle, items: &[DesktopItem]) -> Result<(), String> {
@@ -1457,7 +1489,7 @@ fn disable_inner(app: &AppHandle) -> Result<(), String> {
             win::hide_fence_from_desktop(hwnd.0 as isize);
         }
         let _ = window.eval(
-            "document.getElementById('apps').innerHTML='';document.getElementById('images').innerHTML='';document.getElementById('documents').innerHTML='';",
+            "document.getElementById('apps').innerHTML='';document.getElementById('images').innerHTML='';document.getElementById('documents').innerHTML='';document.getElementById('folders').innerHTML='';document.getElementById('media').innerHTML='';document.getElementById('archives').innerHTML='';",
         );
         let _ = window.hide();
     }
@@ -1542,6 +1574,162 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
             .args(["/C", "start", "", trimmed])
             .spawn()
             .map_err(|e| format!("打开失败: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = trimmed;
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+#[tauri::command]
+pub fn show_desktop_item_in_folder(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持此操作".into());
+    }
+    let p = Path::new(trimmed);
+    if !p.exists() {
+        return Err("文件不存在".into());
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", trimmed))
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = trimmed;
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+#[tauri::command]
+pub fn open_desktop_item_with(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持此操作".into());
+    }
+    let p = Path::new(trimmed);
+    if !p.exists() {
+        return Err("文件不存在".into());
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("rundll32")
+            .args(["shell32.dll,OpenAs_RunDLL", trimmed])
+            .spawn()
+            .map_err(|e| format!("打开方式失败: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = trimmed;
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+#[tauri::command]
+pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持此操作".into());
+    }
+    let p = Path::new(trimmed);
+    if !p.exists() {
+        return Err("文件不存在".into());
+    }
+    #[cfg(windows)]
+    {
+        return win::shell_show_properties(trimmed);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = trimmed;
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+#[tauri::command]
+pub fn rename_desktop_item(path: String, new_name: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    let name = new_name.trim();
+    if trimmed.is_empty() || name.is_empty() {
+        return Err("路径或名称为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持重命名".into());
+    }
+    if name.contains(['\\', '/', ':', '*', '?', '"', '<', '>', '|']) {
+        return Err("名称包含非法字符".into());
+    }
+    let old = Path::new(trimmed);
+    if !old.exists() {
+        return Err("文件不存在".into());
+    }
+    let parent = old.parent().ok_or_else(|| "无法解析父目录".to_string())?;
+    let new_path = parent.join(name);
+    if new_path.exists() {
+        return Err("目标名称已存在".into());
+    }
+    fs::rename(old, &new_path).map_err(|e| format!("重命名失败: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_desktop_item(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持删除".into());
+    }
+    let p = Path::new(trimmed);
+    if !p.exists() {
+        return Err("文件不存在".into());
+    }
+    #[cfg(windows)]
+    {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::{
+            FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FO_DELETE, SHFILEOPSTRUCTW, SHFileOperationW,
+        };
+        unsafe {
+            let mut wpath: Vec<u16> = OsStr::new(trimmed)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .chain(std::iter::once(0))
+                .collect();
+            let mut op = SHFILEOPSTRUCTW {
+                hwnd: std::ptr::null_mut(),
+                wFunc: FO_DELETE,
+                pFrom: wpath.as_ptr(),
+                pTo: std::ptr::null(),
+                fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION) as u16,
+                fAnyOperationsAborted: 0,
+                hNameMappings: std::ptr::null_mut(),
+                lpszProgressTitle: std::ptr::null(),
+            };
+            let hr = SHFileOperationW(&mut op);
+            if hr != 0 || op.fAnyOperationsAborted != 0 {
+                return Err(format!("删除失败: code={hr}"));
+            }
+        }
         return Ok(());
     }
     #[cfg(not(windows))]
