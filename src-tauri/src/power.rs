@@ -192,7 +192,7 @@ fn spawn_settings_listener(app: AppHandle, flags: Arc<RwLock<Flags>>) {
 }
 
 fn handle_system_resume(app: &AppHandle) {
-    eprintln!("[power] system resume detected");
+    tracing::info!("[power] system resume detected");
     let _ = app.emit(
         "engine-pause-recommend",
         &PauseRecommendPayload {
@@ -265,7 +265,7 @@ pub fn start_watcher(app: AppHandle) {
                     let fs = win::is_foreground_fullscreen();
                     if fs != last_fullscreen {
                         last_fullscreen = fs;
-                        eprintln!("[power] fullscreen detect -> {fs}");
+                        tracing::info!("[power] fullscreen detect -> {fs}");
                         let payload = PauseRecommendPayload {
                             action: if fs { "pause" } else { "play" },
                             reason: "fullscreen",

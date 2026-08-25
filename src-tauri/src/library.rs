@@ -49,11 +49,7 @@ fn load_library(app: &AppHandle) -> Result<LibraryFile, String> {
 
 fn save_library(app: &AppHandle, file: &LibraryFile) -> Result<(), String> {
     let path = library_index_path(app)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建数据目录失败: {e}"))?;
-    }
-    let raw = serde_json::to_string_pretty(file).map_err(|e| format!("序列化失败: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("写入 library.json 失败: {e}"))
+    crate::util::write_json_atomic(&path, file)
 }
 
 fn ext_allowed(ext: &str) -> bool {
@@ -72,13 +68,7 @@ fn media_kind(ext: &str) -> &'static str {
 }
 
 fn format_size(bytes: u64) -> String {
-    if bytes >= 1_048_576 {
-        format!("{:.1}M", bytes as f64 / 1_048_576.0)
-    } else if bytes >= 1024 {
-        format!("{}K", bytes / 1024)
-    } else {
-        format!("{bytes}B")
-    }
+    bytesize::ByteSize::b(bytes).to_string()
 }
 
 fn thumb_for(kind: &str) -> String {

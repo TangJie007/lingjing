@@ -8,9 +8,11 @@ mod paths;
 mod power;
 pub mod settings;
 mod system;
+mod util;
 mod wallpaper;
 
 pub use desktop_organize::maybe_run_shell_menu_host;
+pub use util::init_logging;
 
 use std::path::{Path, PathBuf};
 use serde::Serialize;
@@ -44,7 +46,7 @@ fn set_wallpaper(
     engine: State<'_, EngineHandle>,
     payload: SetWallpaperPayload,
 ) -> Result<EngineState, String> {
-    eprintln!(
+    tracing::info!(
         "[engine] set_wallpaper id={} mediaType={} uri={}",
         payload.id, payload.media_type, payload.uri
     );
@@ -84,7 +86,7 @@ fn set_wallpaper(
             source: "engine".into(),
         },
     );
-    eprintln!(
+    tracing::info!(
         "[engine] set push_command ok media_id={:?}",
         snapshot.media_id
     );
@@ -508,7 +510,7 @@ fn restore_last_wallpaper(app: &AppHandle) {
             _ => return,
         };
         if !system::media_path_exists(&last.uri) {
-            eprintln!(
+            tracing::info!(
                 "[engine] skip restore: media missing uri={}",
                 last.uri
             );
@@ -598,7 +600,7 @@ pub fn run() {
         .setup(|app| {
             let low_power = system::detect_low_power_mode();
             if low_power {
-                eprintln!("[system] low power mode enabled (< 6GB RAM)");
+                tracing::info!("[system] low power mode enabled (< 6GB RAM)");
             }
             app.manage(RuntimeProfile { low_power });
 
@@ -614,8 +616,8 @@ pub fn run() {
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(800));
                 match wallpaper::attach_existing(&handle_for_attach) {
-                    Ok(()) => eprintln!("[wallpaper] startup attach ok"),
-                    Err(e) => eprintln!("[wallpaper] startup attach skipped: {e}"),
+                    Ok(()) => tracing::info!("[wallpaper] startup attach ok"),
+                    Err(e) => tracing::info!("[wallpaper] startup attach skipped: {e}"),
                 }
             });
 
@@ -636,14 +638,14 @@ pub fn run() {
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(1200));
                         if let Err(e) = desktop_organize::set_enabled(&app_clone, true) {
-                            eprintln!("[desktop-organize] startup restore failed: {e}");
+                            tracing::info!("[desktop-organize] startup restore failed: {e}");
                         }
                     });
                 }
             }
 
             if let Err(e) = build_tray(&handle) {
-                eprintln!("[tray] build failed: {e}");
+                tracing::info!("[tray] build failed: {e}");
             }
 
             let start_minimized = std::env::args().any(|a| a == "--minimized");

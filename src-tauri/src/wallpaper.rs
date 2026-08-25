@@ -398,7 +398,7 @@ mod win {
             let (cx, cy, cw, ch) = rect_of(child);
             let visible = IsWindowVisible(child).as_bool();
             let tiles = tiles_in_parent(px, py, pw, ph);
-            eprintln!(
+            tracing::info!(
                 "[wallpaper] attached hwnd={child:?} class={} parent={parent:?} parentClass={} parentRect={px},{py} {pw}x{ph} childRect={cx},{cy} {cw}x{ch} visible={visible} raised={raised} defview={:?} worker={:?} tiles={tiles:?}",
                 class_name(child),
                 class_name(parent),
@@ -515,19 +515,19 @@ pub fn cleanup(app: &AppHandle) {
     }
     let _ = window.hide();
     ATTACHED.store(false, Ordering::SeqCst);
-    eprintln!("[wallpaper] cleanup detached from desktop");
+    tracing::info!("[wallpaper] cleanup detached from desktop");
 }
 
 /// After sleep/hibernate, WorkerW may be recreated and video elements may stay paused.
 /// Force re-attach and push play when the engine should still be playing.
 pub fn on_system_resume(app: &AppHandle, should_play: bool, state: &EngineState) {
-    eprintln!(
+    tracing::info!(
         "[wallpaper] system resume should_play={should_play} media={:?}",
         state.media_id
     );
     ATTACHED.store(false, Ordering::SeqCst);
     if let Err(e) = attach_existing(app) {
-        eprintln!("[wallpaper] resume reattach failed: {e}");
+        tracing::info!("[wallpaper] resume reattach failed: {e}");
         return;
     }
     if should_play && state.media_id.is_some() {
@@ -561,7 +561,7 @@ fn inject_command(window: &WebviewWindow, cmd: &str, state: &EngineState) -> Res
                 Ok(hwnd) => {
                     let (w, h, tiles) = win::layout_for_child(hwnd.0 as isize);
                     let _ = window.set_size(PhysicalSize::new(w as u32, h as u32));
-                    eprintln!("[wallpaper] layout tiles={tiles:?}");
+                    tracing::info!("[wallpaper] layout tiles={tiles:?}");
                     tiles
                 }
                 Err(_) => Vec::new(),

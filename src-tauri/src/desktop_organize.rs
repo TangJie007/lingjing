@@ -242,38 +242,6 @@ mod win {
             .collect()
     }
 
-    fn to_base64(data: &[u8]) -> String {
-        const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-        let mut i = 0;
-        while i + 3 <= data.len() {
-            let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8) | data[i + 2] as u32;
-            out.push(CHARS[((n >> 18) & 63) as usize] as char);
-            out.push(CHARS[((n >> 12) & 63) as usize] as char);
-            out.push(CHARS[((n >> 6) & 63) as usize] as char);
-            out.push(CHARS[(n & 63) as usize] as char);
-            i += 3;
-        }
-        match data.len() - i {
-            1 => {
-                let n = (data[i] as u32) << 16;
-                out.push(CHARS[((n >> 18) & 63) as usize] as char);
-                out.push(CHARS[((n >> 12) & 63) as usize] as char);
-                out.push('=');
-                out.push('=');
-            }
-            2 => {
-                let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8);
-                out.push(CHARS[((n >> 18) & 63) as usize] as char);
-                out.push(CHARS[((n >> 12) & 63) as usize] as char);
-                out.push(CHARS[((n >> 6) & 63) as usize] as char);
-                out.push('=');
-            }
-            _ => {}
-        }
-        out
-    }
-
     fn rgba_to_png_bytes(rgba: &[u8], w: u32, h: u32) -> Option<Vec<u8>> {
         let mut buf = Vec::new();
         {
@@ -287,7 +255,13 @@ mod win {
     }
 
     fn rgba_to_png_data_url(rgba: &[u8], w: u32, h: u32) -> Option<String> {
-        rgba_to_png_bytes(rgba, w, h).map(|buf| format!("data:image/png;base64,{}", to_base64(&buf)))
+        use base64::Engine;
+        rgba_to_png_bytes(rgba, w, h).map(|buf| {
+            format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(&buf)
+            )
+        })
     }
 
     fn expand_env_path(s: &str) -> String {
@@ -1327,7 +1301,7 @@ mod win {
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN,
             );
 
-            eprintln!(
+            tracing::info!(
                 "[desktop-organize] attached child={child:?} parent={parent:?} parent={pl},{pt} {pw}x{ph} primary={x},{y} {mw}x{mh}"
             );
             Ok((mw, mh))
@@ -1429,11 +1403,12 @@ fn run_shell_menu_host(
 ) -> Result<Vec<ShellMenuEntry>, String> {
     use std::process::{Command, Stdio};
 
-    let output_path = std::env::temp_dir().join(format!(
-        "lingscape-shell-menu-{}-{}.json",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
+    let output_file = tempfile::Builder::new()
+        .prefix("lingscape-shell-menu-")
+        .suffix(".json")
+        .tempfile()
+        .map_err(|e| format!("创建 Shell 菜单临时文件失败: {e}"))?;
+    let output_path = output_file.path().to_path_buf();
     let status_path = output_path.with_extension("status");
     let menu_path_json =
         serde_json::to_string(menu_path).map_err(|e| format!("序列化菜单路径失败: {e}"))?;
@@ -1482,7 +1457,7 @@ fn run_shell_menu_host(
                 let stage = fs::read_to_string(&status_path)
                     .unwrap_or_else(|_| "未知阶段".into());
                 let _ = fs::remove_file(&status_path);
-                eprintln!("[desktop-organize] shell menu timeout stage={stage}");
+                tracing::info!("[desktop-organize] shell menu timeout stage={stage}");
                 return Err(format!("菜单加载超时（{stage}）"));
             }
             Err(e) => {
@@ -1592,7 +1567,7 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
     push_items_to_fence(app, &items)?;
     ACTIVE.store(true, Ordering::SeqCst);
     start_desktop_watch(app);
-    eprintln!("[desktop-organize] enabled items={}", items.len());
+    tracing::info!("[desktop-organize] enabled items={}", items.len());
     Ok(())
 }
 
@@ -1614,7 +1589,7 @@ fn disable_inner(app: &AppHandle) -> Result<(), String> {
     #[cfg(windows)]
     desktop::set_icons_visible(true);
 
-    eprintln!("[desktop-organize] disabled");
+    tracing::info!("[desktop-organize] disabled");
     Ok(())
 }
 
@@ -1662,7 +1637,7 @@ pub fn cleanup(app: &AppHandle) {
 
 #[tauri::command]
 pub fn set_desktop_organize(app: AppHandle, enabled: bool) -> Result<(), String> {
-    eprintln!("[desktop-organize] set_desktop_organize enabled={enabled}");
+    tracing::info!("[desktop-organize] set_desktop_organize enabled={enabled}");
     set_enabled(&app, enabled)?;
     let mut s = settings::load_settings(&app).unwrap_or_default();
     s.desktop_organize_enabled = enabled;
@@ -1989,34 +1964,7 @@ pub fn delete_desktop_item(path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-        use windows::core::{BOOL, PCWSTR};
-        use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::Shell::{
-            FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FO_DELETE, SHFILEOPSTRUCTW, SHFileOperationW,
-        };
-        unsafe {
-            let wpath: Vec<u16> = OsStr::new(trimmed)
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .chain(std::iter::once(0))
-                .collect();
-            let mut op = SHFILEOPSTRUCTW {
-                hwnd: HWND::default(),
-                wFunc: FO_DELETE,
-                pFrom: PCWSTR(wpath.as_ptr()),
-                pTo: PCWSTR::null(),
-                fFlags: (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0) as u16,
-                fAnyOperationsAborted: BOOL(0),
-                hNameMappings: std::ptr::null_mut(),
-                lpszProgressTitle: PCWSTR::null(),
-            };
-            let hr = SHFileOperationW(&mut op);
-            if hr != 0 || op.fAnyOperationsAborted.as_bool() {
-                return Err(format!("删除失败: code={hr}"));
-            }
-        }
+        trash::delete(trimmed).map_err(|e| format!("删除失败: {e}"))?;
         return Ok(());
     }
     #[cfg(not(windows))]
@@ -2036,12 +1984,22 @@ fn strip_extended_path(path: PathBuf) -> PathBuf {
 }
 
 fn desktop_scan_dirs() -> Vec<PathBuf> {
+    use known_folders::{get_known_folder_path, KnownFolder};
     let mut dirs = Vec::new();
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        dirs.push(PathBuf::from(home).join("Desktop"));
+    if let Some(desktop) = get_known_folder_path(KnownFolder::Desktop) {
+        dirs.push(desktop);
     }
-    let public = std::env::var("PUBLIC").unwrap_or_else(|_| r"C:\Users\Public".into());
-    dirs.push(PathBuf::from(public).join("Desktop"));
+    if let Some(public_desktop) = get_known_folder_path(KnownFolder::PublicDesktop) {
+        dirs.push(public_desktop);
+    }
+    // Fallback when Known Folders API is unavailable.
+    if dirs.is_empty() {
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            dirs.push(PathBuf::from(home).join("Desktop"));
+        }
+        let public = std::env::var("PUBLIC").unwrap_or_else(|_| r"C:\Users\Public".into());
+        dirs.push(PathBuf::from(public).join("Desktop"));
+    }
     dirs
 }
 
@@ -2056,17 +2014,15 @@ fn start_desktop_watch(app: &AppHandle) {
     std::thread::Builder::new()
         .name("desktop-fence-watch".into())
         .spawn(move || {
-            use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-            use std::sync::mpsc::{RecvTimeoutError, channel};
+            use notify::RecursiveMode;
+            use notify_debouncer_mini::new_debouncer;
+            use std::sync::mpsc::channel;
 
             let (tx, rx) = channel();
-            let mut watcher = match RecommendedWatcher::new(
-                tx,
-                notify::Config::default().with_poll_interval(Duration::from_secs(2)),
-            ) {
-                Ok(w) => w,
+            let mut debouncer = match new_debouncer(Duration::from_millis(450), tx) {
+                Ok(d) => d,
                 Err(e) => {
-                    eprintln!("[desktop-organize] watcher create failed: {e}");
+                    tracing::info!("[desktop-organize] watcher create failed: {e}");
                     return;
                 }
             };
@@ -2076,103 +2032,48 @@ fn start_desktop_watch(app: &AppHandle) {
                 if !dir.is_dir() {
                     continue;
                 }
-                match watcher.watch(&dir, RecursiveMode::NonRecursive) {
+                match debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
                     Ok(()) => {
                         watching = true;
-                        eprintln!("[desktop-organize] watching {}", dir.display());
+                        tracing::info!("[desktop-organize] watching {}", dir.display());
                     }
-                    Err(e) => eprintln!("[desktop-organize] watch {} failed: {e}", dir.display()),
+                    Err(e) => {
+                        tracing::info!("[desktop-organize] watch {} failed: {e}", dir.display())
+                    }
                 }
             }
             if !watching {
                 return;
             }
 
-            let mut pending_at: Option<Instant> = None;
             loop {
                 if WATCH_GEN.load(Ordering::SeqCst) != gen {
                     break;
                 }
                 match rx.recv_timeout(Duration::from_millis(200)) {
-                    Ok(Ok(_event)) => {
-                        pending_at = Some(Instant::now());
-                    }
-                    Ok(Err(e)) => {
-                        eprintln!("[desktop-organize] watcher error: {e}");
-                        break;
-                    }
-                    Err(RecvTimeoutError::Timeout) => {
-                        if let Some(at) = pending_at {
-                            if at.elapsed() >= Duration::from_millis(450) {
-                                pending_at = None;
-                                if ACTIVE.load(Ordering::SeqCst) {
-                                    if let Err(e) = refresh(&app) {
-                                        eprintln!("[desktop-organize] watch refresh failed: {e}");
-                                    }
-                                }
+                    Ok(Ok(_events)) => {
+                        if ACTIVE.load(Ordering::SeqCst) {
+                            if let Err(e) = refresh(&app) {
+                                tracing::info!("[desktop-organize] watch refresh failed: {e}");
                             }
                         }
                     }
-                    Err(RecvTimeoutError::Disconnected) => break,
+                    Ok(Err(e)) => {
+                        tracing::info!("[desktop-organize] watcher error: {e}");
+                        break;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
-            eprintln!("[desktop-organize] watcher stopped");
+            tracing::info!("[desktop-organize] watcher stopped");
         })
         .ok();
 }
 
 fn from_base64(input: &str) -> Option<Vec<u8>> {
-    const TABLE: &[u8; 256] = &{
-        let mut t = [0xffu8; 256];
-        let mut i = 0u8;
-        while i < 26 {
-            t[(b'A' + i) as usize] = i;
-            t[(b'a' + i) as usize] = 26 + i;
-            i += 1;
-        }
-        i = 0;
-        while i < 10 {
-            t[(b'0' + i) as usize] = 52 + i;
-            i += 1;
-        }
-        t[b'+' as usize] = 62;
-        t[b'/' as usize] = 63;
-        t
-    };
-
-    let bytes: Vec<u8> = input
-        .bytes()
-        .filter(|b| !b.is_ascii_whitespace())
-        .collect();
-    if bytes.is_empty() || bytes.len() % 4 != 0 {
-        return None;
-    }
-    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
-    for chunk in bytes.chunks_exact(4) {
-        let a = TABLE[chunk[0] as usize];
-        let b = TABLE[chunk[1] as usize];
-        let (c, pad_c) = if chunk[2] == b'=' {
-            (0, true)
-        } else {
-            (TABLE[chunk[2] as usize], false)
-        };
-        let (d, pad_d) = if chunk[3] == b'=' {
-            (0, true)
-        } else {
-            (TABLE[chunk[3] as usize], false)
-        };
-        if a == 0xff || b == 0xff || (!pad_c && c == 0xff) || (!pad_d && d == 0xff) {
-            return None;
-        }
-        out.push((a << 2) | (b >> 4));
-        if !pad_c {
-            out.push((b << 4) | (c >> 2));
-        }
-        if !pad_d {
-            out.push((c << 6) | d);
-        }
-    }
-    Some(out)
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(input.trim()).ok()
 }
 
 fn decode_image_data_url(url: &str) -> Option<Vec<u8>> {
@@ -2364,7 +2265,7 @@ pub fn start_desktop_file_drag(
             };
             drag::start_drag(&win, item, preview, |_result, _pos| {}, opts)
                 .map_err(|e| format!("启动文件拖放失败: {e}"))?;
-            eprintln!("[desktop-organize] shell file drag finished path={trimmed}");
+            tracing::info!("[desktop-organize] shell file drag finished path={trimmed}");
             Ok(())
         })?;
     }

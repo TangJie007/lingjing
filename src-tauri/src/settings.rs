@@ -122,8 +122,7 @@ pub fn write_version_record(app: &AppHandle, version: &str) -> Result<(), String
     let record = VersionRecord {
         version: version.to_string(),
     };
-    let raw = serde_json::to_string_pretty(&record).map_err(|e| format!("序列化失败: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("写入 version_record.json 失败: {e}"))
+    crate::util::write_json_atomic(&path, &record)
 }
 
 pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
@@ -141,11 +140,7 @@ pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
 
 pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
     let path = settings_path(app)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建数据目录失败: {e}"))?;
-    }
-    let raw = serde_json::to_string_pretty(settings).map_err(|e| format!("序列化失败: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("写入 settings.json 失败: {e}"))
+    crate::util::write_json_atomic(&path, settings)
 }
 
 pub fn persist_and_notify(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
@@ -176,11 +171,7 @@ pub struct LastWallpaper {
 
 pub fn save_last_wallpaper(app: &AppHandle, last: &LastWallpaper) -> Result<(), String> {
     let path = last_wallpaper_path(app)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建数据目录失败: {e}"))?;
-    }
-    let raw = serde_json::to_string_pretty(last).map_err(|e| format!("序列化失败: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("写入 last_wallpaper.json 失败: {e}"))
+    crate::util::write_json_atomic(&path, last)
 }
 
 pub fn load_last_wallpaper(app: &AppHandle) -> Result<Option<LastWallpaper>, String> {

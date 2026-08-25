@@ -32,8 +32,7 @@ pub fn load(app: &AppHandle) -> Result<(FavoritesFile, bool), String> {
 
 pub fn save(app: &AppHandle, file: &FavoritesFile) -> Result<(), String> {
     let path = favorites_path(app)?;
-    let raw = serde_json::to_string_pretty(file).map_err(|e| format!("序列化失败: {e}"))?;
-    fs::write(&path, raw).map_err(|e| format!("写入 favorites.json 失败: {e}"))
+    crate::util::write_json_atomic(&path, file)
 }
 
 pub fn set_favorite(app: &AppHandle, id: String, favorite: bool) -> Result<FavoritesFile, String> {
