@@ -252,9 +252,17 @@
 
       let activeDrag = null;
       let dragListenersBound = false;
+      let pendingFenceItems = null;
 
       function fenceSectionFor(container) {
         return container.closest?.(".fence") || null;
+      }
+
+      function flushPendingFenceItems() {
+        if (!pendingFenceItems || activeDrag) return;
+        const items = pendingFenceItems;
+        pendingFenceItems = null;
+        render(items);
       }
 
       function onDocumentPointerMove(e) {
@@ -436,9 +444,19 @@
         }, 190);
       }
 
+      function cellPreviewDataUrl(cell) {
+        const img = cell.querySelector("img");
+        const src = img?.src || "";
+        return src.startsWith("data:image/png;base64,") ? src : null;
+      }
+
       function onDragMove(e) {
         const drag = activeDrag;
         if (!drag || drag.shellPending) return;
+        drag.lastButtons = e.buttons;
+        drag.ctrlKey = !!e.ctrlKey;
+        drag.shiftKey = !!e.shiftKey;
+
         const dx = e.clientX - drag.startX;
         const dy = e.clientY - drag.startY;
         if (!drag.moved && Math.hypot(dx, dy) < 6) return;
@@ -457,13 +475,16 @@
           drag.swapTarget.classList.remove("swap-target");
         }
         drag.swapTarget = target;
-        if (drag.swapTarget) drag.swapTarget.classList.add("swap-target");
+        if (drag.swapTarget) {
+          drag.swapTarget.classList.add("swap-target");
+          drag.foreignHits = 0;
+        }
 
         // Fullscreen fence: leaving for another app is detected via Win32 hit-test.
         // Prefer icon swap when hovering a peer; otherwise try shell file drag-out.
         if (!target) {
           const now = performance.now();
-          if (!drag.lastForeignProbe || now - drag.lastForeignProbe > 60) {
+          if (!drag.lastForeignProbe || now - drag.lastForeignProbe > 45) {
             drag.lastForeignProbe = now;
             void maybeStartShellDrag(drag);
           }
@@ -471,16 +492,30 @@
       }
 
       async function maybeStartShellDrag(drag) {
-        if (!drag || drag.shellPending || !window.__TAURI__) return;
+        if (!drag || drag.shellPending || drag.probeInFlight || !window.__TAURI__) return;
         if (drag.swapTarget) return;
-        drag.shellPending = true;
-        const path = drag.itemPath;
+        if ((drag.lastButtons & 1) === 0) return;
+
+        drag.probeInFlight = true;
         try {
           const foreign = await window.__TAURI__.core.invoke("is_desktop_drag_over_foreign");
-          if (!foreign || activeDrag !== drag) {
-            drag.shellPending = false;
+          if (activeDrag !== drag || drag.shellPending || drag.swapTarget) return;
+          if ((drag.lastButtons & 1) === 0) return;
+
+          if (!foreign) {
+            drag.foreignHits = 0;
             return;
           }
+
+          drag.foreignHits = (drag.foreignHits || 0) + 1;
+          // Require sustained foreign hover to avoid accidental shell drag.
+          if (drag.foreignHits < 2) return;
+
+          drag.shellPending = true;
+          const path = drag.itemPath;
+          const mode = drag.shiftKey ? "move" : "copy";
+          const previewDataUrl = cellPreviewDataUrl(drag.cell);
+
           activeDrag = null;
           unbindDragListeners();
           try {
@@ -488,10 +523,23 @@
           } catch (_) {}
           if (drag.ghost) drag.ghost.remove();
           endDragVisuals(drag);
-          await window.__TAURI__.core.invoke("start_desktop_file_drag", { path });
+
+          try {
+            await window.__TAURI__.core.invoke("start_desktop_file_drag", {
+              path,
+              mode,
+              previewDataUrl,
+            });
+          } catch (err) {
+            console.warn("shell file drag failed", err);
+          } finally {
+            flushPendingFenceItems();
+          }
         } catch (err) {
-          console.warn("shell file drag failed", err);
-          if (activeDrag === drag) drag.shellPending = false;
+          console.warn("foreign drag probe failed", err);
+          if (activeDrag === drag) drag.foreignHits = 0;
+        } finally {
+          if (activeDrag === drag) drag.probeInFlight = false;
         }
       }
 
@@ -508,12 +556,14 @@
         if (!drag.moved) {
           endDragVisuals(drag);
           if (drag.ghost) drag.ghost.remove();
+          flushPendingFenceItems();
           return;
         }
 
         if (drag.shellPending) {
           endDragVisuals(drag);
           if (drag.ghost) drag.ghost.remove();
+          flushPendingFenceItems();
           return;
         }
 
@@ -533,13 +583,18 @@
           swapInPlace(drag.group, drag.itemPath, toPath);
           if (drag.ghost) drag.ghost.remove();
           endDragVisuals(drag);
+          flushPendingFenceItems();
           return;
         }
 
         if (drag.ghost) {
-          animateGhostBack(drag.ghost, drag.cell, () => endDragVisuals(drag));
+          animateGhostBack(drag.ghost, drag.cell, () => {
+            endDragVisuals(drag);
+            flushPendingFenceItems();
+          });
         } else {
           endDragVisuals(drag);
+          flushPendingFenceItems();
         }
       }
 
@@ -571,7 +626,12 @@
             ghost: null,
             swapTarget: null,
             shellPending: false,
+            probeInFlight: false,
+            foreignHits: 0,
             lastForeignProbe: 0,
+            lastButtons: e.buttons,
+            ctrlKey: !!e.ctrlKey,
+            shiftKey: !!e.shiftKey,
           };
           cell.classList.add("is-dragging");
         });
@@ -696,18 +756,29 @@
         fillGrid(groups.document, documents, "暂无文档");
       }
 
-      window.__fenceApply = render;
+      function applyFenceItems(items) {
+        if (activeDrag) {
+          pendingFenceItems = items || [];
+          return;
+        }
+        pendingFenceItems = null;
+        render(items);
+      }
+
+      window.__fenceApply = applyFenceItems;
 
       async function boot() {
         if (!window.__TAURI__) return;
         try {
           const items = await window.__TAURI__.core.invoke("list_desktop_items");
-          render(items);
+          applyFenceItems(items);
         } catch (e) {
           console.warn("list_desktop_items failed", e);
         }
         try {
-          await window.__TAURI__.event.listen("fence-items", (e) => render(e.payload || []));
+          await window.__TAURI__.event.listen("fence-items", (e) =>
+            applyFenceItems(e.payload || []),
+          );
         } catch (e) {
           console.warn("listen fence-items failed", e);
         }

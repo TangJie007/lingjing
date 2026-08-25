@@ -1,7 +1,8 @@
 ﻿use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::desktop;
@@ -9,6 +10,7 @@ use crate::settings;
 
 const FENCE_LABEL: &str = "desktop-fence";
 static ACTIVE: AtomicBool = AtomicBool::new(false);
+static WATCH_GEN: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,19 +146,9 @@ pub fn scan_desktop_items() -> Result<Vec<DesktopItem>, String> {
         seen.insert(item.path.clone());
         items.push(item);
     }
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        scan_dir(
-            &PathBuf::from(home).join("Desktop"),
-            &mut items,
-            &mut seen,
-        );
+    for dir in desktop_scan_dirs() {
+        scan_dir(&dir, &mut items, &mut seen);
     }
-    let public = std::env::var("PUBLIC").unwrap_or_else(|_| r"C:\Users\Public".into());
-    scan_dir(
-        &PathBuf::from(public).join("Desktop"),
-        &mut items,
-        &mut seen,
-    );
     items.sort_by(|a, b| {
         builtin_rank(&a.path).cmp(&builtin_rank(&b.path))
             .then_with(|| b.is_dir.cmp(&a.is_dir))
@@ -252,7 +244,7 @@ mod win {
         out
     }
 
-    fn rgba_to_png_data_url(rgba: &[u8], w: u32, h: u32) -> Option<String> {
+    fn rgba_to_png_bytes(rgba: &[u8], w: u32, h: u32) -> Option<Vec<u8>> {
         let mut buf = Vec::new();
         {
             let mut encoder = png::Encoder::new(&mut buf, w, h);
@@ -261,7 +253,11 @@ mod win {
             let mut writer = encoder.write_header().ok()?;
             writer.write_image_data(rgba).ok()?;
         }
-        Some(format!("data:image/png;base64,{}", to_base64(&buf)))
+        Some(buf)
+    }
+
+    fn rgba_to_png_data_url(rgba: &[u8], w: u32, h: u32) -> Option<String> {
+        rgba_to_png_bytes(rgba, w, h).map(|buf| format!("data:image/png;base64,{}", to_base64(&buf)))
     }
 
     fn expand_env_path(s: &str) -> String {
@@ -1446,12 +1442,14 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
     let _ = window.eval("location.reload()");
     push_items_to_fence(app, &items)?;
     ACTIVE.store(true, Ordering::SeqCst);
+    start_desktop_watch(app);
     eprintln!("[desktop-organize] enabled items={}", items.len());
     Ok(())
 }
 
 fn disable_inner(app: &AppHandle) -> Result<(), String> {
     ACTIVE.store(false, Ordering::SeqCst);
+    stop_desktop_watch();
 
     if let Some(window) = app.get_webview_window(FENCE_LABEL) {
         #[cfg(windows)]
@@ -1562,8 +1560,239 @@ fn strip_extended_path(path: PathBuf) -> PathBuf {
     }
 }
 
+fn desktop_scan_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        dirs.push(PathBuf::from(home).join("Desktop"));
+    }
+    let public = std::env::var("PUBLIC").unwrap_or_else(|_| r"C:\Users\Public".into());
+    dirs.push(PathBuf::from(public).join("Desktop"));
+    dirs
+}
+
+fn stop_desktop_watch() {
+    WATCH_GEN.fetch_add(1, Ordering::SeqCst);
+}
+
+fn start_desktop_watch(app: &AppHandle) {
+    stop_desktop_watch();
+    let gen = WATCH_GEN.load(Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::Builder::new()
+        .name("desktop-fence-watch".into())
+        .spawn(move || {
+            use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+            use std::sync::mpsc::{RecvTimeoutError, channel};
+
+            let (tx, rx) = channel();
+            let mut watcher = match RecommendedWatcher::new(
+                tx,
+                notify::Config::default().with_poll_interval(Duration::from_secs(2)),
+            ) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("[desktop-organize] watcher create failed: {e}");
+                    return;
+                }
+            };
+
+            let mut watching = false;
+            for dir in desktop_scan_dirs() {
+                if !dir.is_dir() {
+                    continue;
+                }
+                match watcher.watch(&dir, RecursiveMode::NonRecursive) {
+                    Ok(()) => {
+                        watching = true;
+                        eprintln!("[desktop-organize] watching {}", dir.display());
+                    }
+                    Err(e) => eprintln!("[desktop-organize] watch {} failed: {e}", dir.display()),
+                }
+            }
+            if !watching {
+                return;
+            }
+
+            let mut pending_at: Option<Instant> = None;
+            loop {
+                if WATCH_GEN.load(Ordering::SeqCst) != gen {
+                    break;
+                }
+                match rx.recv_timeout(Duration::from_millis(200)) {
+                    Ok(Ok(_event)) => {
+                        pending_at = Some(Instant::now());
+                    }
+                    Ok(Err(e)) => {
+                        eprintln!("[desktop-organize] watcher error: {e}");
+                        break;
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        if let Some(at) = pending_at {
+                            if at.elapsed() >= Duration::from_millis(450) {
+                                pending_at = None;
+                                if ACTIVE.load(Ordering::SeqCst) {
+                                    if let Err(e) = refresh(&app) {
+                                        eprintln!("[desktop-organize] watch refresh failed: {e}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            eprintln!("[desktop-organize] watcher stopped");
+        })
+        .ok();
+}
+
+fn from_base64(input: &str) -> Option<Vec<u8>> {
+    const TABLE: &[u8; 256] = &{
+        let mut t = [0xffu8; 256];
+        let mut i = 0u8;
+        while i < 26 {
+            t[(b'A' + i) as usize] = i;
+            t[(b'a' + i) as usize] = 26 + i;
+            i += 1;
+        }
+        i = 0;
+        while i < 10 {
+            t[(b'0' + i) as usize] = 52 + i;
+            i += 1;
+        }
+        t[b'+' as usize] = 62;
+        t[b'/' as usize] = 63;
+        t
+    };
+
+    let bytes: Vec<u8> = input
+        .bytes()
+        .filter(|b| !b.is_ascii_whitespace())
+        .collect();
+    if bytes.is_empty() || bytes.len() % 4 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks_exact(4) {
+        let a = TABLE[chunk[0] as usize];
+        let b = TABLE[chunk[1] as usize];
+        let (c, pad_c) = if chunk[2] == b'=' {
+            (0, true)
+        } else {
+            (TABLE[chunk[2] as usize], false)
+        };
+        let (d, pad_d) = if chunk[3] == b'=' {
+            (0, true)
+        } else {
+            (TABLE[chunk[3] as usize], false)
+        };
+        if a == 0xff || b == 0xff || (!pad_c && c == 0xff) || (!pad_d && d == 0xff) {
+            return None;
+        }
+        out.push((a << 2) | (b >> 4));
+        if !pad_c {
+            out.push((b << 4) | (c >> 2));
+        }
+        if !pad_d {
+            out.push((c << 6) | d);
+        }
+    }
+    Some(out)
+}
+
+fn decode_image_data_url(url: &str) -> Option<Vec<u8>> {
+    let url = url.trim();
+    let b64 = url
+        .strip_prefix("data:image/png;base64,")
+        .or_else(|| url.strip_prefix("data:image/PNG;base64,"))?;
+    from_base64(b64)
+}
+
+fn parse_drag_mode(mode: Option<&str>) -> drag::DragMode {
+    match mode.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("move") => drag::DragMode::Move,
+        _ => drag::DragMode::Copy,
+    }
+}
+
+fn drag_preview_png(path: &Path, preview_data_url: Option<&str>) -> Vec<u8> {
+    if let Some(url) = preview_data_url {
+        if let Some(bytes) = decode_image_data_url(url) {
+            return bytes;
+        }
+    }
+    #[cfg(windows)]
+    {
+        let is_image = {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            matches!(
+                ext.as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "tif" | "tiff" | "jfif"
+            )
+        };
+        let url = if is_image {
+            win::image_file_preview(path, 96)
+        } else {
+            win::shell_name_and_icon(path).icon
+        };
+        if let Some(url) = url {
+            if let Some(bytes) = decode_image_data_url(&url) {
+                return bytes;
+            }
+        }
+    }
+    MINI_DRAG_PNG.to_vec()
+}
+
 #[cfg(windows)]
-fn is_cursor_over_foreign_window(fence_hwnd: isize) -> bool {
+fn window_class_name(hwnd: windows_sys::Win32::Foundation::HWND) -> String {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+    unsafe {
+        let mut buf = [0u16; 256];
+        let n = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        if n <= 0 {
+            return String::new();
+        }
+        String::from_utf16_lossy(&buf[..n as usize])
+    }
+}
+
+#[cfg(windows)]
+fn is_desktop_shell_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Progman" | "WorkerW" | "SHELLDLL_DefView" | "SysListView32"
+    )
+}
+
+#[cfg(windows)]
+fn is_lbutton_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    unsafe { (GetAsyncKeyState(VK_LBUTTON as i32) as u16 & 0x8000) != 0 }
+}
+
+#[cfg(windows)]
+fn collect_own_hwnds(app: &AppHandle, fence_hwnd: isize) -> Vec<isize> {
+    let mut own = vec![fence_hwnd];
+    for label in [FENCE_LABEL, "wallpaper"] {
+        if let Some(w) = app.get_webview_window(label) {
+            if let Ok(h) = w.hwnd() {
+                let v = h.0 as isize;
+                if !own.contains(&v) {
+                    own.push(v);
+                }
+            }
+        }
+    }
+    own
+}
+
+#[cfg(windows)]
+fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
     use windows_sys::Win32::Foundation::{HWND, POINT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetParent, WindowFromPoint};
     unsafe {
@@ -1571,6 +1800,7 @@ fn is_cursor_over_foreign_window(fence_hwnd: isize) -> bool {
         if fence.is_null() {
             return false;
         }
+        let own = collect_own_hwnds(app, fence_hwnd);
         let mut pt = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut pt) == 0 {
             return false;
@@ -1581,7 +1811,12 @@ fn is_cursor_over_foreign_window(fence_hwnd: isize) -> bool {
             if hwnd.is_null() {
                 return true;
             }
-            if hwnd == fence {
+            let id = hwnd as isize;
+            if own.contains(&id) {
+                return false;
+            }
+            let class = window_class_name(hwnd);
+            if is_desktop_shell_class(&class) {
                 return false;
             }
             hwnd = GetParent(hwnd);
@@ -1598,7 +1833,7 @@ pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
             .get_webview_window(FENCE_LABEL)
             .ok_or_else(|| "格子窗口未就绪".to_string())?;
         let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
-        Ok(is_cursor_over_foreign_window(hwnd))
+        Ok(is_cursor_over_foreign_window(&app, hwnd))
     }
     #[cfg(not(windows))]
     {
@@ -1608,8 +1843,14 @@ pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
 }
 
 /// Start a system shell file drag (CF_HDROP) so icons can be dropped into other apps.
+/// `mode`: "copy" (default) or "move". Hold Shift in the UI to request move.
 #[tauri::command]
-pub fn start_desktop_file_drag(app: AppHandle, path: String) -> Result<(), String> {
+pub fn start_desktop_file_drag(
+    app: AppHandle,
+    path: String,
+    mode: Option<String>,
+    preview_data_url: Option<String>,
+) -> Result<(), String> {
     let trimmed = path.trim().to_string();
     if trimmed.is_empty() {
         return Err("路径为空".into());
@@ -1622,6 +1863,8 @@ pub fn start_desktop_file_drag(app: AppHandle, path: String) -> Result<(), Strin
         return Err("文件不存在".into());
     }
     let abs = strip_extended_path(std::fs::canonicalize(&path_buf).unwrap_or(path_buf));
+    let drag_mode = parse_drag_mode(mode.as_deref());
+    let preview = drag_preview_png(&abs, preview_data_url.as_deref());
 
     let window = app
         .get_webview_window(FENCE_LABEL)
@@ -1629,13 +1872,19 @@ pub fn start_desktop_file_drag(app: AppHandle, path: String) -> Result<(), Strin
 
     #[cfg(windows)]
     {
+        if !is_lbutton_down() {
+            return Err("鼠标已松开，取消拖出".into());
+        }
         let handle = app.clone();
         let win = window.clone();
         return run_on_ui(&handle, move || {
+            if !is_lbutton_down() {
+                return Err("鼠标已松开，取消拖出".into());
+            }
             let item = drag::DragItem::Files(vec![abs]);
-            let preview = drag::Image::Raw(MINI_DRAG_PNG.to_vec());
+            let preview = drag::Image::Raw(preview);
             let opts = drag::Options {
-                mode: drag::DragMode::Copy,
+                mode: drag_mode,
                 skip_animatation_on_cancel_or_failure: true,
             };
             drag::start_drag(&win, item, preview, |_result, _pos| {}, opts)
@@ -1646,7 +1895,7 @@ pub fn start_desktop_file_drag(app: AppHandle, path: String) -> Result<(), Strin
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, abs);
+        let _ = (window, abs, drag_mode, preview);
         Err("桌面整理拖出仅支持 Windows".into())
     }
 }
