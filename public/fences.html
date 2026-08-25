@@ -438,7 +438,7 @@
 
       function onDragMove(e) {
         const drag = activeDrag;
-        if (!drag) return;
+        if (!drag || drag.shellPending) return;
         const dx = e.clientX - drag.startX;
         const dy = e.clientY - drag.startY;
         if (!drag.moved && Math.hypot(dx, dy) < 6) return;
@@ -448,7 +448,9 @@
           beginDragVisuals(drag);
         }
 
-        drag.ghost.style.transform = `translate(${e.clientX - drag.offsetX}px, ${e.clientY - drag.offsetY}px)`;
+        if (drag.ghost) {
+          drag.ghost.style.transform = `translate(${e.clientX - drag.offsetX}px, ${e.clientY - drag.offsetY}px)`;
+        }
 
         const target = findSwapTarget(e.clientX, e.clientY, drag.cell, drag.group.container);
         if (drag.swapTarget && drag.swapTarget !== target) {
@@ -456,6 +458,41 @@
         }
         drag.swapTarget = target;
         if (drag.swapTarget) drag.swapTarget.classList.add("swap-target");
+
+        // Fullscreen fence: leaving for another app is detected via Win32 hit-test.
+        // Prefer icon swap when hovering a peer; otherwise try shell file drag-out.
+        if (!target) {
+          const now = performance.now();
+          if (!drag.lastForeignProbe || now - drag.lastForeignProbe > 60) {
+            drag.lastForeignProbe = now;
+            void maybeStartShellDrag(drag);
+          }
+        }
+      }
+
+      async function maybeStartShellDrag(drag) {
+        if (!drag || drag.shellPending || !window.__TAURI__) return;
+        if (drag.swapTarget) return;
+        drag.shellPending = true;
+        const path = drag.itemPath;
+        try {
+          const foreign = await window.__TAURI__.core.invoke("is_desktop_drag_over_foreign");
+          if (!foreign || activeDrag !== drag) {
+            drag.shellPending = false;
+            return;
+          }
+          activeDrag = null;
+          unbindDragListeners();
+          try {
+            drag.cell.releasePointerCapture(drag.pointerId);
+          } catch (_) {}
+          if (drag.ghost) drag.ghost.remove();
+          endDragVisuals(drag);
+          await window.__TAURI__.core.invoke("start_desktop_file_drag", { path });
+        } catch (err) {
+          console.warn("shell file drag failed", err);
+          if (activeDrag === drag) drag.shellPending = false;
+        }
       }
 
       function finishDrag(e) {
@@ -469,6 +506,12 @@
         } catch (_) {}
 
         if (!drag.moved) {
+          endDragVisuals(drag);
+          if (drag.ghost) drag.ghost.remove();
+          return;
+        }
+
+        if (drag.shellPending) {
           endDragVisuals(drag);
           if (drag.ghost) drag.ghost.remove();
           return;
@@ -527,6 +570,8 @@
             moved: false,
             ghost: null,
             swapTarget: null,
+            shellPending: false,
+            lastForeignProbe: 0,
           };
           cell.classList.add("is-dragging");
         });

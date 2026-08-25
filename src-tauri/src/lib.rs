@@ -683,6 +683,8 @@ pub fn run() {
             get_last_wallpaper,
             export_wallpaper,
             desktop_organize::open_desktop_item,
+            desktop_organize::is_desktop_drag_over_foreign,
+            desktop_organize::start_desktop_file_drag,
             desktop_organize::set_desktop_organize,
             desktop_organize::list_desktop_items,
             refresh_desktop_organize

@@ -1552,3 +1552,110 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
         Err("桌面整理仅支持 Windows".into())
     }
 }
+
+fn strip_extended_path(path: PathBuf) -> PathBuf {
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
+#[cfg(windows)]
+fn is_cursor_over_foreign_window(fence_hwnd: isize) -> bool {
+    use windows_sys::Win32::Foundation::{HWND, POINT};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetParent, WindowFromPoint};
+    unsafe {
+        let fence = fence_hwnd as HWND;
+        if fence.is_null() {
+            return false;
+        }
+        let mut pt = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut pt) == 0 {
+            return false;
+        }
+        let mut hwnd = WindowFromPoint(pt);
+        // Fence is a WS_CHILD of the desktop DefView — walk parents instead of GA_ROOT.
+        for _ in 0..24 {
+            if hwnd.is_null() {
+                return true;
+            }
+            if hwnd == fence {
+                return false;
+            }
+            hwnd = GetParent(hwnd);
+        }
+        true
+    }
+}
+
+#[tauri::command]
+pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        let window = app
+            .get_webview_window(FENCE_LABEL)
+            .ok_or_else(|| "格子窗口未就绪".to_string())?;
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        Ok(is_cursor_over_foreign_window(hwnd))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Ok(false)
+    }
+}
+
+/// Start a system shell file drag (CF_HDROP) so icons can be dropped into other apps.
+#[tauri::command]
+pub fn start_desktop_file_drag(app: AppHandle, path: String) -> Result<(), String> {
+    let trimmed = path.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持拖出到其他程序".into());
+    }
+    let path_buf = PathBuf::from(&trimmed);
+    if !path_buf.exists() {
+        return Err("文件不存在".into());
+    }
+    let abs = strip_extended_path(std::fs::canonicalize(&path_buf).unwrap_or(path_buf));
+
+    let window = app
+        .get_webview_window(FENCE_LABEL)
+        .ok_or_else(|| "格子窗口未就绪".to_string())?;
+
+    #[cfg(windows)]
+    {
+        let handle = app.clone();
+        let win = window.clone();
+        return run_on_ui(&handle, move || {
+            let item = drag::DragItem::Files(vec![abs]);
+            let preview = drag::Image::Raw(MINI_DRAG_PNG.to_vec());
+            let opts = drag::Options {
+                mode: drag::DragMode::Copy,
+                skip_animatation_on_cancel_or_failure: true,
+            };
+            drag::start_drag(&win, item, preview, |_result, _pos| {}, opts)
+                .map_err(|e| format!("启动文件拖放失败: {e}"))?;
+            eprintln!("[desktop-organize] shell file drag finished path={trimmed}");
+            Ok(())
+        })?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, abs);
+        Err("桌面整理拖出仅支持 Windows".into())
+    }
+}
+
+/// Tiny valid PNG (1x1 transparent) used as drag preview when no icon file is handy.
+const MINI_DRAG_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+    0x42, 0x60, 0x82,
+];
