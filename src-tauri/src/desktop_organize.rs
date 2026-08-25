@@ -1692,9 +1692,27 @@ mod win {
             }
 
             let len = text_buf.iter().position(|&c| c == 0).unwrap_or(0);
-            let label = clean_menu_label(&String::from_utf16_lossy(&text_buf[..len]));
+            let mut label = clean_menu_label(&String::from_utf16_lossy(&text_buf[..len]));
+            if label.is_empty() {
+                // Some shell entries are owner-drawn; try GetMenuStringW as fallback.
+                use windows_sys::Win32::UI::WindowsAndMessaging::{GetMenuStringW, MF_BYPOSITION};
+                let mut alt = [0u16; 512];
+                let n = GetMenuStringW(
+                    hmenu,
+                    i as u32,
+                    alt.as_mut_ptr(),
+                    alt.len() as i32 - 1,
+                    MF_BYPOSITION,
+                );
+                if n > 0 {
+                    label = clean_menu_label(&String::from_utf16_lossy(&alt[..n as usize]));
+                }
+            }
             if label.is_empty() && mii.hSubMenu.is_null() {
                 continue;
+            }
+            if label.is_empty() {
+                label = "…".into();
             }
 
             let disabled = mii.fState & (MFS_DISABLED | MFS_GRAYED) != 0;
@@ -1741,7 +1759,7 @@ mod win {
         String,
     > {
         use windows_sys::Win32::UI::Shell::{
-            BHID_SFUIObject, CSIDL_DESKTOP, DEFCONTEXTMENU, ILFree, SHBindToObject, SHBindToParent,
+            BHID_SFUIObject, CSIDL_DESKTOP, DEFCONTEXTMENU, ILFree, SHBindToParent,
             SHCreateDefaultContextMenu, SHCreateShellItemArrayFromIDLists,
             SHGetSpecialFolderLocation, SHParseDisplayName, Common::ITEMIDLIST,
         };
@@ -1777,7 +1795,12 @@ mod win {
             bind_to_object: *const core::ffi::c_void,
             bind_to_storage: *const core::ffi::c_void,
             compare_ids: *const core::ffi::c_void,
-            create_view_object: *const core::ffi::c_void,
+            create_view_object: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                HWND,
+                *const windows_sys::core::GUID,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
             get_attributes_of: *const core::ffi::c_void,
             get_ui_object_of: unsafe extern "system" fn(
                 *mut core::ffi::c_void,
@@ -1815,6 +1838,28 @@ mod win {
         }
 
         if path.is_none() {
+            // Desktop / folder *background* menu comes from IShellFolder::CreateViewObject,
+            // not from SHCreateDefaultContextMenu with cidl=0 (often yields an empty HMENU).
+            use windows_sys::Win32::UI::Shell::SHGetDesktopFolder;
+
+            let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hr = SHGetDesktopFolder(&mut psf);
+            if hr < 0 || psf.is_null() {
+                return Err(format!("SHGetDesktopFolder: {hr}"));
+            }
+
+            let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
+            let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hr_view = ((*psf_vtbl).create_view_object)(
+                psf,
+                hwnd_invoke,
+                &IID_ICONTEXTMENU,
+                &mut pcm,
+            );
+            if hr_view >= 0 && !pcm.is_null() {
+                return Ok((pcm, psf, std::ptr::null_mut()));
+            }
+
             let mut desktop_pidl: *mut ITEMIDLIST = std::ptr::null_mut();
             let hr = SHGetSpecialFolderLocation(
                 std::ptr::null_mut(),
@@ -1822,19 +1867,8 @@ mod win {
                 &mut desktop_pidl,
             );
             if hr < 0 {
+                com_release(psf);
                 return Err(format!("SHGetSpecialFolderLocation: {hr}"));
-            }
-            let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
-            let hr = SHBindToObject(
-                std::ptr::null_mut(),
-                desktop_pidl,
-                std::ptr::null_mut(),
-                &IID_ISHELLFOLDER,
-                &mut psf,
-            );
-            if hr < 0 {
-                ILFree(desktop_pidl);
-                return Err(format!("SHBindToObject: {hr}"));
             }
             let dcm = DEFCONTEXTMENU {
                 hwnd: hwnd_invoke,
@@ -1847,12 +1881,13 @@ mod win {
                 cKeys: 0,
                 aKeys: std::ptr::null(),
             };
-            let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
             let hr = SHCreateDefaultContextMenu(&dcm, &IID_ICONTEXTMENU, &mut pcm);
             if hr < 0 || pcm.is_null() {
                 com_release(psf);
                 ILFree(desktop_pidl);
-                return Err(format!("SHCreateDefaultContextMenu desktop: {hr}"));
+                return Err(format!(
+                    "desktop background menu failed view={hr_view} def={hr}"
+                ));
             }
             return Ok((pcm, psf, desktop_pidl));
         }
@@ -1930,6 +1965,100 @@ mod win {
         Ok((pcm, psf, pidl_abs))
     }
 
+    /// Background context menu for a filesystem folder via CreateViewObject.
+    unsafe fn acquire_folder_background_menu(
+        hwnd_invoke: HWND,
+        folder_path: &str,
+    ) -> Result<
+        (
+            *mut core::ffi::c_void,
+            *mut core::ffi::c_void,
+            *mut windows_sys::Win32::UI::Shell::Common::ITEMIDLIST,
+        ),
+        String,
+    > {
+        use windows_sys::Win32::UI::Shell::{
+            ILFree, SHBindToObject, SHParseDisplayName, Common::ITEMIDLIST,
+        };
+
+        const IID_ISHELLFOLDER: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0x000214e6,
+            data2: 0x0000,
+            data3: 0x0000,
+            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+        };
+        const IID_ICONTEXTMENU: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0x000214e4,
+            data2: 0x0000,
+            data3: 0x0000,
+            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+        };
+
+        #[repr(C)]
+        struct IUnknownVtbl {
+            query_interface: *const core::ffi::c_void,
+            add_ref: *const core::ffi::c_void,
+            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+        }
+        #[repr(C)]
+        struct IShellFolderVtbl {
+            base: IUnknownVtbl,
+            parse_display_name: *const core::ffi::c_void,
+            enum_objects: *const core::ffi::c_void,
+            bind_to_object: *const core::ffi::c_void,
+            bind_to_storage: *const core::ffi::c_void,
+            compare_ids: *const core::ffi::c_void,
+            create_view_object: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                HWND,
+                *const windows_sys::core::GUID,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
+            get_attributes_of: *const core::ffi::c_void,
+            get_ui_object_of: *const core::ffi::c_void,
+            get_display_name_of: *const core::ffi::c_void,
+            set_name_of: *const core::ffi::c_void,
+        }
+
+        let wpath = wide(folder_path);
+        let mut pidl_abs: *mut ITEMIDLIST = std::ptr::null_mut();
+        let mut sfgao: u32 = 0;
+        let hr = SHParseDisplayName(
+            wpath.as_ptr(),
+            std::ptr::null_mut(),
+            &mut pidl_abs,
+            0,
+            &mut sfgao,
+        );
+        if hr < 0 || pidl_abs.is_null() {
+            return Err(format!("SHParseDisplayName folder bg: {hr}"));
+        }
+
+        let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hr = SHBindToObject(
+            std::ptr::null_mut(),
+            pidl_abs,
+            std::ptr::null_mut(),
+            &IID_ISHELLFOLDER,
+            &mut psf,
+        );
+        if hr < 0 || psf.is_null() {
+            ILFree(pidl_abs);
+            return Err(format!("SHBindToObject folder bg: {hr}"));
+        }
+
+        let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
+        let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hr = ((*psf_vtbl).create_view_object)(psf, hwnd_invoke, &IID_ICONTEXTMENU, &mut pcm);
+        if hr < 0 || pcm.is_null() {
+            let vtbl = *(psf as *mut *const IUnknownVtbl);
+            ((*vtbl).release)(psf);
+            ILFree(pidl_abs);
+            return Err(format!("CreateViewObject folder bg: {hr}"));
+        }
+        Ok((pcm, psf, pidl_abs))
+    }
+
     unsafe fn com_release_any(obj: *mut core::ffi::c_void) {
         if obj.is_null() {
             return;
@@ -1976,7 +2105,13 @@ mod win {
         unsafe {
             let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
             let hwnd_invoke = desktop_defview_hwnd().unwrap_or(hwnd_fence);
-            let flags = menu_flags();
+            // Folder/desktop background menus populate more reliably without CMF_EXPLORE.
+            let flags = if path.is_none() {
+                use windows_sys::Win32::UI::Shell::CMF_NORMAL;
+                CMF_NORMAL
+            } else {
+                menu_flags()
+            };
             let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
 
             let hmenu = CreatePopupMenu();
@@ -2001,11 +2136,52 @@ mod win {
             }
 
             let mut items = enumerate_hmenu(hmenu, 0);
+            let raw_count = {
+                use windows_sys::Win32::UI::WindowsAndMessaging::GetMenuItemCount;
+                GetMenuItemCount(hmenu)
+            };
             DestroyMenu(hmenu);
             com_release_any(pcm);
             com_release_any(psf);
             if !pidl_abs.is_null() {
                 ILFree(pidl_abs);
+            }
+
+            // If the desktop namespace background menu is empty, retry with the user's
+            // Desktop directory folder background (CreateViewObject on that folder).
+            if items.is_empty() && path.is_none() {
+                if let Some(desk) = std::env::var_os("USERPROFILE")
+                    .map(std::path::PathBuf::from)
+                    .map(|p| p.join("Desktop"))
+                {
+                    if desk.is_dir() {
+                        if let Some(s) = desk.to_str() {
+                            eprintln!(
+                                "[desktop-organize] blank menu empty (hmenu={raw_count}), retry folder bg: {s}"
+                            );
+                            if let Ok((pcm2, psf2, pidl2)) =
+                                acquire_folder_background_menu(hwnd_invoke, s)
+                            {
+                                let hmenu2 = CreatePopupMenu();
+                                if !hmenu2.is_null() {
+                                    let vtbl2 = *(pcm2 as *mut *const IContextMenuVtbl);
+                                    let hr2 = ((*vtbl2).query_context_menu)(
+                                        pcm2, hmenu2, 0, CMD_FIRST, CMD_LAST, flags,
+                                    );
+                                    if hr2 >= 0 {
+                                        items = enumerate_hmenu(hmenu2, 0);
+                                    }
+                                    DestroyMenu(hmenu2);
+                                }
+                                com_release_any(pcm2);
+                                com_release_any(psf2);
+                                if !pidl2.is_null() {
+                                    ILFree(pidl2);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             if let Some(p) = path {
@@ -2017,6 +2193,10 @@ mod win {
                         }
                     }
                 }
+            } else if items.is_empty() {
+                eprintln!(
+                    "[desktop-organize] blank desktop shell menu still empty (hmenu count={raw_count})"
+                );
             }
 
             Ok(items)
