@@ -2124,6 +2124,202 @@ mod win {
             Ok(())
         }
     }
+
+    /// Display and execute the native Shell context menu in one COM/menu lifetime.
+    ///
+    /// Keeping the same IContextMenu alive while TrackPopupMenuEx is running is
+    /// required for dynamic and owner-drawn Shell extensions.
+    pub fn show_native_shell_context_menu(
+        hwnd_fence: HWND,
+        path: Option<&str>,
+    ) -> Result<(), String> {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        use windows_sys::Win32::UI::Shell::{
+            CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, ILFree,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreatePopupMenu, DestroyMenu, GetCursorPos, PostMessageW, SetForegroundWindow,
+            TrackPopupMenuEx, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_NULL,
+        };
+
+        const CMD_FIRST: u32 = 1;
+        const CMD_LAST: u32 = 0x7fff;
+        const IID_ICONTEXTMENU2: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0x000214f4,
+            data2: 0x0000,
+            data3: 0x0000,
+            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+        };
+        const IID_ICONTEXTMENU3: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0xbcfce0a0,
+            data2: 0xec17,
+            data3: 0x11d0,
+            data4: [0x8d, 0x10, 0x00, 0xa0, 0xc9, 0x0f, 0x27, 0x19],
+        };
+
+        #[repr(C)]
+        struct IContextMenuVtbl {
+            query_interface: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                *const windows_sys::core::GUID,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
+            add_ref: *const core::ffi::c_void,
+            release: *const core::ffi::c_void,
+            query_context_menu: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+                u32,
+                u32,
+                u32,
+                u32,
+            ) -> i32,
+            invoke_command: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                *const windows_sys::Win32::UI::Shell::CMINVOKECOMMANDINFO,
+            ) -> i32,
+            get_command_string: *const core::ffi::c_void,
+        }
+
+        #[repr(C)]
+        struct IContextMenu2Vtbl {
+            base: IContextMenuVtbl,
+            handle_menu_msg: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                u32,
+                WPARAM,
+                LPARAM,
+            ) -> i32,
+        }
+
+        #[repr(C)]
+        struct IContextMenu3Vtbl {
+            base: IContextMenu2Vtbl,
+            handle_menu_msg2: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                u32,
+                WPARAM,
+                LPARAM,
+                *mut LRESULT,
+            ) -> i32,
+        }
+
+        unsafe {
+            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_fence, path)?;
+            let hmenu = CreatePopupMenu();
+            if hmenu.is_null() {
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err("创建原生菜单失败".into());
+            }
+
+            let pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
+            let hr = ((*pcm_vtbl).query_context_menu)(
+                pcm,
+                hmenu,
+                0,
+                CMD_FIRST,
+                CMD_LAST,
+                menu_flags(),
+            );
+            if hr < 0 {
+                DestroyMenu(hmenu);
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err(format!("QueryContextMenu: {hr}"));
+            }
+
+            let mut pcm2: *mut core::ffi::c_void = std::ptr::null_mut();
+            let mut pcm3: *mut core::ffi::c_void = std::ptr::null_mut();
+            let _ = ((*pcm_vtbl).query_interface)(pcm, &IID_ICONTEXTMENU2, &mut pcm2);
+            let _ = ((*pcm_vtbl).query_interface)(pcm, &IID_ICONTEXTMENU3, &mut pcm3);
+
+            let pcm2_handle_menu_msg = if pcm2.is_null() {
+                None
+            } else {
+                let vtbl = *(pcm2 as *mut *const IContextMenu2Vtbl);
+                Some((*vtbl).handle_menu_msg)
+            };
+            let pcm3_handle_menu_msg2 = if pcm3.is_null() {
+                None
+            } else {
+                let vtbl = *(pcm3 as *mut *const IContextMenu3Vtbl);
+                Some((*vtbl).handle_menu_msg2)
+            };
+            CTX_MENU_FWD.with(|slot| {
+                *slot.borrow_mut() = Some(CtxMenuFwd {
+                    pcm2,
+                    pcm2_handle_menu_msg,
+                    pcm3,
+                    pcm3_handle_menu_msg2,
+                });
+            });
+
+            let mut pt = POINT { x: 0, y: 0 };
+            let _ = GetCursorPos(&mut pt);
+            // Prefer DefView as popup owner — fence HWND is a child of the desktop
+            // and TrackPopupMenuEx often fails silently on it.
+            let hwnd_popup = desktop_defview_hwnd().unwrap_or(hwnd_fence);
+            let _ = SetForegroundWindow(hwnd_popup);
+            let command_id = TrackPopupMenuEx(
+                hmenu,
+                TPM_RETURNCMD | TPM_RIGHTBUTTON,
+                pt.x,
+                pt.y,
+                hwnd_popup,
+                std::ptr::null(),
+            ) as u32;
+
+            CTX_MENU_FWD.with(|slot| *slot.borrow_mut() = None);
+            let _ = PostMessageW(hwnd_popup, WM_NULL, 0, 0);
+
+            let invoke_result = if command_id >= CMD_FIRST {
+                let verb_offset = (command_id - CMD_FIRST) as usize;
+                let ici = CMINVOKECOMMANDINFOEX {
+                    cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
+                    fMask: CMIC_MASK_PTINVOKE,
+                    hwnd: hwnd_popup,
+                    lpVerb: verb_offset as windows_sys::core::PCSTR,
+                    lpParameters: std::ptr::null(),
+                    lpDirectory: std::ptr::null(),
+                    nShow: SW_SHOWNORMAL,
+                    dwHotKey: 0,
+                    hIcon: std::ptr::null_mut(),
+                    lpTitle: std::ptr::null(),
+                    lpVerbW: std::ptr::null(),
+                    lpParametersW: std::ptr::null(),
+                    lpDirectoryW: std::ptr::null(),
+                    lpTitleW: std::ptr::null(),
+                    ptInvoke: pt,
+                };
+                ((*pcm_vtbl).invoke_command)(pcm, &ici as *const _ as *const _)
+            } else {
+                0
+            };
+
+            DestroyMenu(hmenu);
+            com_release_any(pcm3);
+            com_release_any(pcm2);
+            com_release_any(pcm);
+            com_release_any(psf);
+            if !pidl_abs.is_null() {
+                ILFree(pidl_abs);
+            }
+
+            if invoke_result < 0 {
+                return Err(format!("InvokeCommand: {invoke_result}"));
+            }
+            Ok(())
+        }
+    }
 }
 
 fn push_items_to_fence(app: &AppHandle, items: &[DesktopItem]) -> Result<(), String> {
@@ -2348,6 +2544,38 @@ pub fn invoke_desktop_shell_context_command(
     #[cfg(not(windows))]
     {
         let _ = (window, path_opt, command_id);
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+/// Show the real Windows Shell menu and execute the selected command before
+/// releasing its COM objects, preserving dynamic/owner-drawn menu behavior.
+#[tauri::command]
+pub fn show_desktop_native_context_menu(app: AppHandle, path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    let path_opt = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    let window = app
+        .get_webview_window(FENCE_LABEL)
+        .ok_or_else(|| "格子窗口未就绪".to_string())?;
+
+    #[cfg(windows)]
+    {
+        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let handle = app.clone();
+        return run_on_ui(&handle, move || {
+            win::show_native_shell_context_menu(
+                hwnd_raw as windows_sys::Win32::Foundation::HWND,
+                path_opt.as_deref(),
+            )
+        })?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, path_opt);
         Err("桌面整理仅支持 Windows".into())
     }
 }
