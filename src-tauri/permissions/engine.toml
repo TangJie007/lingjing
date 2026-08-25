@@ -27,6 +27,8 @@ commands.allow = [
   "get_last_wallpaper",
   "export_wallpaper",
   "open_desktop_item",
+  "list_desktop_shell_context_menu",
+  "invoke_desktop_shell_context_command",
   "show_desktop_item_in_folder",
   "open_desktop_item_with",
   "open_desktop_item_properties",

@@ -1,4 +1,4 @@
-﻿use serde::Serialize;
+use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -24,6 +24,20 @@ pub struct DesktopItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellMenuEntry {
+    pub id: u32,
+    pub label: String,
+    pub disabled: bool,
+    pub separator: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ShellMenuEntry>>,
+}
+
 
 fn run_on_ui<T, F>(app: &AppHandle, f: F) -> Result<T, String>
 where
@@ -202,6 +216,40 @@ mod win {
 
     static ORIG_WNDPROC: AtomicIsize = AtomicIsize::new(0);
     static FENCE_SHOWN: AtomicBool = AtomicBool::new(false);
+    static DESKTOP_DEFVIEW: AtomicIsize = AtomicIsize::new(0);
+
+    thread_local! {
+        static CTX_MENU_FWD: std::cell::RefCell<Option<CtxMenuFwd>> =
+            std::cell::RefCell::new(None);
+    }
+
+    struct CtxMenuFwd {
+        pcm2: *mut core::ffi::c_void,
+        pcm2_handle_menu_msg: Option<
+            unsafe extern "system" fn(*mut core::ffi::c_void, u32, WPARAM, LPARAM) -> i32,
+        >,
+        pcm3: *mut core::ffi::c_void,
+        pcm3_handle_menu_msg2: Option<
+            unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                u32,
+                WPARAM,
+                LPARAM,
+                *mut LRESULT,
+            ) -> i32,
+        >,
+    }
+
+    impl Clone for CtxMenuFwd {
+        fn clone(&self) -> Self {
+            Self {
+                pcm2: self.pcm2,
+                pcm2_handle_menu_msg: self.pcm2_handle_menu_msg,
+                pcm3: self.pcm3,
+                pcm3_handle_menu_msg2: self.pcm3_handle_menu_msg2,
+            }
+        }
+    }
 
     pub struct ShellMeta {
         pub display_name: Option<String>,
@@ -1221,6 +1269,32 @@ mod win {
                 force_child_chrome(hwnd, true);
             }
         }
+        if let Ok(fwd) = CTX_MENU_FWD.try_with(|c| c.borrow().clone()) {
+            if let Some(fwd) = fwd {
+                const WM_INITMENUPOPUP: u32 = 279;
+                const WM_MEASUREITEM: u32 = 44;
+                const WM_DRAWITEM: u32 = 43;
+                const WM_MENUCHAR: u32 = 288;
+                match msg {
+                    WM_INITMENUPOPUP | WM_MEASUREITEM | WM_DRAWITEM => {
+                        if let Some(handle) = fwd.pcm2_handle_menu_msg {
+                            if handle(fwd.pcm2, msg, wparam, lparam) == 0 {
+                                return 0;
+                            }
+                        }
+                    }
+                    WM_MENUCHAR => {
+                        if let Some(handle) = fwd.pcm3_handle_menu_msg2 {
+                            let mut lres: LRESULT = 0;
+                            if handle(fwd.pcm3, msg, wparam, lparam, &mut lres) == 0 {
+                                return lres;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         let orig = ORIG_WNDPROC.load(Ordering::SeqCst);
         if orig == 0 {
             return 0;
@@ -1301,6 +1375,9 @@ mod win {
                     data.defview_parent = progman;
                 }
             }
+            if !data.defview.is_null() {
+                DESKTOP_DEFVIEW.store(data.defview as isize, Ordering::SeqCst);
+            }
 
             let child = hwnd_raw as HWND;
             FENCE_SHOWN.store(true, Ordering::SeqCst);
@@ -1376,6 +1453,7 @@ mod win {
         unsafe {
             let child = hwnd_raw as HWND;
             FENCE_SHOWN.store(false, Ordering::SeqCst);
+            DESKTOP_DEFVIEW.store(0, Ordering::SeqCst);
             force_child_chrome(child, false);
             ShowWindow(child, SW_HIDE);
             SetParent(child, std::ptr::null_mut());
@@ -1424,6 +1502,627 @@ mod win {
             }
         }
         Ok(())
+    }
+
+    fn desktop_defview_hwnd() -> Option<HWND> {
+        let stored = DESKTOP_DEFVIEW.load(Ordering::SeqCst);
+        if stored != 0 {
+            return Some(stored as HWND);
+        }
+        unsafe {
+            let progman_class = wide("Progman");
+            let progman = FindWindowW(progman_class.as_ptr(), std::ptr::null());
+            if progman.is_null() {
+                return None;
+            }
+            let def = find_progman_child(progman, "SHELLDLL_DefView");
+            if def.is_null() {
+                return None;
+            }
+            DESKTOP_DEFVIEW.store(def as isize, Ordering::SeqCst);
+            Some(def)
+        }
+    }
+
+    fn menu_flags() -> u32 {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
+        use windows_sys::Win32::UI::Shell::{CMF_EXPLORE, CMF_EXTENDEDVERBS, CMF_NORMAL};
+        let mut flags = CMF_NORMAL | CMF_EXPLORE;
+        unsafe {
+            if (GetAsyncKeyState(VK_SHIFT as i32) as u16 & 0x8000) != 0 {
+                flags |= CMF_EXTENDEDVERBS;
+            }
+        }
+        flags
+    }
+
+    fn clean_menu_label(raw: &str) -> String {
+        let s = raw.split('\t').next().unwrap_or(raw);
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '&' {
+                if chars.peek() == Some(&'&') {
+                    out.push('&');
+                    chars.next();
+                }
+                continue;
+            }
+            out.push(c);
+        }
+        out.trim().to_string()
+    }
+
+    unsafe fn hbitmap_to_data_url(
+        hbmp: windows_sys::Win32::Graphics::Gdi::HBITMAP,
+    ) -> Option<String> {
+        use windows_sys::Win32::Graphics::Gdi::{
+            GetDC, GetDIBits, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+            HBITMAP, RGBQUAD,
+        };
+
+        if hbmp.is_null() {
+            return None;
+        }
+        let as_isize = hbmp as isize;
+        if as_isize <= 16 && as_isize >= -16 {
+            return None;
+        }
+
+        let hdc = GetDC(std::ptr::null_mut());
+        if hdc.is_null() {
+            return None;
+        }
+
+        let mut bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: 0,
+                biHeight: 0,
+                biPlanes: 1,
+                biBitCount: 0,
+                biCompression: BI_RGB as u32,
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [RGBQUAD {
+                rgbBlue: 0,
+                rgbGreen: 0,
+                rgbRed: 0,
+                rgbReserved: 0,
+            }],
+        };
+
+        if GetDIBits(
+            hdc,
+            hbmp as HBITMAP,
+            0,
+            0,
+            std::ptr::null_mut(),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        ) == 0
+        {
+            ReleaseDC(std::ptr::null_mut(), hdc);
+            return None;
+        }
+
+        let w = bmi.bmiHeader.biWidth;
+        let h_abs = bmi.bmiHeader.biHeight.abs();
+        if w <= 0 || h_abs <= 0 || w > 256 || h_abs > 256 {
+            ReleaseDC(std::ptr::null_mut(), hdc);
+            return None;
+        }
+
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB as u32;
+        bmi.bmiHeader.biHeight = -h_abs;
+        bmi.bmiHeader.biSizeImage = (w * h_abs * 4) as u32;
+
+        let mut bgra = vec![0u8; (w * h_abs * 4) as usize];
+        let got = GetDIBits(
+            hdc,
+            hbmp as HBITMAP,
+            0,
+            h_abs as u32,
+            bgra.as_mut_ptr() as *mut _,
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        ReleaseDC(std::ptr::null_mut(), hdc);
+        if got == 0 {
+            return None;
+        }
+
+        let mut rgba = vec![0u8; bgra.len()];
+        for (i, chunk) in bgra.chunks_exact(4).enumerate() {
+            let o = i * 4;
+            rgba[o] = chunk[2];
+            rgba[o + 1] = chunk[1];
+            rgba[o + 2] = chunk[0];
+            rgba[o + 3] = chunk[3];
+        }
+        rgba_to_png_data_url(&rgba, w as u32, h_abs as u32)
+    }
+
+    unsafe fn enumerate_hmenu(
+        hmenu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+        depth: u32,
+    ) -> Vec<super::ShellMenuEntry> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetMenuItemCount, GetMenuItemInfoW, GetSubMenu, MENUITEMINFOW, MIIM_BITMAP, MIIM_FTYPE,
+            MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MFS_DISABLED, MFS_GRAYED, MFT_SEPARATOR,
+        };
+
+        if depth > 4 || hmenu.is_null() {
+            return Vec::new();
+        }
+
+        let count = GetMenuItemCount(hmenu);
+        if count <= 0 {
+            return Vec::new();
+        }
+
+        let mut out = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let mut text_buf = [0u16; 512];
+            let mut mii: MENUITEMINFOW = std::mem::zeroed();
+            mii.cbSize = std::mem::size_of::<MENUITEMINFOW>() as u32;
+            mii.fMask = MIIM_BITMAP | MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU;
+            mii.dwTypeData = text_buf.as_mut_ptr();
+            mii.cch = text_buf.len() as u32 - 1;
+
+            if GetMenuItemInfoW(hmenu, i as u32, 1, &mut mii) == 0 {
+                continue;
+            }
+
+            if mii.fType & MFT_SEPARATOR != 0 {
+                out.push(super::ShellMenuEntry {
+                    id: 0,
+                    label: String::new(),
+                    disabled: true,
+                    separator: true,
+                    icon: None,
+                    children: None,
+                });
+                continue;
+            }
+
+            let len = text_buf.iter().position(|&c| c == 0).unwrap_or(0);
+            let label = clean_menu_label(&String::from_utf16_lossy(&text_buf[..len]));
+            if label.is_empty() && mii.hSubMenu.is_null() {
+                continue;
+            }
+
+            let disabled = mii.fState & (MFS_DISABLED | MFS_GRAYED) != 0;
+            let icon = if !mii.hbmpItem.is_null() {
+                hbitmap_to_data_url(mii.hbmpItem)
+            } else {
+                None
+            };
+
+            let mut children = None;
+            let sub = if !mii.hSubMenu.is_null() {
+                mii.hSubMenu
+            } else {
+                GetSubMenu(hmenu, i)
+            };
+            if !sub.is_null() {
+                let kids = enumerate_hmenu(sub, depth + 1);
+                if !kids.is_empty() {
+                    children = Some(kids);
+                }
+            }
+
+            out.push(super::ShellMenuEntry {
+                id: if children.is_some() { 0 } else { mii.wID },
+                label,
+                disabled,
+                separator: false,
+                icon,
+                children,
+            });
+        }
+        out
+    }
+
+    unsafe fn acquire_context_menu(
+        hwnd_invoke: HWND,
+        path: Option<&str>,
+    ) -> Result<
+        (
+            *mut core::ffi::c_void,
+            *mut core::ffi::c_void,
+            *mut windows_sys::Win32::UI::Shell::Common::ITEMIDLIST,
+        ),
+        String,
+    > {
+        use windows_sys::Win32::UI::Shell::{
+            BHID_SFUIObject, CSIDL_DESKTOP, DEFCONTEXTMENU, ILFree, SHBindToObject, SHBindToParent,
+            SHCreateDefaultContextMenu, SHCreateShellItemArrayFromIDLists,
+            SHGetSpecialFolderLocation, SHParseDisplayName, Common::ITEMIDLIST,
+        };
+
+        const IID_ISHELLFOLDER: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0x000214e6,
+            data2: 0x0000,
+            data3: 0x0000,
+            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+        };
+        const IID_ICONTEXTMENU: windows_sys::core::GUID = windows_sys::core::GUID {
+            data1: 0x000214e4,
+            data2: 0x0000,
+            data3: 0x0000,
+            data4: [0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
+        };
+
+        #[repr(C)]
+        struct IUnknownVtbl {
+            query_interface: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                *const windows_sys::core::GUID,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
+            add_ref: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+        }
+        #[repr(C)]
+        struct IShellFolderVtbl {
+            base: IUnknownVtbl,
+            parse_display_name: *const core::ffi::c_void,
+            enum_objects: *const core::ffi::c_void,
+            bind_to_object: *const core::ffi::c_void,
+            bind_to_storage: *const core::ffi::c_void,
+            compare_ids: *const core::ffi::c_void,
+            create_view_object: *const core::ffi::c_void,
+            get_attributes_of: *const core::ffi::c_void,
+            get_ui_object_of: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                HWND,
+                u32,
+                *const *const ITEMIDLIST,
+                *const windows_sys::core::GUID,
+                *mut u32,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
+            get_display_name_of: *const core::ffi::c_void,
+            set_name_of: *const core::ffi::c_void,
+        }
+        #[repr(C)]
+        struct IShellItemArrayVtbl {
+            base: IUnknownVtbl,
+            get_count: *const core::ffi::c_void,
+            get_item_at: *const core::ffi::c_void,
+            enum_items: *const core::ffi::c_void,
+            bind_to_handler: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                *mut core::ffi::c_void,
+                *const windows_sys::core::GUID,
+                *const windows_sys::core::GUID,
+                *mut *mut core::ffi::c_void,
+            ) -> i32,
+        }
+
+        unsafe fn com_release(obj: *mut core::ffi::c_void) {
+            if obj.is_null() {
+                return;
+            }
+            let vtbl = *(obj as *mut *const IUnknownVtbl);
+            ((*vtbl).release)(obj);
+        }
+
+        if path.is_none() {
+            let mut desktop_pidl: *mut ITEMIDLIST = std::ptr::null_mut();
+            let hr = SHGetSpecialFolderLocation(
+                std::ptr::null_mut(),
+                CSIDL_DESKTOP as i32,
+                &mut desktop_pidl,
+            );
+            if hr < 0 {
+                return Err(format!("SHGetSpecialFolderLocation: {hr}"));
+            }
+            let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hr = SHBindToObject(
+                std::ptr::null_mut(),
+                desktop_pidl,
+                std::ptr::null_mut(),
+                &IID_ISHELLFOLDER,
+                &mut psf,
+            );
+            if hr < 0 {
+                ILFree(desktop_pidl);
+                return Err(format!("SHBindToObject: {hr}"));
+            }
+            let dcm = DEFCONTEXTMENU {
+                hwnd: hwnd_invoke,
+                pcmcb: std::ptr::null_mut(),
+                pidlFolder: desktop_pidl,
+                psf,
+                cidl: 0,
+                apidl: std::ptr::null_mut(),
+                punkAssociationInfo: std::ptr::null_mut(),
+                cKeys: 0,
+                aKeys: std::ptr::null(),
+            };
+            let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hr = SHCreateDefaultContextMenu(&dcm, &IID_ICONTEXTMENU, &mut pcm);
+            if hr < 0 || pcm.is_null() {
+                com_release(psf);
+                ILFree(desktop_pidl);
+                return Err(format!("SHCreateDefaultContextMenu desktop: {hr}"));
+            }
+            return Ok((pcm, psf, desktop_pidl));
+        }
+
+        let file_path = path.unwrap();
+        let wpath = wide(file_path);
+        let mut pidl_abs: *mut ITEMIDLIST = std::ptr::null_mut();
+        let mut sfgao: u32 = 0;
+        let hr = SHParseDisplayName(
+            wpath.as_ptr(),
+            std::ptr::null_mut(),
+            &mut pidl_abs,
+            0,
+            &mut sfgao,
+        );
+        if hr < 0 {
+            return Err(format!("解析路径失败: {hr}"));
+        }
+        let mut psf: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut pidl_child: *mut ITEMIDLIST = std::ptr::null_mut();
+        let hr = SHBindToParent(pidl_abs, &IID_ISHELLFOLDER, &mut psf, &mut pidl_child);
+        if hr < 0 {
+            ILFree(pidl_abs);
+            return Err(format!("绑定 Shell 文件夹失败: {hr}"));
+        }
+
+        let mut pcm: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut apidl: [*mut ITEMIDLIST; 1] = [pidl_child];
+        let dcm = DEFCONTEXTMENU {
+            hwnd: hwnd_invoke,
+            pcmcb: std::ptr::null_mut(),
+            pidlFolder: std::ptr::null_mut(),
+            psf,
+            cidl: 1,
+            apidl: apidl.as_mut_ptr(),
+            punkAssociationInfo: std::ptr::null_mut(),
+            cKeys: 0,
+            aKeys: std::ptr::null(),
+        };
+        let hr_def = SHCreateDefaultContextMenu(&dcm, &IID_ICONTEXTMENU, &mut pcm);
+        if hr_def < 0 || pcm.is_null() {
+            let pidl_ptr: *const ITEMIDLIST = pidl_abs;
+            let mut psia: *mut core::ffi::c_void = std::ptr::null_mut();
+            if SHCreateShellItemArrayFromIDLists(1, &pidl_ptr, &mut psia) >= 0 && !psia.is_null()
+            {
+                let psia_vtbl = *(psia as *mut *const IShellItemArrayVtbl);
+                let _ = ((*psia_vtbl).bind_to_handler)(
+                    psia,
+                    std::ptr::null_mut(),
+                    &BHID_SFUIObject,
+                    &IID_ICONTEXTMENU,
+                    &mut pcm,
+                );
+                com_release(psia);
+            }
+        }
+        if pcm.is_null() {
+            let child_array: [*const ITEMIDLIST; 1] = [pidl_child];
+            let psf_vtbl = *(psf as *mut *const IShellFolderVtbl);
+            let hr_ui = ((*psf_vtbl).get_ui_object_of)(
+                psf,
+                hwnd_invoke,
+                1,
+                child_array.as_ptr(),
+                &IID_ICONTEXTMENU,
+                std::ptr::null_mut(),
+                &mut pcm,
+            );
+            if hr_ui < 0 {
+                com_release(psf);
+                ILFree(pidl_abs);
+                return Err(format!("GetUIObjectOf: {hr_ui}"));
+            }
+        }
+        Ok((pcm, psf, pidl_abs))
+    }
+
+    unsafe fn com_release_any(obj: *mut core::ffi::c_void) {
+        if obj.is_null() {
+            return;
+        }
+        #[repr(C)]
+        struct IUnknownVtbl {
+            query_interface: *const core::ffi::c_void,
+            add_ref: *const core::ffi::c_void,
+            release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
+        }
+        let vtbl = *(obj as *mut *const IUnknownVtbl);
+        ((*vtbl).release)(obj);
+    }
+
+    /// Enumerate Shell COM menu entries (labels + icons) for custom UI.
+    pub fn list_shell_context_menu(
+        hwnd_fence: HWND,
+        path: Option<&str>,
+    ) -> Result<Vec<super::ShellMenuEntry>, String> {
+        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        use windows_sys::Win32::UI::Shell::ILFree;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
+
+        const CMD_FIRST: u32 = 1;
+        const CMD_LAST: u32 = 0x7fff;
+
+        #[repr(C)]
+        struct IContextMenuVtbl {
+            query_interface: *const core::ffi::c_void,
+            add_ref: *const core::ffi::c_void,
+            release: *const core::ffi::c_void,
+            query_context_menu: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+                u32,
+                u32,
+                u32,
+                u32,
+            ) -> i32,
+            invoke_command: *const core::ffi::c_void,
+            get_command_string: *const core::ffi::c_void,
+        }
+
+        unsafe {
+            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+            let hwnd_invoke = desktop_defview_hwnd().unwrap_or(hwnd_fence);
+            let flags = menu_flags();
+            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
+
+            let hmenu = CreatePopupMenu();
+            if hmenu.is_null() {
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err("创建菜单失败".into());
+            }
+            let pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
+            let hr = ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, flags);
+            if hr < 0 {
+                DestroyMenu(hmenu);
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err(format!("QueryContextMenu: {hr}"));
+            }
+
+            let mut items = enumerate_hmenu(hmenu, 0);
+            DestroyMenu(hmenu);
+            com_release_any(pcm);
+            com_release_any(psf);
+            if !pidl_abs.is_null() {
+                ILFree(pidl_abs);
+            }
+
+            if let Some(p) = path {
+                if let Some(file_icon) = shell_name_and_icon(std::path::Path::new(p)).icon {
+                    for entry in &mut items {
+                        if !entry.separator && entry.children.is_none() && entry.icon.is_none() {
+                            entry.icon = Some(file_icon);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            Ok(items)
+        }
+    }
+
+    /// Invoke a shell menu command id previously returned by list_shell_context_menu.
+    pub fn invoke_shell_context_command(
+        hwnd_fence: HWND,
+        path: Option<&str>,
+        command_id: u32,
+    ) -> Result<(), String> {
+        use windows_sys::Win32::Foundation::POINT;
+        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        use windows_sys::Win32::UI::Shell::{
+            CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, ILFree,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreatePopupMenu, DestroyMenu, GetCursorPos, SW_SHOWNORMAL,
+        };
+
+        const CMD_FIRST: u32 = 1;
+        const CMD_LAST: u32 = 0x7fff;
+        if command_id < CMD_FIRST {
+            return Err("无效命令".into());
+        }
+
+        #[repr(C)]
+        struct IContextMenuVtbl {
+            query_interface: *const core::ffi::c_void,
+            add_ref: *const core::ffi::c_void,
+            release: *const core::ffi::c_void,
+            query_context_menu: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                windows_sys::Win32::UI::WindowsAndMessaging::HMENU,
+                u32,
+                u32,
+                u32,
+                u32,
+            ) -> i32,
+            invoke_command: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                *const windows_sys::Win32::UI::Shell::CMINVOKECOMMANDINFO,
+            ) -> i32,
+            get_command_string: *const core::ffi::c_void,
+        }
+
+        unsafe {
+            let _ = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+            let hwnd_invoke = desktop_defview_hwnd().unwrap_or(hwnd_fence);
+            let flags = menu_flags();
+            let mut pt = POINT { x: 0, y: 0 };
+            let _ = GetCursorPos(&mut pt);
+
+            let (pcm, psf, pidl_abs) = acquire_context_menu(hwnd_invoke, path)?;
+            let hmenu = CreatePopupMenu();
+            if hmenu.is_null() {
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err("创建菜单失败".into());
+            }
+            let pcm_vtbl = *(pcm as *mut *const IContextMenuVtbl);
+            let hr = ((*pcm_vtbl).query_context_menu)(pcm, hmenu, 0, CMD_FIRST, CMD_LAST, flags);
+            if hr < 0 {
+                DestroyMenu(hmenu);
+                com_release_any(pcm);
+                com_release_any(psf);
+                if !pidl_abs.is_null() {
+                    ILFree(pidl_abs);
+                }
+                return Err(format!("QueryContextMenu: {hr}"));
+            }
+
+            let verb_offset = (command_id - CMD_FIRST) as usize;
+            let ici = CMINVOKECOMMANDINFOEX {
+                cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
+                fMask: CMIC_MASK_PTINVOKE,
+                hwnd: hwnd_invoke,
+                lpVerb: verb_offset as windows_sys::core::PCSTR,
+                lpParameters: std::ptr::null(),
+                lpDirectory: std::ptr::null(),
+                nShow: SW_SHOWNORMAL,
+                dwHotKey: 0,
+                hIcon: std::ptr::null_mut(),
+                lpTitle: std::ptr::null(),
+                lpVerbW: std::ptr::null(),
+                lpParametersW: std::ptr::null(),
+                lpDirectoryW: std::ptr::null(),
+                lpTitleW: std::ptr::null(),
+                ptInvoke: pt,
+            };
+            let hr = ((*pcm_vtbl).invoke_command)(pcm, &ici as *const _ as *const _);
+            DestroyMenu(hmenu);
+            com_release_any(pcm);
+            com_release_any(psf);
+            if !pidl_abs.is_null() {
+                ILFree(pidl_abs);
+            }
+            if hr < 0 {
+                return Err(format!("InvokeCommand: {hr}"));
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1579,6 +2278,76 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = trimmed;
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+/// List Shell COM context menu entries (custom UI; includes icons when available).
+#[tauri::command]
+pub fn list_desktop_shell_context_menu(
+    app: AppHandle,
+    path: String,
+) -> Result<Vec<ShellMenuEntry>, String> {
+    let trimmed = path.trim();
+    let path_opt = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    let window = app
+        .get_webview_window(FENCE_LABEL)
+        .ok_or_else(|| "格子窗口未就绪".to_string())?;
+
+    #[cfg(windows)]
+    {
+        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let handle = app.clone();
+        return run_on_ui(&handle, move || {
+            win::list_shell_context_menu(
+                hwnd_raw as windows_sys::Win32::Foundation::HWND,
+                path_opt.as_deref(),
+            )
+        })?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, path_opt);
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
+/// Invoke a Shell COM context menu command previously listed for path/blank desktop.
+#[tauri::command]
+pub fn invoke_desktop_shell_context_command(
+    app: AppHandle,
+    path: String,
+    command_id: u32,
+) -> Result<(), String> {
+    let trimmed = path.trim();
+    let path_opt = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    let window = app
+        .get_webview_window(FENCE_LABEL)
+        .ok_or_else(|| "格子窗口未就绪".to_string())?;
+
+    #[cfg(windows)]
+    {
+        let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        let handle = app.clone();
+        return run_on_ui(&handle, move || {
+            win::invoke_shell_context_command(
+                hwnd_raw as windows_sys::Win32::Foundation::HWND,
+                path_opt.as_deref(),
+                command_id,
+            )
+        })?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, path_opt, command_id);
         Err("桌面整理仅支持 Windows".into())
     }
 }

@@ -683,6 +683,8 @@ pub fn run() {
             get_last_wallpaper,
             export_wallpaper,
             desktop_organize::open_desktop_item,
+            desktop_organize::list_desktop_shell_context_menu,
+            desktop_organize::invoke_desktop_shell_context_command,
             desktop_organize::show_desktop_item_in_folder,
             desktop_organize::open_desktop_item_with,
             desktop_organize::open_desktop_item_properties,

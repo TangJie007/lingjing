@@ -233,40 +233,94 @@
         overflow: hidden;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 0, 0, 0.35);
       }
-      .ctx-menu {
+
+      #shell-ctx {
         position: fixed;
-        z-index: 10050;
-        display: block;
-        min-width: 168px;
+        z-index: 10000;
+        min-width: 220px;
+        max-width: 320px;
+        max-height: min(70vh, 520px);
+        overflow-x: visible;
+        overflow-y: auto;
         padding: 6px;
+        margin: 0;
+        list-style: none;
         border-radius: 10px;
-        background: rgba(22, 24, 32, 0.94);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        pointer-events: auto;
-      }
-      .ctx-menu.hidden {
-        display: none;
-      }
-      .ctx-menu button {
-        display: block;
-        width: 100%;
-        padding: 8px 12px;
-        border: none;
-        border-radius: 8px;
-        background: transparent;
+        background: rgba(32, 34, 40, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
         color: #f4f6fb;
         font-size: 13px;
-        text-align: left;
+        display: none;
+      }
+      #shell-ctx.open { display: block; }
+      #shell-ctx .sep {
+        height: 1px;
+        margin: 5px 8px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      #shell-ctx .item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 7px;
         cursor: default;
+        user-select: none;
       }
-      .ctx-menu button:hover {
-        background: rgba(255, 255, 255, 0.1);
+      #shell-ctx .item:hover:not(.disabled) {
+        background: rgba(255, 255, 255, 0.12);
       }
-      .ctx-menu button.danger:hover {
-        background: rgba(220, 80, 80, 0.22);
+      #shell-ctx .item.disabled {
+        opacity: 0.42;
+        pointer-events: none;
+      }
+      #shell-ctx .ico {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+        display: grid;
+        place-items: center;
+      }
+      #shell-ctx .ico img {
+        max-width: 16px;
+        max-height: 16px;
+        display: block;
+      }
+      #shell-ctx .lbl {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #shell-ctx .arrow {
+        flex: 0 0 auto;
+        opacity: 0.65;
+        font-size: 11px;
+      }
+      #shell-ctx .sub {
+        position: absolute;
+        left: calc(100% - 4px);
+        top: -6px;
+        min-width: 200px;
+        max-width: 300px;
+        max-height: min(60vh, 420px);
+        overflow-y: auto;
+        padding: 6px;
+        border-radius: 10px;
+        background: rgba(32, 34, 40, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+        display: none;
+        list-style: none;
+        margin: 0;
+      }
+      #shell-ctx .item.has-sub:hover > .sub,
+      #shell-ctx .item.has-sub:focus-within > .sub {
+        display: block;
       }
     </style>
   </head>
@@ -296,7 +350,7 @@
         </section>
       </div>
     </div>
-    <div id="ctx-menu" class="ctx-menu hidden" role="menu"></div>
+    <ul id="shell-ctx" role="menu"></ul>
     <script>
       const appsEl = document.getElementById("apps");
       const imagesEl = document.getElementById("images");
@@ -304,7 +358,6 @@
       const foldersEl = document.getElementById("folders");
       const mediaEl = document.getElementById("media");
       const archivesEl = document.getElementById("archives");
-      const ctxMenuEl = document.getElementById("ctx-menu");
       const APP_ORDER_KEY = "lingscape-fence-app-order";
       const IMAGE_ORDER_KEY = "lingscape-fence-image-order";
       const DOC_ORDER_KEY = "lingscape-fence-document-order";
@@ -1032,7 +1085,7 @@
           const now = Date.now();
           if (now - lastOpenAt < 250) return;
           lastOpenAt = now;
-          showContextMenu(e.clientX, e.clientY, item);
+          void openShellContextMenu(item, e.clientX, e.clientY);
         };
         cell.addEventListener("contextmenu", open);
         cell.addEventListener("pointerdown", (e) => {
@@ -1041,129 +1094,151 @@
         });
       }
 
-      let ctxItem = null;
+      let shellCtxPath = "";
 
-      function hideContextMenu() {
-        ctxMenuEl.classList.add("hidden");
-        ctxItem = null;
+      function hideShellCtx() {
+        const menu = document.getElementById("shell-ctx");
+        if (!menu) return;
+        menu.classList.remove("open");
+        menu.innerHTML = "";
+        shellCtxPath = "";
       }
 
-      function showContextMenu(x, y, item) {
-        ctxItem = item;
-        const builtin = item.builtin || String(item.path || "").startsWith("::");
-        const actions = builtin
-          ? [{ id: "open", label: "打开" }]
-          : [
-              { id: "open", label: "打开" },
-              { id: "openWith", label: "打开方式" },
-              { id: "showInFolder", label: "在文件夹中显示" },
-              { id: "rename", label: "重命名" },
-              { id: "delete", label: "删除", danger: true },
-              { id: "properties", label: "属性" },
-            ];
-        ctxMenuEl.innerHTML = "";
-        for (const act of actions) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.textContent = act.label;
-          if (act.danger) btn.classList.add("danger");
-          const run = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            runContextAction(act.id, item);
-          };
-          btn.addEventListener("pointerdown", run);
-          ctxMenuEl.appendChild(btn);
-        }
-        ctxMenuEl.classList.remove("hidden");
+      function placeShellCtx(menu, x, y) {
+        menu.style.left = "0px";
+        menu.style.top = "0px";
+        menu.classList.add("open");
+        const rect = menu.getBoundingClientRect();
         const pad = 8;
         let left = x;
         let top = y;
-        ctxMenuEl.style.left = `${left}px`;
-        ctxMenuEl.style.top = `${top}px`;
-        const rect = ctxMenuEl.getBoundingClientRect();
         if (left + rect.width > window.innerWidth - pad) {
-          left = window.innerWidth - rect.width - pad;
+          left = Math.max(pad, window.innerWidth - rect.width - pad);
         }
         if (top + rect.height > window.innerHeight - pad) {
-          top = window.innerHeight - rect.height - pad;
+          top = Math.max(pad, window.innerHeight - rect.height - pad);
         }
-        ctxMenuEl.style.left = `${left}px`;
-        ctxMenuEl.style.top = `${top}px`;
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
       }
 
-      async function refreshDesktop() {
-        if (!window.__TAURI__) return;
-        try {
-          await window.__TAURI__.core.invoke("refresh_desktop_organize");
-        } catch (e) {
-          console.warn("refresh_desktop_organize failed", e);
-        }
-      }
-
-      async function runContextAction(action, item) {
-        hideContextMenu();
-        if (!window.__TAURI__) return;
-        const path = item.path;
-        try {
-          switch (action) {
-            case "open":
-              await openItem(path);
-              break;
-            case "openWith":
-              await window.__TAURI__.core.invoke("open_desktop_item_with", { path });
-              break;
-            case "showInFolder":
-              await window.__TAURI__.core.invoke("show_desktop_item_in_folder", { path });
-              break;
-            case "rename": {
-              const newName = prompt("新名称", item.name);
-              if (!newName || newName.trim() === item.name) return;
-              const trimmed = newName.trim();
-              const overrides = loadCategoryOverrides();
-              const oldCat = overrides[path];
-              await window.__TAURI__.core.invoke("rename_desktop_item", {
-                path,
-                newName: trimmed,
-              });
-              if (oldCat) {
-                const sep = path.includes("\\") ? "\\" : "/";
-                const parent = path.includes(sep) ? path.slice(0, path.lastIndexOf(sep) + 1) : "";
-                delete overrides[path];
-                overrides[parent + trimmed] = oldCat;
-                localStorage.setItem(CATEGORY_KEY, JSON.stringify(overrides));
-              }
-              await refreshDesktop();
-              break;
-            }
-            case "delete": {
-              if (!confirm(`确定删除「${item.name}」？将移入回收站。`)) return;
-              await window.__TAURI__.core.invoke("delete_desktop_item", { path });
-              await refreshDesktop();
-              break;
-            }
-            case "properties":
-              await window.__TAURI__.core.invoke("open_desktop_item_properties", { path });
-              break;
+      function renderShellEntries(entries, path) {
+        const frag = document.createDocumentFragment();
+        for (const entry of entries || []) {
+          if (entry.separator) {
+            const sep = document.createElement("li");
+            sep.className = "sep";
+            sep.setAttribute("role", "separator");
+            frag.appendChild(sep);
+            continue;
           }
+          const li = document.createElement("li");
+          li.className = "item" + (entry.disabled ? " disabled" : "");
+          if (entry.children && entry.children.length) li.classList.add("has-sub");
+          li.setAttribute("role", "menuitem");
+
+          const ico = document.createElement("span");
+          ico.className = "ico";
+          if (entry.icon) {
+            const img = document.createElement("img");
+            img.src = entry.icon;
+            img.alt = "";
+            ico.appendChild(img);
+          }
+          li.appendChild(ico);
+
+          const lbl = document.createElement("span");
+          lbl.className = "lbl";
+          lbl.textContent = entry.label || "";
+          li.appendChild(lbl);
+
+          if (entry.children && entry.children.length) {
+            const arrow = document.createElement("span");
+            arrow.className = "arrow";
+            arrow.textContent = "›";
+            li.appendChild(arrow);
+            const sub = document.createElement("ul");
+            sub.className = "sub";
+            sub.appendChild(renderShellEntries(entry.children, path));
+            li.appendChild(sub);
+          } else if (!entry.disabled && entry.id) {
+            li.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void runShellCommand(path, entry.id);
+            });
+          }
+
+          frag.appendChild(li);
+        }
+        return frag;
+      }
+
+      async function runShellCommand(path, commandId) {
+        hideShellCtx();
+        if (!window.__TAURI__) return;
+        try {
+          await window.__TAURI__.core.invoke("invoke_desktop_shell_context_command", {
+            path: path || "",
+            commandId,
+          });
         } catch (e) {
-          console.warn("context action failed", e);
-          const msg = typeof e === "string" ? e : e?.message || "操作失败";
-          alert(msg);
+          console.warn("invoke shell command failed", e);
         }
       }
 
-      document.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        if (!ctxMenuEl.contains(e.target)) hideContextMenu();
-      });
-      document.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        if (!ctxMenuEl.contains(e.target)) hideContextMenu();
-      });
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") hideContextMenu();
-      });
+      async function openShellContextMenu(item, x, y) {
+        if (!window.__TAURI__) return;
+        const path = item?.path || "";
+        shellCtxPath = path;
+        const menu = document.getElementById("shell-ctx");
+        if (!menu) return;
+        try {
+          const entries = await window.__TAURI__.core.invoke(
+            "list_desktop_shell_context_menu",
+            { path },
+          );
+          if (shellCtxPath !== path) return;
+          menu.innerHTML = "";
+          menu.appendChild(renderShellEntries(entries || [], path));
+          placeShellCtx(menu, x ?? 0, y ?? 0);
+        } catch (e) {
+          console.warn("shell context menu failed", e);
+          hideShellCtx();
+        }
+      }
+
+      function bindBlankContextMenu() {
+        const stage = document.getElementById("stage");
+        if (!stage) return;
+        let lastOpenAt = 0;
+        const open = (e) => {
+          if (e.target.closest(".cell")) return;
+          if (e.target.closest("#shell-ctx")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const now = Date.now();
+          if (now - lastOpenAt < 250) return;
+          lastOpenAt = now;
+          void openShellContextMenu(null, e.clientX, e.clientY);
+        };
+        stage.addEventListener("contextmenu", open);
+        stage.addEventListener("pointerdown", (e) => {
+          if (e.button !== 2) return;
+          open(e);
+        });
+        document.addEventListener("pointerdown", (e) => {
+          const menu = document.getElementById("shell-ctx");
+          if (!menu || !menu.classList.contains("open")) return;
+          if (menu.contains(e.target)) return;
+          hideShellCtx();
+        });
+        window.addEventListener("blur", hideShellCtx);
+        window.addEventListener("resize", hideShellCtx);
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") hideShellCtx();
+        });
+      }
 
       function applyFenceItems(items) {
         if (activeDrag) {
@@ -1193,6 +1268,7 @@
         }
       }
       applyAppInset();
+      bindBlankContextMenu();
       boot();
     </script>
   </body>
