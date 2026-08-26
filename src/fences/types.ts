@@ -24,6 +24,8 @@ export interface ShellMenuEntry {
   children?: ShellMenuEntry[];
   menuPath?: number[];
   loading?: boolean;
+  /** Win11 top icon-strip action */
+  pin?: boolean;
 }
 
 export interface FenceGroupState {

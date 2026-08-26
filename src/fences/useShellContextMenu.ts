@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import type { ShellMenuEntry } from "./types";
 
 /**
@@ -10,6 +10,7 @@ export function useShellContextMenu() {
   const path = ref("");
   const loading = ref(false);
   const error = ref("");
+  const menuOpen = ref(false);
   let generation = 0;
   let lastPrepareAt = 0;
   let lastPreparePath = "\0";
@@ -21,12 +22,12 @@ export function useShellContextMenu() {
     error.value = "";
   }
 
-  function onOpenChange(open: boolean) {
+  watch(menuOpen, (open) => {
     if (!open) {
       generation += 1;
       clear();
     }
-  }
+  });
 
   async function prepare(targetPath: string) {
     if (!window.__TAURI__) return;
@@ -119,13 +120,15 @@ export function useShellContextMenu() {
   }
 
   async function runCommand(commandId: number, menuPath: number[] = []) {
+    // Empty path is valid: desktop background Shell menu.
     const p = path.value;
+    menuOpen.value = false;
     generation += 1;
-    clear();
-    if (!window.__TAURI__ || !p) return;
+    if (!window.__TAURI__) return;
 
     // Folder built-in rename: prompt in UI then call rename command.
     if (commandId === 0xf0000000 + 11) {
+      if (!p) return;
       const base = p.split(/[/\\]/).pop() || "";
       const next = window.prompt("重命名为", base);
       if (!next || next === base) return;
@@ -149,6 +152,7 @@ export function useShellContextMenu() {
     } catch (e) {
       const msg = String(e);
       if (msg.includes("重命名") || msg.includes("BUILTIN_RENAME")) {
+        if (!p) return;
         const base = p.split(/[/\\]/).pop() || "";
         const next = window.prompt("重命名为", base);
         if (!next || next === base) return;
@@ -171,9 +175,9 @@ export function useShellContextMenu() {
     path,
     loading,
     error,
+    menuOpen,
     prepare,
     loadSubmenu,
     runCommand,
-    onOpenChange,
   };
 }

@@ -13,6 +13,10 @@ use std::time::Duration;
 
 use windows::core::{Interface, PCWSTR};
 use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Graphics::Gdi::{
+    CreateCompatibleDC, DeleteDC, GetDIBits, GetObjectW, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
+    BI_RGB, DIB_RGB_COLORS, HBITMAP,
+};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
@@ -20,15 +24,15 @@ use windows::Win32::UI::Shell::{
     BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, IShellFolder, IShellItem, ILFree,
     SHBindToParent, SHCreateItemFromParsingName, SHGetDesktopFolder, SHParseDisplayName,
     CMF_EXTENDEDVERBS, CMF_NORMAL, CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, GCS_VERBA,
+    SEE_MASK_UNICODE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreatePopupMenu, CreateWindowExW, DestroyMenu, DestroyWindow, DispatchMessageW,
-    GetCursorPos, GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW, GetSubMenu,
-    PeekMessageW, SetForegroundWindow, TrackPopupMenuEx, TranslateMessage, HMENU,
-    MENUITEMINFOW, MF_BYPOSITION, MFT_SEPARATOR, MIIM_BITMAP,
-    MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MSG, PM_REMOVE, SW_SHOWNORMAL,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_INITMENUPOPUP, WM_QUIT, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_POPUP,
+    CreatePopupMenu, CreateWindowExW, DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos,
+    GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW, GetSubMenu, PeekMessageW,
+    SetForegroundWindow, TrackPopupMenuEx, TranslateMessage, HMENU, MENUITEMINFOW, MF_BYPOSITION,
+    MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MSG,
+    PM_REMOVE, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_INITMENUPOPUP, WM_QUIT,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 use crate::desktop_organize::ShellMenuEntry;
@@ -71,6 +75,44 @@ fn wide(s: &str) -> Vec<u16> {
         .collect()
 }
 
+/// Working directory for InvokeCommand — required by "Open … here" Shell extensions.
+fn invoke_working_directory(path: Option<&str>) -> Option<String> {
+    match path {
+        None => known_folders::get_known_folder_path(known_folders::KnownFolder::Desktop)
+            .map(|p| p.to_string_lossy().into_owned()),
+        Some(p) => {
+            let pb = std::path::Path::new(p);
+            if pb.is_dir() {
+                Some(p.to_string())
+            } else {
+                pb.parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .map(|parent| parent.to_string_lossy().into_owned())
+            }
+        }
+    }
+}
+
+unsafe fn invoke_owner_hwnd(hwnd: HWND) -> HWND {
+    let dv = find_shell_defview();
+    if !dv.0.is_null() {
+        return dv;
+    }
+    if hwnd.0.is_null() {
+        windows::Win32::UI::WindowsAndMessaging::GetDesktopWindow()
+    } else {
+        hwnd
+    }
+}
+
+unsafe fn pump_for(ms: u64) {
+    let deadline = std::time::Instant::now() + Duration::from_millis(ms);
+    while std::time::Instant::now() < deadline {
+        pump_messages();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 fn menu_flags() -> u32 {
     let mut flags = CMF_NORMAL;
     unsafe {
@@ -96,6 +138,195 @@ fn clean_menu_label(raw: &str) -> String {
         out.push(c);
     }
     out.trim().to_string()
+}
+
+fn rgba_to_png_data_url(rgba: &[u8], w: u32, h: u32) -> Option<String> {
+    use base64::Engine;
+    let mut buf = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut buf, w, h);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().ok()?;
+        writer.write_image_data(rgba).ok()?;
+    }
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&buf)
+    ))
+}
+
+/// Convert a real HBITMAP menu glyph to a data URL. Skips HBMMENU_* pseudo handles.
+unsafe fn hbitmap_to_data_url(hbmp: HBITMAP) -> Option<String> {
+    let raw = hbmp.0 as isize;
+    // HBMMENU_CALLBACK (-1) and system stock values (±1..16) are not real bitmaps.
+    if hbmp.is_invalid() || (raw >= -16 && raw <= 16) {
+        return None;
+    }
+
+    let mut bm = BITMAP::default();
+    if GetObjectW(
+        hbmp.into(),
+        std::mem::size_of::<BITMAP>() as i32,
+        Some(&mut bm as *mut BITMAP as *mut core::ffi::c_void),
+    ) == 0
+        || bm.bmWidth <= 0
+        || bm.bmHeight == 0
+    {
+        return None;
+    }
+    let w = bm.bmWidth;
+    let h = bm.bmHeight.abs();
+    let hdc = CreateCompatibleDC(None);
+    if hdc.is_invalid() {
+        return None;
+    }
+
+    let mut bmi = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0 as u32,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut bgra = vec![0u8; (w * h * 4) as usize];
+    let got = GetDIBits(
+        hdc,
+        hbmp,
+        0,
+        h as u32,
+        Some(bgra.as_mut_ptr() as *mut _),
+        &mut bmi,
+        DIB_RGB_COLORS,
+    );
+    let _ = DeleteDC(hdc);
+    if got == 0 {
+        return None;
+    }
+
+    let mut rgba = vec![0u8; bgra.len()];
+    for (i, chunk) in bgra.chunks_exact(4).enumerate() {
+        let o = i * 4;
+        rgba[o] = chunk[2];
+        rgba[o + 1] = chunk[1];
+        rgba[o + 2] = chunk[0];
+        rgba[o + 3] = chunk[3];
+    }
+    rgba_to_png_data_url(&rgba, w as u32, h as u32)
+}
+
+fn pin_icon_svg(kind: &str) -> String {
+    // Simple Fluent-like monochrome glyphs for the Win11 top strip.
+    let path = match kind {
+        "cut" => "M14 4l-4 4 4 4M6 4v12M10 8H2",
+        "copy" => "M6 6h8v10H6zM4 4h8",
+        "rename" => "M3 13l7-7 3 3-7 7H3v-3zM11 5l2 2",
+        "share" => "M12 4v3c-5 0-8 2-9 6 2-2 4-3 9-3v3l5-4.5L12 4z",
+        "delete" => "M5 6h10M7 6V5h6v1M7 8v7h6V8",
+        _ => "M4 8h12",
+    };
+    let svg = format!(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23f3f3f3' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'><path d='{path}'/></svg>"
+    );
+    format!(
+        "data:image/svg+xml;utf8,{}",
+        svg.replace('#', "%23").replace('\'', "%27")
+    )
+}
+
+fn pin_kind_from_verb_or_label(verb: &str, label: &str) -> Option<&'static str> {
+    let v = verb.to_ascii_lowercase();
+    if matches!(v.as_str(), "cut") || label.contains("剪切") {
+        return Some("cut");
+    }
+    if matches!(v.as_str(), "copy") || label.contains("复制") {
+        return Some("copy");
+    }
+    if matches!(v.as_str(), "rename") || label.contains("重命名") {
+        return Some("rename");
+    }
+    if matches!(v.as_str(), "delete") || label.contains("删除") {
+        return Some("delete");
+    }
+    if v.contains("share") || label.contains("共享") || label.contains("分享") {
+        return Some("share");
+    }
+    None
+}
+
+/// Pull Win11 common actions into a pinned top strip; keep the rest below.
+fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
+    const ORDER: &[&str] = &["cut", "copy", "rename", "share", "delete"];
+    let mut slots: [Option<ShellMenuEntry>; 5] = [None, None, None, None, None];
+    let mut taken = std::collections::HashSet::<u32>::new();
+
+    for entry in &entries {
+        if entry.separator || entry.children.is_some() || entry.disabled || entry.id == 0 {
+            continue;
+        }
+        let verb = pcm
+            .and_then(|p| command_verb(p, entry.id))
+            .unwrap_or_default();
+        let Some(kind) = pin_kind_from_verb_or_label(&verb, &entry.label) else {
+            continue;
+        };
+        let Some(idx) = ORDER.iter().position(|k| *k == kind) else {
+            continue;
+        };
+        if slots[idx].is_some() {
+            continue;
+        }
+        let mut pinned = entry.clone();
+        pinned.pin = true;
+        if pinned.icon.is_none() {
+            pinned.icon = Some(pin_icon_svg(kind));
+        }
+        pinned.label = match kind {
+            "cut" => "剪切".into(),
+            "copy" => "复制".into(),
+            "rename" => "重命名".into(),
+            "share" => "共享".into(),
+            "delete" => "删除".into(),
+            _ => pinned.label,
+        };
+        slots[idx] = Some(pinned);
+        taken.insert(entry.id);
+    }
+
+    let mut out = Vec::with_capacity(entries.len() + 2);
+    let mut any_pin = false;
+    for slot in slots {
+        if let Some(p) = slot {
+            any_pin = true;
+            out.push(p);
+        }
+    }
+    if any_pin {
+        out.push(sep());
+    }
+
+    let mut last_was_sep = any_pin;
+    for entry in entries {
+        if taken.contains(&entry.id) && !entry.separator && entry.children.is_none() {
+            continue;
+        }
+        if entry.separator {
+            if last_was_sep {
+                continue;
+            }
+            last_was_sep = true;
+            out.push(entry);
+            continue;
+        }
+        last_was_sep = false;
+        out.push(entry);
+    }
+    out
 }
 
 pub fn create_host_window() -> Result<HWND, String> {
@@ -300,6 +531,7 @@ unsafe fn enumerate_hmenu(
                 icon: None,
                 children: None,
                 menu_path: parent_path.to_vec(),
+                pin: false,
             });
             continue;
         }
@@ -336,9 +568,10 @@ unsafe fn enumerate_hmenu(
             label,
             disabled,
             separator: false,
-            icon: None,
+            icon: unsafe { hbitmap_to_data_url(mii.hbmpItem) },
             children,
             menu_path,
+            pin: false,
         });
     }
     out
@@ -376,6 +609,7 @@ fn item(id: u32, label: &str) -> ShellMenuEntry {
         icon: None,
         children: None,
         menu_path: Vec::new(),
+        pin: false,
     }
 }
 
@@ -388,6 +622,7 @@ fn sep() -> ShellMenuEntry {
         icon: None,
         children: None,
         menu_path: Vec::new(),
+        pin: false,
     }
 }
 
@@ -396,35 +631,46 @@ pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
     if std::path::Path::new(path).is_dir() {
         return folder_builtin_menu();
     }
-    vec![
-        item(BUILTIN_OPEN, "打开"),
-        item(BUILTIN_OPEN_WITH, "打开方式"),
-        item(BUILTIN_SHOW_IN_FOLDER, "在资源管理器中显示"),
-        sep(),
-        item(BUILTIN_PROPERTIES, "属性"),
-    ]
+    apply_win11_pin_row(
+        None,
+        vec![
+            item(BUILTIN_CUT, "剪切"),
+            item(BUILTIN_COPY, "复制"),
+            item(BUILTIN_RENAME, "重命名"),
+            item(BUILTIN_DELETE, "删除"),
+            sep(),
+            item(BUILTIN_OPEN, "打开"),
+            item(BUILTIN_OPEN_WITH, "打开方式"),
+            item(BUILTIN_SHOW_IN_FOLDER, "在资源管理器中显示"),
+            sep(),
+            item(BUILTIN_PROPERTIES, "属性"),
+        ],
+    )
 }
 
 /// Built-in folder menu replicating common Windows Explorer folder items.
 /// Used instead of QueryContextMenu (folder Shell extensions often hang).
 pub fn folder_builtin_menu() -> Vec<ShellMenuEntry> {
-    vec![
-        item(BUILTIN_OPEN, "打开"),
-        item(BUILTIN_OPEN_NEW_WINDOW, "在新窗口中打开"),
-        sep(),
-        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
-        sep(),
-        item(BUILTIN_CUT, "剪切"),
-        item(BUILTIN_COPY, "复制"),
-        item(BUILTIN_CREATE_SHORTCUT, "创建快捷方式"),
-        sep(),
-        item(BUILTIN_DELETE, "删除"),
-        item(BUILTIN_RENAME, "重命名"),
-        sep(),
-        item(BUILTIN_COMPRESS_ZIP, "压缩为 ZIP 文件"),
-        sep(),
-        item(BUILTIN_PROPERTIES, "属性"),
-    ]
+    apply_win11_pin_row(
+        None,
+        vec![
+            item(BUILTIN_OPEN, "打开"),
+            item(BUILTIN_OPEN_NEW_WINDOW, "在新窗口中打开"),
+            sep(),
+            item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
+            sep(),
+            item(BUILTIN_CUT, "剪切"),
+            item(BUILTIN_COPY, "复制"),
+            item(BUILTIN_CREATE_SHORTCUT, "创建快捷方式"),
+            sep(),
+            item(BUILTIN_DELETE, "删除"),
+            item(BUILTIN_RENAME, "重命名"),
+            sep(),
+            item(BUILTIN_COMPRESS_ZIP, "压缩为 ZIP 文件"),
+            sep(),
+            item(BUILTIN_PROPERTIES, "属性"),
+        ],
+    )
 }
 
 /// Blank desktop / fence background menu (Explorer-like, no Shell hang).
@@ -443,6 +689,7 @@ pub fn desktop_blank_builtin_menu() -> Vec<ShellMenuEntry> {
                 item(BUILTIN_NEW_TXT, "文本文档"),
             ]),
             menu_path: Vec::new(),
+            pin: false,
         },
         sep(),
         item(BUILTIN_OPEN_DESKTOP, "打开桌面文件夹"),
@@ -471,6 +718,7 @@ fn list_shell_context_menu_inner(
         }
         stage("读取菜单项");
         let items = enumerate_hmenu(&pcm, hmenu, &[], 0);
+        let items = apply_win11_pin_row(Some(&pcm), items);
         stage("完成");
         let _ = DestroyMenu(hmenu);
         Ok(items)
@@ -632,25 +880,35 @@ pub fn invoke_shell_context_command(
         let mut pt = POINT::default();
         let _ = GetCursorPos(&mut pt);
         let verb_offset = (command_id - CMD_FIRST) as usize;
-        let owner = if hwnd.0.is_null() {
-            windows::Win32::UI::WindowsAndMessaging::GetDesktopWindow()
-        } else {
-            hwnd
-        };
+        let owner = invoke_owner_hwnd(hwnd);
+        let workdir = invoke_working_directory(path);
+        let workdir_w = workdir.as_deref().map(wide);
+        let mut fmask = CMIC_MASK_PTINVOKE;
+        if workdir_w.is_some() {
+            fmask |= SEE_MASK_UNICODE;
+        }
         let ici = CMINVOKECOMMANDINFOEX {
             cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
-            fMask: CMIC_MASK_PTINVOKE,
+            fMask: fmask,
             hwnd: owner,
             lpVerb: windows::core::PCSTR(verb_offset as *const u8),
             nShow: SW_SHOWNORMAL.0 as i32,
+            lpDirectoryW: workdir_w
+                .as_ref()
+                .map(|v| PCWSTR(v.as_ptr()))
+                .unwrap_or_default(),
             ptInvoke: pt,
             ..Default::default()
         };
         // Pump while invoking — some handlers expect a live message queue.
         pump_messages();
         let invoke_hr = pcm.InvokeCommand(&ici as *const _ as *const _);
-        pump_messages();
+        // Keep host alive briefly so "Open … here" child processes can detach.
+        pump_for(1200);
         let _ = DestroyMenu(hmenu);
+        // Keep directory buffer alive through InvokeCommand + settle.
+        drop(workdir_w);
+        drop(workdir);
         invoke_hr.map_err(|e| format!("InvokeCommand: {e}"))
     }
 }

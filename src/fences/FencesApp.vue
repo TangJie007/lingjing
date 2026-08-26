@@ -10,6 +10,7 @@ import {
 } from "reka-ui";
 import FenceGroup from "./components/FenceGroup.vue";
 import ShellMenuEntries from "./components/ShellMenuEntries.vue";
+import ShellMenuLoading from "./components/ShellMenuLoading.vue";
 import {
   APP_ORDER_KEY,
   ARCHIVE_ORDER_KEY,
@@ -102,10 +103,10 @@ const {
   entries: shellEntries,
   loading: shellLoading,
   error: shellError,
+  menuOpen: shellMenuOpen,
   prepare: prepareShellMenu,
   loadSubmenu: loadShellSubmenu,
   runCommand: runShellCommand,
-  onOpenChange: onShellOpenChange,
 } = useShellContextMenu();
 
 const shellDrag = useShellFileDrag();
@@ -237,10 +238,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ContextMenuRoot @update:open="onShellOpenChange">
+  <ContextMenuRoot v-model:open="shellMenuOpen">
     <ContextMenuTrigger as-child>
       <div
         id="stage"
+        :class="{ 'icon-dragging': dragging }"
         @contextmenu.capture="onStageContextMenu"
       >
         <FenceGroup
@@ -289,9 +291,7 @@ onUnmounted(() => {
 
     <ContextMenuPortal>
       <ContextMenuContent class="shell-ctx" :collision-padding="8">
-        <ContextMenuItem v-if="shellLoading && !shellEntries.length" class="item" disabled>
-          <span class="lbl">加载中…</span>
-        </ContextMenuItem>
+        <ShellMenuLoading v-if="shellLoading && !shellEntries.length" />
         <ContextMenuItem v-else-if="shellError" class="item" disabled>
           <span class="lbl">{{ shellError }}</span>
         </ContextMenuItem>

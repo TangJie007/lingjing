@@ -32,11 +32,14 @@ pub struct ShellMenuEntry {
     pub label: String,
     pub disabled: bool,
     pub separator: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<ShellMenuEntry>>,
     pub menu_path: Vec<u32>,
+    /// Win11-style pinned action in the top icon strip.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pin: bool,
 }
 
 
