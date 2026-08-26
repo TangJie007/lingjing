@@ -196,17 +196,21 @@ function pathFromEvent(e: Event): string {
   return cell?.dataset?.path || "";
 }
 
-/** Load the isolated custom menu for icons and no menu on blank fence space. */
+/**
+ * Icons → item Shell menu.
+ * Stage / #apps blank → desktop blank menu.
+ * Inside a .fence with no icon → suppress (no menu).
+ */
 function onStageContextMenu(e: MouseEvent) {
   const target = e.target as HTMLElement | null;
   const path = pathFromEvent(e);
-  const isBlankFenceArea =
-    !!target?.closest?.(".fence") && !path;
+  const isBlankFenceArea = !!target?.closest?.(".fence") && !path;
   if (isBlankFenceArea) {
     e.preventDefault();
     e.stopImmediatePropagation();
     return;
   }
+  // Do not preventDefault — ContextMenuTrigger needs the event to open.
   void prepareShellMenu(path);
 }
 

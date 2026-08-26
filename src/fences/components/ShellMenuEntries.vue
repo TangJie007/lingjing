@@ -19,7 +19,7 @@ const emit = defineEmits<{
 }>();
 
 function onSelect(entry: ShellMenuEntry) {
-  if (entry.disabled || entry.id == null) return;
+  if (entry.disabled || entry.id == null || entry.id === 0) return;
   emit("command", entry.id, entry.menuPath || []);
 }
 </script>
@@ -61,7 +61,7 @@ function onSelect(entry: ShellMenuEntry) {
     <ContextMenuItem
       v-else
       class="item"
-      :disabled="!!entry.disabled || entry.id == null"
+        :disabled="!!entry.disabled"
       @select="onSelect(entry)"
     >
       <span class="ico">

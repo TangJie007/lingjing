@@ -17,15 +17,15 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{
-    BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, IShellFolder, IShellItem,
-    SHBindToParent, SHCreateItemFromParsingName, SHGetDesktopFolder, SHParseDisplayName, ILFree,
-    CMF_EXTENDEDVERBS, CMF_NORMAL, CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE,
+    BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, IShellFolder, IShellItem, ILFree,
+    SHBindToParent, SHCreateItemFromParsingName, SHGetDesktopFolder, SHParseDisplayName,
+    CMF_EXTENDEDVERBS, CMF_NORMAL, CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, GCS_VERBA,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, CreateWindowExW, DestroyMenu, DestroyWindow, DispatchMessageW,
     GetCursorPos, GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW, GetSubMenu,
     PeekMessageW, SetForegroundWindow, TrackPopupMenuEx, TranslateMessage, HMENU,
-    MENUITEMINFOW, MF_BYPOSITION, MFS_DISABLED, MFS_GRAYED, MFT_SEPARATOR, MIIM_BITMAP,
+    MENUITEMINFOW, MF_BYPOSITION, MFT_SEPARATOR, MIIM_BITMAP,
     MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MSG, PM_REMOVE, SW_SHOWNORMAL,
     TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_INITMENUPOPUP, WM_QUIT, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_POPUP,
@@ -42,6 +42,21 @@ pub const BUILTIN_OPEN: u32 = BUILTIN_CMD_BASE + 1;
 pub const BUILTIN_SHOW_IN_FOLDER: u32 = BUILTIN_CMD_BASE + 2;
 pub const BUILTIN_OPEN_WITH: u32 = BUILTIN_CMD_BASE + 3;
 pub const BUILTIN_PROPERTIES: u32 = BUILTIN_CMD_BASE + 4;
+pub const BUILTIN_OPEN_NEW_WINDOW: u32 = BUILTIN_CMD_BASE + 5;
+pub const BUILTIN_PIN_QUICK_ACCESS: u32 = BUILTIN_CMD_BASE + 6;
+pub const BUILTIN_CUT: u32 = BUILTIN_CMD_BASE + 7;
+pub const BUILTIN_COPY: u32 = BUILTIN_CMD_BASE + 8;
+pub const BUILTIN_CREATE_SHORTCUT: u32 = BUILTIN_CMD_BASE + 9;
+pub const BUILTIN_DELETE: u32 = BUILTIN_CMD_BASE + 10;
+pub const BUILTIN_RENAME: u32 = BUILTIN_CMD_BASE + 11;
+pub const BUILTIN_COMPRESS_ZIP: u32 = BUILTIN_CMD_BASE + 12;
+pub const BUILTIN_REFRESH: u32 = BUILTIN_CMD_BASE + 13;
+pub const BUILTIN_NEW_FOLDER: u32 = BUILTIN_CMD_BASE + 14;
+pub const BUILTIN_NEW_TXT: u32 = BUILTIN_CMD_BASE + 15;
+pub const BUILTIN_OPEN_DESKTOP: u32 = BUILTIN_CMD_BASE + 16;
+pub const BUILTIN_OPEN_TERMINAL: u32 = BUILTIN_CMD_BASE + 17;
+pub const BUILTIN_DISPLAY_SETTINGS: u32 = BUILTIN_CMD_BASE + 18;
+pub const BUILTIN_PERSONALIZE: u32 = BUILTIN_CMD_BASE + 19;
 
 const QUERY_MENU_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -167,10 +182,57 @@ unsafe fn acquire_item_menu(hwnd: HWND, path: &str) -> Result<IContextMenu, Stri
     result.map_err(|e| format!("GetUIObjectOf: {e}"))
 }
 
+unsafe fn find_shell_defview() -> HWND {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, FindWindowExW, FindWindowW};
+
+    let progman = FindWindowW(w!("Progman"), PCWSTR::null()).unwrap_or_default();
+    if !progman.0.is_null() {
+        if let Ok(dv) =
+            FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), PCWSTR::null())
+        {
+            if !dv.0.is_null() {
+                return dv;
+            }
+        }
+    }
+
+    // Wallpaper WorkerW hosts DefView on some Windows builds.
+    struct Search {
+        found: HWND,
+    }
+    unsafe extern "system" fn enum_cb(hwnd: HWND, lparam: windows::Win32::Foundation::LPARAM) -> windows::core::BOOL {
+        let search = &mut *(lparam.0 as *mut Search);
+        if let Ok(dv) =
+            FindWindowExW(Some(hwnd), None, w!("SHELLDLL_DefView"), PCWSTR::null())
+        {
+            if !dv.0.is_null() {
+                search.found = dv;
+                return false.into();
+            }
+        }
+        true.into()
+    }
+    let mut search = Search {
+        found: HWND::default(),
+    };
+    let _ = EnumWindows(Some(enum_cb), windows::Win32::Foundation::LPARAM(&mut search as *mut _ as isize));
+    search.found
+}
+
 unsafe fn acquire_desktop_bg_menu(hwnd: HWND) -> Result<IContextMenu, String> {
+    // Prefer real DefView as owner so the desktop background menu matches Explorer.
+    let owner = {
+        let dv = find_shell_defview();
+        if dv.0.is_null() {
+            hwnd
+        } else {
+            dv
+        }
+    };
     let desktop = SHGetDesktopFolder().map_err(|e| format!("SHGetDesktopFolder: {e}"))?;
     desktop
-        .CreateViewObject::<IContextMenu>(hwnd)
+        .CreateViewObject::<IContextMenu>(owner)
         .map_err(|e| format!("CreateViewObject: {e}"))
 }
 
@@ -203,10 +265,10 @@ unsafe fn init_submenu(pcm: &IContextMenu, submenu: HMENU, position: u32) {
 }
 
 unsafe fn enumerate_hmenu(
-    pcm: &IContextMenu,
+    _pcm: &IContextMenu,
     hmenu: HMENU,
     parent_path: &[u32],
-    depth: u32,
+    _depth: u32,
 ) -> Vec<ShellMenuEntry> {
     if hmenu.is_invalid() {
         return Vec::new();
@@ -258,15 +320,13 @@ unsafe fn enumerate_hmenu(
             label = "…".into();
         }
 
-        let disabled = mii.fState.contains(MFS_DISABLED) || mii.fState.contains(MFS_GRAYED);
+        let disabled = (mii.fState.0 & 0x3) != 0;
         let mut menu_path = parent_path.to_vec();
+        // Cascade menus (打开方式 / 发送到 / …) must be filled via WM_INITMENUPOPUP.
+        // Never eagerly recurse: a non-zero GetMenuItemCount often means a placeholder.
         let children = if !mii.hSubMenu.is_invalid() {
             menu_path.push(i as u32);
-            if depth < 4 && GetMenuItemCount(Some(mii.hSubMenu)) > 0 {
-                Some(enumerate_hmenu(pcm, mii.hSubMenu, &menu_path, depth + 1))
-            } else {
-                Some(Vec::new())
-            }
+            Some(Vec::new())
         } else {
             None
         };
@@ -298,46 +358,29 @@ unsafe fn initialize_submenu_path(
         if submenu.is_invalid() {
             return Err("二级菜单已失效，请重新打开".into());
         }
-        if GetMenuItemCount(Some(submenu)) <= 0 {
-            init_submenu(pcm, submenu, position);
-        }
+        // Always send WM_INITMENUPOPUP — "打开方式" etc. keep a placeholder item
+        // so GetMenuItemCount > 0 before init and would otherwise stay empty of real apps.
+        init_submenu(pcm, submenu, position);
+        pump_messages();
         current = submenu;
     }
     Ok(current)
 }
 
-fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
-    let is_dir = std::path::Path::new(path).is_dir();
-    let mut items = vec![ShellMenuEntry {
-        id: BUILTIN_OPEN,
-        label: "打开".into(),
+fn item(id: u32, label: &str) -> ShellMenuEntry {
+    ShellMenuEntry {
+        id,
+        label: label.into(),
         disabled: false,
         separator: false,
         icon: None,
         children: None,
         menu_path: Vec::new(),
-    }];
-    if !is_dir {
-        items.push(ShellMenuEntry {
-            id: BUILTIN_OPEN_WITH,
-            label: "打开方式".into(),
-            disabled: false,
-            separator: false,
-            icon: None,
-            children: None,
-            menu_path: Vec::new(),
-        });
     }
-    items.push(ShellMenuEntry {
-        id: BUILTIN_SHOW_IN_FOLDER,
-        label: "在资源管理器中显示".into(),
-        disabled: false,
-        separator: false,
-        icon: None,
-        children: None,
-        menu_path: Vec::new(),
-    });
-    items.push(ShellMenuEntry {
+}
+
+fn sep() -> ShellMenuEntry {
+    ShellMenuEntry {
         id: 0,
         label: String::new(),
         disabled: true,
@@ -345,17 +388,69 @@ fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
         icon: None,
         children: None,
         menu_path: Vec::new(),
-    });
-    items.push(ShellMenuEntry {
-        id: BUILTIN_PROPERTIES,
-        label: "属性".into(),
-        disabled: false,
-        separator: false,
-        icon: None,
-        children: None,
-        menu_path: Vec::new(),
-    });
-    items
+    }
+}
+
+/// Minimal fallback when Shell QueryContextMenu hangs (files).
+pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
+    if std::path::Path::new(path).is_dir() {
+        return folder_builtin_menu();
+    }
+    vec![
+        item(BUILTIN_OPEN, "打开"),
+        item(BUILTIN_OPEN_WITH, "打开方式"),
+        item(BUILTIN_SHOW_IN_FOLDER, "在资源管理器中显示"),
+        sep(),
+        item(BUILTIN_PROPERTIES, "属性"),
+    ]
+}
+
+/// Built-in folder menu replicating common Windows Explorer folder items.
+/// Used instead of QueryContextMenu (folder Shell extensions often hang).
+pub fn folder_builtin_menu() -> Vec<ShellMenuEntry> {
+    vec![
+        item(BUILTIN_OPEN, "打开"),
+        item(BUILTIN_OPEN_NEW_WINDOW, "在新窗口中打开"),
+        sep(),
+        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
+        sep(),
+        item(BUILTIN_CUT, "剪切"),
+        item(BUILTIN_COPY, "复制"),
+        item(BUILTIN_CREATE_SHORTCUT, "创建快捷方式"),
+        sep(),
+        item(BUILTIN_DELETE, "删除"),
+        item(BUILTIN_RENAME, "重命名"),
+        sep(),
+        item(BUILTIN_COMPRESS_ZIP, "压缩为 ZIP 文件"),
+        sep(),
+        item(BUILTIN_PROPERTIES, "属性"),
+    ]
+}
+
+/// Blank desktop / fence background menu (Explorer-like, no Shell hang).
+pub fn desktop_blank_builtin_menu() -> Vec<ShellMenuEntry> {
+    vec![
+        item(BUILTIN_REFRESH, "刷新"),
+        sep(),
+        ShellMenuEntry {
+            id: 0,
+            label: "新建".into(),
+            disabled: false,
+            separator: false,
+            icon: None,
+            children: Some(vec![
+                item(BUILTIN_NEW_FOLDER, "文件夹"),
+                item(BUILTIN_NEW_TXT, "文本文档"),
+            ]),
+            menu_path: Vec::new(),
+        },
+        sep(),
+        item(BUILTIN_OPEN_DESKTOP, "打开桌面文件夹"),
+        item(BUILTIN_OPEN_TERMINAL, "在终端中打开"),
+        sep(),
+        item(BUILTIN_DISPLAY_SETTINGS, "显示设置"),
+        item(BUILTIN_PERSONALIZE, "个性化"),
+    ]
 }
 
 fn list_shell_context_menu_inner(
@@ -397,11 +492,11 @@ pub fn list_shell_context_menu(
     match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
         Ok(Ok(items)) if !items.is_empty() => Ok(items),
         Ok(Ok(_)) | Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Timeout) => {
+            stage("QueryContextMenu 超时，使用内置菜单");
             if let Some(p) = path {
-                stage("QueryContextMenu 超时，使用内置菜单");
                 Ok(fallback_menu(p))
             } else {
-                Err("桌面背景菜单加载超时".into())
+                Ok(desktop_blank_builtin_menu())
             }
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => Err("菜单加载线程异常退出".into()),
@@ -439,6 +534,53 @@ pub fn is_builtin_command(command_id: u32) -> bool {
     command_id >= BUILTIN_CMD_BASE
 }
 
+fn command_verb(pcm: &IContextMenu, command_id: u32) -> Option<String> {
+    if command_id < CMD_FIRST {
+        return None;
+    }
+    let offset = (command_id - CMD_FIRST) as usize;
+    let mut buf = [0u8; 128];
+    unsafe {
+        if pcm
+            .GetCommandString(
+                offset,
+                GCS_VERBA,
+                None,
+                windows::core::PSTR(buf.as_mut_ptr()),
+                buf.len() as u32,
+            )
+            .is_ok()
+        {
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(0);
+            if len > 0 {
+                return Some(String::from_utf8_lossy(&buf[..len]).to_ascii_lowercase());
+            }
+        }
+    }
+    None
+}
+
+fn shell_execute_verb(path: &str, verb: &str) -> Result<(), String> {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wpath = wide(path);
+    let wverb = wide(verb);
+    unsafe {
+        let ret = ShellExecuteW(
+            None,
+            PCWSTR(wverb.as_ptr()),
+            PCWSTR(wpath.as_ptr()),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        );
+        if (ret.0 as isize) <= 32 {
+            return Err(format!("执行“{verb}”失败: code={}", ret.0 as isize));
+        }
+    }
+    Ok(())
+}
+
 pub fn invoke_shell_context_command(
     hwnd: HWND,
     path: Option<&str>,
@@ -465,19 +607,49 @@ pub fn invoke_shell_context_command(
             return Err(e);
         }
 
+        // Prefer reliable ShellExecute for common verbs — InvokeCommand often fails
+        // outside Explorer (no IContextMenuSite / wrong HWND / no message pump).
+        if let (Some(p), Some(verb)) = (path, command_verb(&pcm, command_id)) {
+            let handled = match verb.as_str() {
+                "open" | "openas" | "runas" | "properties" | "edit" | "print" => {
+                    Some(shell_execute_verb(p, &verb))
+                }
+                "delete" => Some(
+                    trash::delete(p).map_err(|e| format!("删除失败: {e}")),
+                ),
+                "cut" => Some(Err("BUILTIN_CUT".into())),
+                "copy" => Some(Err("BUILTIN_COPY".into())),
+                "link" => Some(Err("BUILTIN_LINK".into())),
+                "rename" => Some(Err("BUILTIN_RENAME".into())),
+                _ => None,
+            };
+            if let Some(result) = handled {
+                let _ = DestroyMenu(hmenu);
+                return result;
+            }
+        }
+
         let mut pt = POINT::default();
         let _ = GetCursorPos(&mut pt);
         let verb_offset = (command_id - CMD_FIRST) as usize;
+        let owner = if hwnd.0.is_null() {
+            windows::Win32::UI::WindowsAndMessaging::GetDesktopWindow()
+        } else {
+            hwnd
+        };
         let ici = CMINVOKECOMMANDINFOEX {
             cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
             fMask: CMIC_MASK_PTINVOKE,
-            hwnd,
+            hwnd: owner,
             lpVerb: windows::core::PCSTR(verb_offset as *const u8),
             nShow: SW_SHOWNORMAL.0 as i32,
             ptInvoke: pt,
             ..Default::default()
         };
+        // Pump while invoking — some handlers expect a live message queue.
+        pump_messages();
         let invoke_hr = pcm.InvokeCommand(&ici as *const _ as *const _);
+        pump_messages();
         let _ = DestroyMenu(hmenu);
         invoke_hr.map_err(|e| format!("InvokeCommand: {e}"))
     }

@@ -90,7 +90,16 @@ export function useShellContextMenu() {
 
   async function loadSubmenu(menuPath: number[]) {
     const entry = findSubmenu(entries.value, menuPath);
-    if (!entry || entry.loading || entry.children?.length) return;
+    if (!entry || entry.loading) return;
+    if (entry.children && entry.children.length > 0) {
+      const onlyPlaceholder =
+        entry.children.length === 1 &&
+        (!!entry.children[0]?.disabled ||
+          entry.children[0]?.label === "加载超时" ||
+          entry.children[0]?.label === "加载失败" ||
+          entry.children[0]?.label === "无可用命令");
+      if (!onlyPlaceholder) return;
+    }
     const myGen = generation;
     entry.loading = true;
     try {
@@ -102,7 +111,7 @@ export function useShellContextMenu() {
     } catch (e) {
       console.warn("load shell submenu failed", e);
       if (myGen === generation) {
-        entry.children = [{ label: "加载超时", disabled: true }];
+        entry.children = [{ label: "加载失败", disabled: true }];
       }
     } finally {
       if (myGen === generation) entry.loading = false;
@@ -113,7 +122,24 @@ export function useShellContextMenu() {
     const p = path.value;
     generation += 1;
     clear();
-    if (!window.__TAURI__) return;
+    if (!window.__TAURI__ || !p) return;
+
+    // Folder built-in rename: prompt in UI then call rename command.
+    if (commandId === 0xf0000000 + 11) {
+      const base = p.split(/[/\\]/).pop() || "";
+      const next = window.prompt("重命名为", base);
+      if (!next || next === base) return;
+      try {
+        await window.__TAURI__.core.invoke("rename_desktop_item", {
+          path: p,
+          newName: next.trim(),
+        });
+      } catch (e) {
+        console.warn("rename failed", e);
+      }
+      return;
+    }
+
     try {
       await window.__TAURI__.core.invoke("invoke_desktop_shell_context_command", {
         path: p || "",
@@ -121,6 +147,21 @@ export function useShellContextMenu() {
         menuPath,
       });
     } catch (e) {
+      const msg = String(e);
+      if (msg.includes("重命名") || msg.includes("BUILTIN_RENAME")) {
+        const base = p.split(/[/\\]/).pop() || "";
+        const next = window.prompt("重命名为", base);
+        if (!next || next === base) return;
+        try {
+          await window.__TAURI__.core.invoke("rename_desktop_item", {
+            path: p,
+            newName: next.trim(),
+          });
+        } catch (err) {
+          console.warn("rename failed", err);
+        }
+        return;
+      }
       console.warn("invoke shell command failed", e);
     }
   }
