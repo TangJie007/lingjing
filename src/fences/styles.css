@@ -404,6 +404,8 @@ body,
   place-items: center;
   cursor: default;
   padding: 0;
+  outline: none;
+  user-select: none;
 }
 
 .shell-ctx-pins .pin:hover:not(:disabled) {

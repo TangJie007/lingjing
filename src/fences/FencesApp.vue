@@ -27,6 +27,7 @@ import {
 } from "./helpers";
 import type { DesktopItem, FenceGroupKey, FenceGroupState } from "./types";
 import { cellPreviewDataUrl, useShellFileDrag } from "./useShellFileDrag";
+import { markIconDragEnd, markIconDragStart } from "./iconOpen";
 import { useShellContextMenu } from "./useShellContextMenu";
 
 const groups = reactive<Record<FenceGroupKey, FenceGroupState>>({
@@ -133,6 +134,7 @@ function onSorted(key: FenceGroupKey) {
 }
 
 function onDragStart(key: FenceGroupKey, evt: SortableEvent) {
+  markIconDragStart();
   dragging.value = true;
   fenceDraggingKey.value = key === "app" ? null : key;
   const el = evt.item as HTMLElement;
@@ -143,6 +145,7 @@ function onDragEnd(key: FenceGroupKey) {
   dragging.value = false;
   fenceDraggingKey.value = null;
   shellDrag.end();
+  markIconDragEnd();
   persist(key);
   persistAll();
   flushPending();
@@ -290,13 +293,17 @@ onUnmounted(() => {
     </ContextMenuTrigger>
 
     <ContextMenuPortal>
-      <ContextMenuContent class="shell-ctx" :collision-padding="8">
+      <ContextMenuContent
+        v-if="shellLoading || !!shellError || shellEntries.length > 0"
+        class="shell-ctx"
+        :collision-padding="8"
+      >
         <ShellMenuLoading v-if="shellLoading && !shellEntries.length" />
         <ContextMenuItem v-else-if="shellError" class="item" disabled>
           <span class="lbl">{{ shellError }}</span>
         </ContextMenuItem>
         <ShellMenuEntries
-          v-else
+          v-else-if="shellEntries.length"
           :entries="shellEntries"
           @command="runShellCommand"
           @submenu="loadShellSubmenu"

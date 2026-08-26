@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { iconFor } from "../helpers";
+import { tryIconDoubleClick } from "../iconOpen";
 import type { DesktopItem } from "../types";
 
 const props = defineProps<{
@@ -13,6 +14,12 @@ const emit = defineEmits<{
 }>();
 
 const canDrag = computed(() => !props.item.builtin);
+const lastClickAt = ref(0);
+
+function onActivate(e: MouseEvent) {
+  if (e.button !== 0) return;
+  tryIconDoubleClick(lastClickAt, () => emit("open"));
+}
 </script>
 
 <template>
@@ -21,7 +28,7 @@ const canDrag = computed(() => !props.item.builtin);
     :class="{ native: !!native, draggable: canDrag, 'no-drag': !canDrag }"
     :data-path="item.path"
     :title="item.path"
-    @dblclick="emit('open')"
+    @click="onActivate"
   >
     <div class="icon" :class="{ folder: item.isDir && !item.builtin }">
       <img v-if="item.icon" :src="item.icon" alt="" draggable="false" />

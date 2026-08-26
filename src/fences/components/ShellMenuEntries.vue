@@ -32,19 +32,17 @@ function onSelect(entry: ShellMenuEntry) {
 <template>
   <div class="shell-ctx-layout">
     <div v-if="pinEntries.length" class="shell-ctx-pins">
-      <button
+      <ContextMenuItem
         v-for="(entry, idx) in pinEntries"
         :key="'pin-' + idx"
-        type="button"
         class="pin"
         :title="entry.label || ''"
         :disabled="!!entry.disabled"
-        @click="onSelect(entry)"
-        @pointerdown.stop
+        @select="onSelect(entry)"
       >
         <img v-if="entry.icon" :src="entry.icon" alt="" />
         <span v-else class="pin-fallback">{{ (entry.label || "?").slice(0, 1) }}</span>
-      </button>
+      </ContextMenuItem>
     </div>
 
     <div class="shell-ctx-scroll">

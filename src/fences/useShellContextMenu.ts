@@ -29,6 +29,18 @@ export function useShellContextMenu() {
     }
   });
 
+  // Empty shell while still "open" leaves a black strip — force-dismiss.
+  watch([entries, loading, error, menuOpen], () => {
+    if (
+      menuOpen.value &&
+      !loading.value &&
+      !error.value &&
+      entries.value.length === 0
+    ) {
+      menuOpen.value = false;
+    }
+  });
+
   async function prepare(targetPath: string) {
     if (!window.__TAURI__) return;
 
@@ -122,8 +134,10 @@ export function useShellContextMenu() {
   async function runCommand(commandId: number, menuPath: number[] = []) {
     // Empty path is valid: desktop background Shell menu.
     const p = path.value;
+    // Close + clear immediately so the panel never sits empty as a black strip.
     menuOpen.value = false;
     generation += 1;
+    clear();
     if (!window.__TAURI__) return;
 
     // Folder built-in rename: prompt in UI then call rename command.
