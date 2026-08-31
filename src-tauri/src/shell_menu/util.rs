@@ -34,10 +34,22 @@ pub fn invoke_working_directory(path: Option<&str>) -> Option<String> {
 }
 
 /// CMF flags for QueryContextMenu.
-/// Namespace icons (`::{CLSID}`) use a narrow set — item menu only, no extended verbs.
+/// - 回收站 / 网络: CMF_ITEMMENU only (narrowest for these)
+/// - other `::{CLSID}` (e.g. 此电脑): CMF_NORMAL | CMF_ITEMMENU
+/// - files: CMF_NORMAL (+ CMF_EXTENDEDVERBS when Shift held)
 pub fn menu_flags_for_path(path: Option<&str>) -> u32 {
-    if path.is_some_and(|p| p.trim_start().starts_with("::")) {
-        return CMF_NORMAL | CMF_ITEMMENU;
+    if let Some(p) = path {
+        let trimmed = p.trim_start();
+        if trimmed.starts_with("::") {
+            let upper = trimmed.to_ascii_uppercase();
+            // 回收站 / 网络
+            if upper.contains("645FF040-5081-101B-9F08-00AA002F954E")
+                || upper.contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
+            {
+                return CMF_ITEMMENU;
+            }
+            return CMF_NORMAL | CMF_ITEMMENU;
+        }
     }
     let mut flags = CMF_NORMAL;
     unsafe {

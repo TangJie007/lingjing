@@ -33,9 +33,14 @@ pub async fn list_desktop_shell_context_menu(
     #[cfg(windows)]
     {
         // Folders: built-in (QueryContextMenu often hangs on folder extensions).
-        // Namespace icons (此电脑/回收站/网络): one-shot host + narrow CMF (see shell_host).
-        // Blank desktop: real Shell desktop-background menu via persistent host.
+        // 回收站 / 网络: always custom menu (Shell QueryContextMenu hangs / incomplete).
+        // 此电脑: one-shot host + narrow CMF; blank desktop: persistent host.
         if let Some(ref p) = path_opt {
+            if crate::shell_menu::is_recycle_bin_path(p)
+                || crate::shell_menu::is_network_places_path(p)
+            {
+                return Ok(crate::shell_menu::namespace_builtin_menu(p));
+            }
             if Path::new(p).is_dir() && !crate::shell_menu::is_shell_namespace_path(p) {
                 return Ok(crate::shell_menu::folder_builtin_menu());
             }
@@ -47,7 +52,6 @@ pub async fn list_desktop_shell_context_menu(
                 )),
                 Ok(entries) => Ok(entries),
                 Err(e) => {
-                    // One-shot kill / host crash: still show a usable namespace menu.
                     if let Some(p) = path_opt.as_deref() {
                         if crate::shell_menu::is_shell_namespace_path(p) {
                             tracing::info!(
@@ -168,9 +172,10 @@ fn dispatch_builtin_shell_command(
 ) -> Result<(), String> {
     use crate::shell_menu::{
         BUILTIN_COMPRESS_ZIP, BUILTIN_COPY, BUILTIN_CREATE_SHORTCUT, BUILTIN_CUT, BUILTIN_DELETE,
-        BUILTIN_DISPLAY_SETTINGS, BUILTIN_EMPTY_RECYCLE, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT,
-        BUILTIN_OPEN, BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL,
-        BUILTIN_OPEN_WITH, BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS,
+        BUILTIN_DISCONNECT_NETWORK_DRIVE, BUILTIN_DISPLAY_SETTINGS, BUILTIN_EMPTY_RECYCLE,
+        BUILTIN_MAP_NETWORK_DRIVE, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT, BUILTIN_OPEN,
+        BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL, BUILTIN_OPEN_WITH,
+        BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PIN_START,
         BUILTIN_PROPERTIES, BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
@@ -179,7 +184,8 @@ fn dispatch_builtin_shell_command(
         BUILTIN_OPEN_WITH => open_desktop_item_with(path.to_string()),
         BUILTIN_PROPERTIES => open_desktop_item_properties(path.to_string()),
         BUILTIN_OPEN_NEW_WINDOW => open_folder_in_new_window(path),
-        BUILTIN_PIN_QUICK_ACCESS => pin_folder_to_quick_access(path),
+        BUILTIN_PIN_QUICK_ACCESS => pin_shell_item_to_quick_access(path),
+        BUILTIN_PIN_START => pin_shell_item_to_start(path),
         BUILTIN_CUT => clipboard_set_files(&[path], true),
         BUILTIN_COPY => clipboard_set_files(&[path], false),
         BUILTIN_CREATE_SHORTCUT => create_desktop_shortcut(path),
@@ -195,6 +201,8 @@ fn dispatch_builtin_shell_command(
         BUILTIN_PERSONALIZE => open_uri("ms-settings:personalization"),
         BUILTIN_PASTE => clipboard_paste_to_desktop(app),
         BUILTIN_EMPTY_RECYCLE => empty_recycle_bin(),
+        BUILTIN_MAP_NETWORK_DRIVE => map_network_drive(),
+        BUILTIN_DISCONNECT_NETWORK_DRIVE => disconnect_network_drive(),
         _ => Err("未知内置命令".into()),
     }
 }
@@ -304,19 +312,63 @@ fn open_folder_in_new_window(path: &str) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn pin_folder_to_quick_access(path: &str) -> Result<(), String> {
-    // Shell verb "pintohome" — same as Explorer “固定到快速访问”.
+fn shell_namespace_target(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.starts_with("::") {
+        format!("shell:{trimmed}")
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[cfg(windows)]
+fn invoke_shell_namespace_verb(path: &str, verb: &str, err_label: &str) -> Result<(), String> {
+    let target = shell_namespace_target(path);
     let script = format!(
-        "$s=(New-Object -ComObject Shell.Application).NameSpace([string]'{}'); if($null -eq $s){{exit 1}}; $s.Self.InvokeVerb('pintohome')",
-        path.replace('\'', "''")
+        "$s=(New-Object -ComObject Shell.Application).NameSpace([string]'{}'); if($null -eq $s){{exit 1}}; $s.Self.InvokeVerb([string]'{}')",
+        target.replace('\'', "''"),
+        verb.replace('\'', "''")
     );
     let status = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .status()
-        .map_err(|e| format!("固定到快速访问失败: {e}"))?;
+        .map_err(|e| format!("{err_label}: {e}"))?;
     if !status.success() {
-        return Err("固定到快速访问失败".into());
+        return Err(err_label.into());
     }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn pin_shell_item_to_quick_access(path: &str) -> Result<(), String> {
+    // Shell verb "pintohome" — same as Explorer “固定到快速访问”.
+    invoke_shell_namespace_verb(path, "pintohome", "固定到快速访问失败")
+}
+
+#[cfg(windows)]
+fn pin_shell_item_to_start(path: &str) -> Result<(), String> {
+    // Win10/11 verbs vary; try startpin then pintostartscreen.
+    if invoke_shell_namespace_verb(path, "startpin", "固定到开始失败").is_ok() {
+        return Ok(());
+    }
+    invoke_shell_namespace_verb(path, "pintostartscreen", "固定到开始失败")
+}
+
+#[cfg(windows)]
+fn map_network_drive() -> Result<(), String> {
+    std::process::Command::new("rundll32")
+        .args(["shell32.dll,SHHelpShortcuts_RunDLL", "Connect"])
+        .spawn()
+        .map_err(|e| format!("打开映射网络驱动器失败: {e}"))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn disconnect_network_drive() -> Result<(), String> {
+    std::process::Command::new("rundll32")
+        .args(["shell32.dll,SHHelpShortcuts_RunDLL", "Disconnect"])
+        .spawn()
+        .map_err(|e| format!("打开断开网络驱动器失败: {e}"))?;
     Ok(())
 }
 

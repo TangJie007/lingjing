@@ -139,23 +139,67 @@ pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
 }
 
 /// Shell namespace desktop icons (`::{CLSID}`).
-/// Prefer one-shot QueryContextMenu with narrow CMF; fall back here on timeout.
 pub fn is_shell_namespace_path(path: &str) -> bool {
     path.trim_start().starts_with("::")
 }
 
-/// Built-in menu for 此电脑 / 回收站 / 网络 (fallback when Shell host times out).
-pub fn namespace_builtin_menu(path: &str) -> Vec<ShellMenuEntry> {
-    let upper = path.to_ascii_uppercase();
-    let is_recycle = upper.contains("645FF040-5081-101B-9F08-00AA002F954E");
+pub fn is_recycle_bin_path(path: &str) -> bool {
+    path.to_ascii_uppercase()
+        .contains("645FF040-5081-101B-9F08-00AA002F954E")
+}
 
-    let mut entries = vec![item(BUILTIN_OPEN, "打开")];
-    if is_recycle {
-        entries.push(item(BUILTIN_EMPTY_RECYCLE, "清空回收站"));
+pub fn is_network_places_path(path: &str) -> bool {
+    path.to_ascii_uppercase()
+        .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
+}
+
+/// Built-in menus for 回收站 / 网络 (always); 此电脑 uses this only as Shell fallback.
+pub fn namespace_builtin_menu(path: &str) -> Vec<ShellMenuEntry> {
+    if is_recycle_bin_path(path) {
+        return recycle_builtin_menu();
     }
-    entries.push(sep());
-    entries.push(item(BUILTIN_PROPERTIES, "属性"));
-    entries
+    if is_network_places_path(path) {
+        return network_builtin_menu();
+    }
+    // 此电脑 / other namespace fallback
+    vec![
+        item(BUILTIN_OPEN, "打开"),
+        sep(),
+        item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
+        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
+        sep(),
+        item(BUILTIN_PROPERTIES, "属性"),
+    ]
+}
+
+fn recycle_builtin_menu() -> Vec<ShellMenuEntry> {
+    vec![
+        item(BUILTIN_OPEN, "打开"),
+        item(BUILTIN_EMPTY_RECYCLE, "清空回收站"),
+        sep(),
+        item(BUILTIN_RENAME, "重命名"),
+        sep(),
+        item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
+        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
+        sep(),
+        item(BUILTIN_PROPERTIES, "属性"),
+    ]
+}
+
+fn network_builtin_menu() -> Vec<ShellMenuEntry> {
+    vec![
+        item(BUILTIN_OPEN, "打开"),
+        sep(),
+        item(BUILTIN_MAP_NETWORK_DRIVE, "映射网络驱动器"),
+        item(BUILTIN_DISCONNECT_NETWORK_DRIVE, "断开网络驱动器连接"),
+        sep(),
+        item(BUILTIN_RENAME, "重命名"),
+        sep(),
+        item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
+        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
+        sep(),
+        item(BUILTIN_PROPERTIES, "属性"),
+    ]
 }
 
 /// Built-in folder menu replicating common Windows Explorer folder items.
