@@ -138,12 +138,13 @@ pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
     )
 }
 
-/// Shell namespace desktop icons (`::{CLSID}`) — never QueryContextMenu (hangs the host).
+/// Shell namespace desktop icons (`::{CLSID}`).
+/// Prefer one-shot QueryContextMenu with narrow CMF; fall back here on timeout.
 pub fn is_shell_namespace_path(path: &str) -> bool {
     path.trim_start().starts_with("::")
 }
 
-/// Built-in menu for 此电脑 / 回收站 / 网络.
+/// Built-in menu for 此电脑 / 回收站 / 网络 (fallback when Shell host times out).
 pub fn namespace_builtin_menu(path: &str) -> Vec<ShellMenuEntry> {
     let upper = path.to_ascii_uppercase();
     let is_recycle = upper.contains("645FF040-5081-101B-9F08-00AA002F954E");

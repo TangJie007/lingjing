@@ -26,7 +26,7 @@ use super::icons::hbitmap_to_data_url;
 use super::ids::is_builtin_command;
 use super::ids::{BUILTIN_DELETE, CMD_FIRST, CMD_LAST};
 use super::pin::apply_win11_pin_row;
-use super::util::{clean_menu_label, invoke_working_directory, menu_flags, stage, wide};
+use super::util::{clean_menu_label, invoke_working_directory, menu_flags_for_path, stage, wide};
 use super::verbs::{command_verb, shell_execute_verb};
 
 const QUERY_MENU_TIMEOUT: Duration = Duration::from_secs(5);
@@ -290,7 +290,7 @@ fn list_shell_context_menu_inner(
         stage("创建菜单句柄");
         let hmenu = CreatePopupMenu().map_err(|e| format!("CreatePopupMenu: {e}"))?;
         stage("QueryContextMenu");
-        let hr = pcm.QueryContextMenu(hmenu, 0, CMD_FIRST, CMD_LAST, menu_flags());
+        let hr = pcm.QueryContextMenu(hmenu, 0, CMD_FIRST, CMD_LAST, menu_flags_for_path(path));
         if hr.is_err() {
             let _ = DestroyMenu(hmenu);
             return Err(format!("QueryContextMenu: {hr:?}"));
@@ -349,7 +349,13 @@ pub fn list_shell_context_submenu(
         let pcm = acquire_menu(hwnd, path)?;
         let hmenu = CreatePopupMenu().map_err(|e| format!("CreatePopupMenu: {e}"))?;
         stage("二级菜单：QueryContextMenu");
-        let hr = pcm.QueryContextMenu(hmenu, 0, CMD_FIRST, CMD_LAST, menu_flags());
+        let hr = pcm.QueryContextMenu(
+            hmenu,
+            0,
+            CMD_FIRST,
+            CMD_LAST,
+            menu_flags_for_path(path),
+        );
         if hr.is_err() {
             let _ = DestroyMenu(hmenu);
             return Err(format!("QueryContextMenu submenu: {hr:?}"));
@@ -381,7 +387,13 @@ pub fn invoke_shell_context_command(
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let pcm = acquire_menu(hwnd, path)?;
         let hmenu = CreatePopupMenu().map_err(|e| format!("CreatePopupMenu: {e}"))?;
-        let hr = pcm.QueryContextMenu(hmenu, 0, CMD_FIRST, CMD_LAST, menu_flags());
+        let hr = pcm.QueryContextMenu(
+            hmenu,
+            0,
+            CMD_FIRST,
+            CMD_LAST,
+            menu_flags_for_path(path),
+        );
         if hr.is_err() {
             let _ = DestroyMenu(hmenu);
             return Err(format!("QueryContextMenu: {hr:?}"));
@@ -452,7 +464,13 @@ pub fn show_native_shell_context_menu(hwnd: HWND, path: Option<&str>) -> Result<
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let pcm = acquire_menu(hwnd, path)?;
         let hmenu = CreatePopupMenu().map_err(|e| format!("CreatePopupMenu: {e}"))?;
-        let hr = pcm.QueryContextMenu(hmenu, 0, CMD_FIRST, CMD_LAST, menu_flags());
+        let hr = pcm.QueryContextMenu(
+            hmenu,
+            0,
+            CMD_FIRST,
+            CMD_LAST,
+            menu_flags_for_path(path),
+        );
         if hr.is_err() {
             let _ = DestroyMenu(hmenu);
             return Err(format!("QueryContextMenu: {hr:?}"));

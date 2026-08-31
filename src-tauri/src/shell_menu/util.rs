@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
-use windows::Win32::UI::Shell::{CMF_EXTENDEDVERBS, CMF_NORMAL};
+use windows::Win32::UI::Shell::{CMF_EXTENDEDVERBS, CMF_ITEMMENU, CMF_NORMAL};
 
 pub fn stage(s: &str) {
     crate::desktop_organize::shell_host_stage(s);
@@ -33,7 +33,12 @@ pub fn invoke_working_directory(path: Option<&str>) -> Option<String> {
     }
 }
 
-pub fn menu_flags() -> u32 {
+/// CMF flags for QueryContextMenu.
+/// Namespace icons (`::{CLSID}`) use a narrow set — item menu only, no extended verbs.
+pub fn menu_flags_for_path(path: Option<&str>) -> u32 {
+    if path.is_some_and(|p| p.trim_start().starts_with("::")) {
+        return CMF_NORMAL | CMF_ITEMMENU;
+    }
     let mut flags = CMF_NORMAL;
     unsafe {
         if (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0 {

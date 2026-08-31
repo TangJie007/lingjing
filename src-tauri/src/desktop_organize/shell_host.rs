@@ -95,6 +95,10 @@ pub(crate) fn run_shell_menu_host(
     path: Option<&str>,
     menu_path: &[u32],
 ) -> Result<Vec<ShellMenuEntry>, String> {
+    // 此电脑 / 回收站 / 网络：独立 one-shot 进程，用完即毁，避免拖死常驻 host。
+    if path.is_some_and(crate::shell_menu::is_shell_namespace_path) {
+        return run_one_shot_shell_menu_host(mode, path, menu_path);
+    }
     // Root + submenu share the persistent host so blank-desktop cascade
     // preloads do not spawn one process per submenu.
     if mode == "root" || mode == "submenu" {
@@ -173,6 +177,9 @@ fn run_one_shot_shell_menu_host(
 
     let timeout = if mode == "native" || mode == "invoke" {
         Duration::from_secs(300)
+    } else if path.is_some_and(crate::shell_menu::is_shell_namespace_path) {
+        // Inner QueryContextMenu already caps at 5s then falls back; keep host tight.
+        Duration::from_secs(6)
     } else {
         SHELL_MENU_TIMEOUT
     };

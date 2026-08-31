@@ -32,26 +32,33 @@ pub async fn list_desktop_shell_context_menu(
 
     #[cfg(windows)]
     {
-        // Folders / shell namespace icons (此电脑/回收站/网络): built-in only.
-        // QueryContextMenu on these hangs the persistent Shell host and freezes all menus.
+        // Folders: built-in (QueryContextMenu often hangs on folder extensions).
+        // Namespace icons (此电脑/回收站/网络): one-shot host + narrow CMF (see shell_host).
+        // Blank desktop: real Shell desktop-background menu via persistent host.
         if let Some(ref p) = path_opt {
-            if crate::shell_menu::is_shell_namespace_path(p) {
-                return Ok(crate::shell_menu::namespace_builtin_menu(p));
-            }
-            if Path::new(p).is_dir() {
+            if Path::new(p).is_dir() && !crate::shell_menu::is_shell_namespace_path(p) {
                 return Ok(crate::shell_menu::folder_builtin_menu());
             }
         }
         return tauri::async_runtime::spawn_blocking(move || {
-            run_shell_menu_host("root", path_opt.as_deref(), &[]).map(|entries| {
-                if path_opt.is_none() {
-                    crate::shell_menu::ensure_paste_entry(
-                        crate::shell_menu::ensure_blank_refresh_pin(entries),
-                    )
-                } else {
-                    entries
+            match run_shell_menu_host("root", path_opt.as_deref(), &[]) {
+                Ok(entries) if path_opt.is_none() => Ok(crate::shell_menu::ensure_paste_entry(
+                    crate::shell_menu::ensure_blank_refresh_pin(entries),
+                )),
+                Ok(entries) => Ok(entries),
+                Err(e) => {
+                    // One-shot kill / host crash: still show a usable namespace menu.
+                    if let Some(p) = path_opt.as_deref() {
+                        if crate::shell_menu::is_shell_namespace_path(p) {
+                            tracing::info!(
+                                "[desktop-organize] namespace menu host failed, using builtin: {e}"
+                            );
+                            return Ok(crate::shell_menu::namespace_builtin_menu(p));
+                        }
+                    }
+                    Err(e)
                 }
-            })
+            }
         })
         .await
         .map_err(|e| format!("加载右键菜单任务失败: {e}"))?;
@@ -81,12 +88,6 @@ pub async fn list_desktop_shell_context_submenu(
 
     #[cfg(windows)]
     {
-        // Namespace icons have no Shell cascade menus worth loading.
-        if let Some(ref p) = path_opt {
-            if crate::shell_menu::is_shell_namespace_path(p) {
-                return Ok(Vec::new());
-            }
-        }
         return tauri::async_runtime::spawn_blocking(move || {
             run_shell_menu_host("submenu", path_opt.as_deref(), &menu_path)
         })
