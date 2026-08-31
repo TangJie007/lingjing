@@ -224,6 +224,25 @@ use std::ffi::OsStr;
         url
     }
 
+    /// True when the folder has at least one non-hidden entry (files or subdirs).
+    fn dir_has_visible_entries(path: &std::path::Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            // Skip common desktop.ini / Thumbs.db noise that still count as "content"
+            // for Windows Explorer empty-folder glyph in some views — keep them as content
+            // so we match Explorer: any entry → non-empty look.
+            return true;
+        }
+        false
+    }
+
     pub fn image_file_preview(path: &std::path::Path, px: i32) -> Option<String> {
         use windows::Win32::UI::Shell::{
             SIIGBF_BIGGERSIZEOK, SIIGBF_SCALEUP, SIIGBF_THUMBNAILONLY,
@@ -680,7 +699,7 @@ use std::ffi::OsStr;
         use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
         use windows::Win32::UI::Shell::{
             SHGetFileInfoW, SHFILEINFOW, SHGFI_DISPLAYNAME, SHGFI_ICON, SHGFI_LARGEICON,
-            SHGFI_SYSICONINDEX, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+            SHGFI_SYSICONINDEX, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY, SIIGBF_SCALEUP,
         };
         use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
 
@@ -709,7 +728,23 @@ use std::ffi::OsStr;
 
             let mut icon = None;
             if ok != 0 {
-                icon = shell_item_image_png(path, 48, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK);
+                // Folders: prefer Shell thumbnail so non-empty dirs show the
+                // "papers inside" glyph; ICONONLY always yields the empty look.
+                let is_dir = path.is_dir();
+                if is_dir && dir_has_visible_entries(path) {
+                    icon = shell_item_image_png(
+                        path,
+                        48,
+                        SIIGBF_BIGGERSIZEOK | SIIGBF_SCALEUP,
+                    );
+                }
+                if icon.is_none() {
+                    icon = shell_item_image_png(
+                        path,
+                        48,
+                        SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK,
+                    );
+                }
                 if icon.is_none() {
                     if let Some(best) = extract_best_icon(path, info.iIcon) {
                         icon = hicon_to_png_data_url(best);

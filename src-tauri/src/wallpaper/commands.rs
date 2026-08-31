@@ -1,0 +1,276 @@
+//! Tauri commands and runtime helpers for the wallpaper engine.
+
+use serde::Deserialize;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use super::{push_command, push_state, EngineHandle, EngineState, SetWallpaperPayload};
+use crate::settings;
+use crate::system;
+
+pub struct RuntimeProfile {
+    pub low_power: bool,
+}
+
+fn runtime_low_power(app: &AppHandle) -> bool {
+    app.try_state::<RuntimeProfile>()
+        .map(|p| p.low_power)
+        .unwrap_or(false)
+}
+
+pub fn apply_engine_runtime(state: &mut EngineState, app: &AppHandle) {
+    state.low_power = runtime_low_power(app);
+}
+
+#[tauri::command]
+pub fn set_wallpaper(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    payload: SetWallpaperPayload,
+) -> Result<EngineState, String> {
+    tracing::info!(
+        "[engine] set_wallpaper id={} mediaType={} uri={}",
+        payload.id,
+        payload.media_type,
+        payload.uri
+    );
+    if payload.uri.trim().is_empty() {
+        return Err("该资源暂无可用媒体".into());
+    }
+    let default_volume = settings::load_settings(&app)
+        .map(|s| s.default_volume.clamp(0.0, 1.0))
+        .unwrap_or(0.8);
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    state.media_id = Some(payload.id.clone());
+    state.title = Some(payload.title.clone());
+    state.media_type = Some(payload.media_type.clone());
+    state.uri = Some(payload.uri.clone());
+    state.playing = true;
+    state.volume = default_volume;
+    state.muted = false;
+    state.user_paused = false;
+    state.error = None;
+    state.current_time = 0.0;
+    state.duration = 0.0;
+    apply_engine_runtime(&mut state, &app);
+    let snapshot = state.clone();
+    drop(state);
+    push_command(&app, "set", &snapshot)?;
+    push_state(&app, &snapshot);
+    let _ = settings::save_last_wallpaper(
+        &app,
+        &settings::LastWallpaper {
+            id: payload.id,
+            title: payload.title,
+            media_type: payload.media_type,
+            uri: payload.uri,
+            source: "engine".into(),
+        },
+    );
+    tracing::info!(
+        "[engine] set push_command ok media_id={:?}",
+        snapshot.media_id
+    );
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn engine_play(app: AppHandle, engine: State<'_, EngineHandle>) -> Result<EngineState, String> {
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    state.playing = true;
+    state.user_paused = false;
+    let snapshot = state.clone();
+    drop(state);
+    push_command(&app, "play", &snapshot)?;
+    push_state(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PausePayload {
+    #[serde(default = "default_true")]
+    manual: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[tauri::command]
+pub fn engine_pause(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    payload: Option<PausePayload>,
+) -> Result<EngineState, String> {
+    let manual = payload.map(|p| p.manual).unwrap_or(true);
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    if manual {
+        state.user_paused = true;
+    }
+    state.playing = false;
+    let snapshot = state.clone();
+    drop(state);
+    push_command(&app, "pause", &snapshot)?;
+    push_state(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VolumePayload {
+    volume: f64,
+    muted: bool,
+}
+
+#[tauri::command]
+pub fn engine_set_volume(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    payload: VolumePayload,
+) -> Result<EngineState, String> {
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    state.volume = payload.volume.clamp(0.0, 1.0);
+    state.muted = payload.muted;
+    let snapshot = state.clone();
+    drop(state);
+    push_command(&app, "volume", &snapshot)?;
+    push_state(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn engine_get_state(engine: State<'_, EngineHandle>) -> Result<EngineState, String> {
+    engine
+        .state
+        .lock()
+        .map(|s| s.clone())
+        .map_err(|_| "引擎状态锁失败".into())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct ProgressPayload {
+    current_time: f64,
+    duration: f64,
+    playing: Option<bool>,
+    error: Option<String>,
+}
+
+impl Default for ProgressPayload {
+    fn default() -> Self {
+        Self {
+            current_time: 0.0,
+            duration: 0.0,
+            playing: None,
+            error: None,
+        }
+    }
+}
+
+fn is_benign_play_error(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    m.contains("aborterror")
+        || m.contains("interrupted by a new load")
+        || m.contains("interrupted by a call to pause")
+}
+
+#[tauri::command]
+pub fn engine_report_progress(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    payload: ProgressPayload,
+) -> Result<(), String> {
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    state.current_time = payload.current_time;
+    state.duration = payload.duration;
+    if let Some(p) = payload.playing {
+        // Don't let a single stalled primary decoder flip global "playing"
+        // to false after sleep; only honor explicit pause/play commands.
+        if p || state.user_paused {
+            state.playing = p;
+        }
+    }
+    if let Some(err) = payload.error.as_ref() {
+        if !is_benign_play_error(err) {
+            state.error = Some(err.clone());
+        }
+    } else if payload.duration > 0.0 || payload.playing.unwrap_or(false) {
+        state.error = None;
+    }
+    let snapshot = state.clone();
+    drop(state);
+    let _ = app.emit("engine-state", &snapshot);
+    Ok(())
+}
+
+pub fn clear_engine_wallpaper(app: &AppHandle, engine: &EngineHandle) -> Result<EngineState, String> {
+    let mut state = engine
+        .state
+        .lock()
+        .map_err(|_| "引擎状态锁失败".to_string())?;
+    state.media_id = None;
+    state.title = None;
+    state.media_type = None;
+    state.uri = None;
+    state.playing = false;
+    state.current_time = 0.0;
+    state.duration = 0.0;
+    state.error = None;
+    state.user_paused = false;
+    let snapshot = state.clone();
+    drop(state);
+    push_command(app, "clear", &snapshot)?;
+    push_state(app, &snapshot);
+    let _ = settings::clear_last_wallpaper(app);
+    Ok(snapshot)
+}
+
+pub fn restore_last_wallpaper(app: &AppHandle) {
+    let app_for_task = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        let last = match settings::load_last_wallpaper(&app_for_task) {
+            Ok(Some(l)) => l,
+            _ => return,
+        };
+        if !system::media_path_exists(&last.uri) {
+            tracing::info!("[engine] skip restore: media missing uri={}", last.uri);
+            let _ = settings::clear_last_wallpaper(&app_for_task);
+            return;
+        }
+        let mut state = EngineState {
+            media_id: Some(last.id.clone()),
+            title: Some(last.title.clone()),
+            media_type: Some(last.media_type.clone()),
+            uri: Some(last.uri.clone()),
+            playing: true,
+            volume: settings::load_settings(&app_for_task)
+                .map(|s| s.default_volume)
+                .unwrap_or(0.8),
+            muted: false,
+            user_paused: false,
+            current_time: 0.0,
+            duration: 0.0,
+            error: None,
+            low_power: false,
+        };
+        apply_engine_runtime(&mut state, &app_for_task);
+        let _ = push_command(&app_for_task, "set", &state);
+    });
+}

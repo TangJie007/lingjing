@@ -1,0 +1,30 @@
+//! Reserved built-in Shell menu command IDs.
+
+pub const CMD_FIRST: u32 = 1;
+pub const CMD_LAST: u32 = 0x7fff;
+
+/// Reserved IDs for built-in fallback when Shell extensions block QueryContextMenu.
+pub const BUILTIN_CMD_BASE: u32 = 0xF000_0000;
+pub const BUILTIN_OPEN: u32 = BUILTIN_CMD_BASE + 1;
+pub const BUILTIN_SHOW_IN_FOLDER: u32 = BUILTIN_CMD_BASE + 2;
+pub const BUILTIN_OPEN_WITH: u32 = BUILTIN_CMD_BASE + 3;
+pub const BUILTIN_PROPERTIES: u32 = BUILTIN_CMD_BASE + 4;
+pub const BUILTIN_OPEN_NEW_WINDOW: u32 = BUILTIN_CMD_BASE + 5;
+pub const BUILTIN_PIN_QUICK_ACCESS: u32 = BUILTIN_CMD_BASE + 6;
+pub const BUILTIN_CUT: u32 = BUILTIN_CMD_BASE + 7;
+pub const BUILTIN_COPY: u32 = BUILTIN_CMD_BASE + 8;
+pub const BUILTIN_CREATE_SHORTCUT: u32 = BUILTIN_CMD_BASE + 9;
+pub const BUILTIN_DELETE: u32 = BUILTIN_CMD_BASE + 10;
+pub const BUILTIN_RENAME: u32 = BUILTIN_CMD_BASE + 11;
+pub const BUILTIN_COMPRESS_ZIP: u32 = BUILTIN_CMD_BASE + 12;
+pub const BUILTIN_REFRESH: u32 = BUILTIN_CMD_BASE + 13;
+pub const BUILTIN_NEW_FOLDER: u32 = BUILTIN_CMD_BASE + 14;
+pub const BUILTIN_NEW_TXT: u32 = BUILTIN_CMD_BASE + 15;
+pub const BUILTIN_OPEN_DESKTOP: u32 = BUILTIN_CMD_BASE + 16;
+pub const BUILTIN_OPEN_TERMINAL: u32 = BUILTIN_CMD_BASE + 17;
+pub const BUILTIN_DISPLAY_SETTINGS: u32 = BUILTIN_CMD_BASE + 18;
+pub const BUILTIN_PERSONALIZE: u32 = BUILTIN_CMD_BASE + 19;
+
+pub fn is_builtin_command(command_id: u32) -> bool {
+    command_id >= BUILTIN_CMD_BASE
+}
