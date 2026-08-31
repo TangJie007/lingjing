@@ -192,9 +192,6 @@ pub fn namespace_builtin_menu(path: &str) -> Vec<ShellMenuEntry> {
     vec![
         item(BUILTIN_OPEN, "打开"),
         sep(),
-        item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
-        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
-        sep(),
         item(BUILTIN_PROPERTIES, "属性"),
     ]
 }
@@ -203,9 +200,6 @@ fn recycle_builtin_menu() -> Vec<ShellMenuEntry> {
     vec![
         item(BUILTIN_OPEN, "打开"),
         item(BUILTIN_EMPTY_RECYCLE, "清空回收站"),
-        sep(),
-        item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
-        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
         sep(),
         item(BUILTIN_PROPERTIES, "属性"),
     ]
@@ -217,9 +211,6 @@ fn network_builtin_menu() -> Vec<ShellMenuEntry> {
         sep(),
         item(BUILTIN_MAP_NETWORK_DRIVE, "映射网络驱动器"),
         item(BUILTIN_DISCONNECT_NETWORK_DRIVE, "断开网络驱动器连接"),
-        sep(),
-        item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
-        item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
         sep(),
         item(BUILTIN_PROPERTIES, "属性"),
     ]
@@ -233,8 +224,6 @@ pub fn folder_builtin_menu() -> Vec<ShellMenuEntry> {
         vec![
             item(BUILTIN_OPEN, "打开"),
             item(BUILTIN_OPEN_NEW_WINDOW, "在新窗口中打开"),
-            sep(),
-            item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
             sep(),
             item(BUILTIN_CUT, "剪切"),
             item(BUILTIN_COPY, "复制"),

@@ -25,7 +25,7 @@ use super::host::{pump_for, pump_messages};
 use super::icons::hbitmap_to_data_url;
 use super::ids::is_builtin_command;
 use super::ids::{BUILTIN_DELETE, CMD_FIRST, CMD_LAST};
-use super::pin::{apply_win11_pin_row, is_pin_to_home_verb_or_label, is_pin_to_start_verb_or_label};
+use super::pin::{apply_win11_pin_row, is_start_or_quick_access_menu_item, strip_start_and_quick_access_pins};
 use super::util::{clean_menu_label, invoke_working_directory, menu_flags_for_path, stage, wide};
 use super::verbs::{command_verb, shell_execute_verb};
 
@@ -183,7 +183,7 @@ unsafe fn init_submenu(pcm: &IContextMenu, submenu: HMENU, position: u32) {
 }
 
 unsafe fn enumerate_hmenu(
-    _pcm: &IContextMenu,
+    pcm: &IContextMenu,
     hmenu: HMENU,
     parent_path: &[u32],
     _depth: u32,
@@ -251,6 +251,13 @@ unsafe fn enumerate_hmenu(
             None
         };
 
+        if children.is_none() {
+            let verb = command_verb(pcm, mii.wID).unwrap_or_default();
+            if is_start_or_quick_access_menu_item(&verb, &label) {
+                continue;
+            }
+        }
+
         out.push(ShellMenuEntry {
             id: if children.is_some() { 0 } else { mii.wID },
             label: label.clone(),
@@ -263,7 +270,7 @@ unsafe fn enumerate_hmenu(
             destructive: mii.wID == BUILTIN_DELETE || label.contains("删除"),
         });
     }
-    out
+    strip_start_and_quick_access_pins(out)
 }
 
 unsafe fn initialize_submenu_path(
@@ -308,6 +315,7 @@ fn list_shell_context_menu_inner(
         stage("读取菜单项");
         let items = enumerate_hmenu(&pcm, hmenu, &[], 0);
         let items = apply_win11_pin_row(Some(&pcm), items);
+        let items = strip_start_and_quick_access_pins(items);
         stage("完成");
         let _ = DestroyMenu(hmenu);
         Ok(items)
@@ -415,17 +423,11 @@ pub fn invoke_shell_context_command(
 
         // Prefer reliable ShellExecute for common verbs — InvokeCommand often fails
         // outside Explorer (no IContextMenuSite / wrong HWND / no message pump).
-        // Win11 also denies Start-pin InvokeCommand from non-Explorer processes.
-        let verb = command_verb(&pcm, command_id).unwrap_or_default();
-        let label = command_menu_label(hmenu, command_id);
-        if let Some(p) = path {
-            if is_pin_to_start_verb_or_label(&verb, &label) {
+        if let (Some(p), Some(verb)) = (path, command_verb(&pcm, command_id)) {
+            let label = command_menu_label(hmenu, command_id);
+            if is_start_or_quick_access_menu_item(&verb, &label) {
                 let _ = DestroyMenu(hmenu);
-                return Err("BUILTIN_PIN_START".into());
-            }
-            if is_pin_to_home_verb_or_label(&verb, &label) {
-                let _ = DestroyMenu(hmenu);
-                return Err("BUILTIN_PIN_HOME".into());
+                return Err("已移除该菜单项".into());
             }
             let handled = match verb.as_str() {
                 "open" | "openas" | "runas" | "properties" | "edit" | "print" => {

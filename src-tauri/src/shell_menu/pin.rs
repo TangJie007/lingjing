@@ -44,28 +44,66 @@ pub(crate) fn pin_kind_from_verb_or_label(verb: &str, label: &str) -> Option<&'s
     None
 }
 
-/// Win11 blocks third-party `InvokeCommand` for Start pin (`E_ACCESSDENIED`).
-pub(crate) fn is_pin_to_start_verb_or_label(verb: &str, label: &str) -> bool {
+/// Hide Start / Quick Access pin+unpin items from all Shell-derived menus.
+pub(crate) fn is_start_or_quick_access_menu_item(verb: &str, label: &str) -> bool {
     let v = verb.to_ascii_lowercase();
-    if v.contains("unpin") || label.contains("取消固定") || label.contains("从“开始”取消") {
-        return false;
-    }
     if matches!(
         v.as_str(),
-        "startpin" | "pintostartscreen" | "pintostart"
+        "startpin"
+            | "startunpin"
+            | "pintostartscreen"
+            | "pintostart"
+            | "pintohome"
+            | "unpinfromhome"
     ) || v.contains("startpin")
+        || v.contains("pintohome")
+        || v.contains("pintostart")
     {
         return true;
     }
-    label.contains("固定") && label.contains("开始")
-}
-
-pub(crate) fn is_pin_to_home_verb_or_label(verb: &str, label: &str) -> bool {
-    let v = verb.to_ascii_lowercase();
-    if v == "pintohome" || v.contains("pintohome") {
+    let lower = label.to_ascii_lowercase();
+    if (lower.contains("pin to start") || lower.contains("unpin from start"))
+        || (lower.contains("quick access") && (lower.contains("pin") || lower.contains("unpin")))
+    {
         return true;
     }
-    label.contains("固定") && label.contains("快速访问")
+    if label.contains("快速访问") && (label.contains("固定") || label.contains("取消")) {
+        return true;
+    }
+    if label.contains("固定") && label.contains("开始") {
+        return true;
+    }
+    if label.contains("开始") && (label.contains("取消固定") || label.contains("解除固定")) {
+        return true;
+    }
+    false
+}
+
+pub(crate) fn strip_start_and_quick_access_pins(entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
+    let mut out: Vec<ShellMenuEntry> = Vec::with_capacity(entries.len());
+    for mut entry in entries {
+        if !entry.separator && entry.children.is_none() {
+            if is_start_or_quick_access_menu_item("", &entry.label) {
+                continue;
+            }
+        }
+        if let Some(children) = entry.children.take() {
+            entry.children = Some(strip_start_and_quick_access_pins(children));
+        }
+        if entry.separator {
+            if out.last().is_some_and(|e: &ShellMenuEntry| e.separator) {
+                continue;
+            }
+            if out.is_empty() {
+                continue;
+            }
+        }
+        out.push(entry);
+    }
+    while out.last().is_some_and(|e: &ShellMenuEntry| e.separator) {
+        out.pop();
+    }
+    out
 }
 
 /// Pull Win11 common actions into a pinned top strip; keep the rest below.

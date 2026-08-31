@@ -139,14 +139,6 @@ pub async fn invoke_desktop_shell_context_command(
                     let p = path_for_builtin.ok_or_else(|| "路径为空".to_string())?;
                     create_desktop_shortcut(&p)
                 }
-                Err(e) if e == "BUILTIN_PIN_START" => {
-                    let p = path_for_builtin.ok_or_else(|| "路径为空".to_string())?;
-                    pin_shell_item_to_start(&p)
-                }
-                Err(e) if e == "BUILTIN_PIN_HOME" => {
-                    let p = path_for_builtin.ok_or_else(|| "路径为空".to_string())?;
-                    pin_shell_item_to_quick_access(&p)
-                }
                 Err(e) if e == "BUILTIN_RENAME" => Err("重命名需由前端提供新名称".into()),
                 Err(e) => Err(e),
             }
@@ -172,8 +164,8 @@ fn dispatch_builtin_shell_command(
         BUILTIN_DISCONNECT_NETWORK_DRIVE, BUILTIN_DISPLAY_SETTINGS, BUILTIN_EMPTY_RECYCLE,
         BUILTIN_MAP_NETWORK_DRIVE, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT, BUILTIN_OPEN,
         BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL, BUILTIN_OPEN_WITH,
-        BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PIN_START,
-        BUILTIN_PROPERTIES, BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
+        BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PROPERTIES, BUILTIN_REFRESH, BUILTIN_RENAME,
+        BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
         BUILTIN_OPEN => open_desktop_item(path.to_string()),
@@ -181,8 +173,6 @@ fn dispatch_builtin_shell_command(
         BUILTIN_OPEN_WITH => open_desktop_item_with(path.to_string()),
         BUILTIN_PROPERTIES => open_desktop_item_properties(path.to_string()),
         BUILTIN_OPEN_NEW_WINDOW => open_folder_in_new_window(path),
-        BUILTIN_PIN_QUICK_ACCESS => pin_shell_item_to_quick_access(path),
-        BUILTIN_PIN_START => pin_shell_item_to_start(path),
         BUILTIN_CUT => clipboard_set_files(&[path], true),
         BUILTIN_COPY => clipboard_set_files(&[path], false),
         BUILTIN_CREATE_SHORTCUT => create_desktop_shortcut(path),
@@ -305,240 +295,6 @@ fn open_folder_in_new_window(path: &str) -> Result<(), String> {
         .arg(format!("/n,/e,{path}"))
         .spawn()
         .map_err(|e| format!("在新窗口中打开失败: {e}"))?;
-    Ok(())
-}
-
-#[cfg(windows)]
-fn shell_namespace_target(path: &str) -> String {
-    let trimmed = path.trim();
-    if let Some(clsid) = crate::desktop_organize::namespace_clsid_for_path(trimmed) {
-        return format!("shell:{clsid}");
-    }
-    if trimmed.starts_with("::") {
-        format!("shell:{trimmed}")
-    } else {
-        trimmed.to_string()
-    }
-}
-
-#[cfg(windows)]
-fn invoke_shell_namespace_verb(path: &str, verb: &str, err_label: &str) -> Result<(), String> {
-    let target = shell_namespace_target(path);
-    let script = format!(
-        "$s=(New-Object -ComObject Shell.Application).NameSpace([string]'{}'); if($null -eq $s){{exit 1}}; try {{ $s.Self.InvokeVerb([string]'{}') }} catch {{ exit 2 }}",
-        target.replace('\'', "''"),
-        verb.replace('\'', "''")
-    );
-    let status = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .status()
-        .map_err(|e| format!("{err_label}: {e}"))?;
-    if !status.success() {
-        return Err(err_label.into());
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
-fn invoke_shell_item_verb(path: &str, verb: &str, err_label: &str) -> Result<(), String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("路径为空".into());
-    }
-
-    // Namespace parsing names: NameSpace(shell::{CLSID}).Self
-    if trimmed.starts_with("::") || trimmed.to_ascii_lowercase().starts_with("shell:") {
-        return invoke_shell_namespace_verb(trimmed, verb, err_label);
-    }
-    if let Some(clsid) = crate::desktop_organize::namespace_clsid_for_path(trimmed) {
-        return invoke_shell_namespace_verb(&format!("shell:{clsid}"), verb, err_label);
-    }
-
-    // Files/folders: parent folder + ParseName (NameSpace(file) is invalid).
-    let pb = Path::new(trimmed);
-    let (folder, name) = if pb.is_dir() {
-        (trimmed.to_string(), String::new())
-    } else {
-        let parent = pb
-            .parent()
-            .ok_or_else(|| "无法解析父目录".to_string())?
-            .to_string_lossy()
-            .into_owned();
-        let name = pb
-            .file_name()
-            .ok_or_else(|| "无法解析文件名".to_string())?
-            .to_string_lossy()
-            .into_owned();
-        (parent, name)
-    };
-
-    let script = if name.is_empty() {
-        format!(
-            "$sh=New-Object -ComObject Shell.Application; $f=$sh.NameSpace([string]'{folder}'); if($null -eq $f){{exit 1}}; try {{ $f.Self.InvokeVerb([string]'{verb}') }} catch {{ exit 2 }}; exit 0",
-            folder = folder.replace('\'', "''"),
-            verb = verb.replace('\'', "''"),
-        )
-    } else {
-        format!(
-            "$sh=New-Object -ComObject Shell.Application; $f=$sh.NameSpace([string]'{folder}'); if($null -eq $f){{exit 1}}; $i=$f.ParseName([string]'{name}'); if($null -eq $i){{exit 1}}; try {{ $i.InvokeVerb([string]'{verb}') }} catch {{ exit 2 }}; exit 0",
-            folder = folder.replace('\'', "''"),
-            name = name.replace('\'', "''"),
-            verb = verb.replace('\'', "''"),
-        )
-    };
-    let status = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .status()
-        .map_err(|e| format!("{err_label}: {e}"))?;
-    if !status.success() {
-        return Err(err_label.into());
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
-fn pin_shell_item_to_quick_access(path: &str) -> Result<(), String> {
-    invoke_shell_item_verb(path, "pintohome", "固定到快速访问失败")
-}
-
-#[cfg(windows)]
-fn pin_shell_item_to_start(path: &str) -> Result<(), String> {
-    // Prefer localized verb DoIt — InvokeVerb("startpin") often returns success
-    // without pinning. Win11 usually denies DoIt with E_ACCESSDENIED.
-    if try_pin_to_start_via_verbs(path).is_ok() {
-        return Ok(());
-    }
-    match add_to_start_apps_list(path) {
-        Ok(()) => Err(
-            "Windows 禁止第三方程序直接固定到「开始」（桌面整理替代资源管理器菜单后会触发）。已放入开始菜单「所有应用」，请在开始菜单中右键该项目再选择固定。"
-                .into(),
-        ),
-        Err(_) => Err(
-            "Windows 禁止第三方程序直接固定到「开始」。请打开开始菜单搜索该应用后右键固定。"
-                .into(),
-        ),
-    }
-}
-
-#[cfg(windows)]
-fn try_pin_to_start_via_verbs(path: &str) -> Result<(), String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("路径为空".into());
-    }
-    if trimmed.starts_with("::")
-        || trimmed.to_ascii_lowercase().starts_with("shell:")
-        || crate::desktop_organize::namespace_clsid_for_path(trimmed).is_some()
-    {
-        return invoke_shell_item_verb(path, "startpin", "固定到开始失败")
-            .or_else(|_| invoke_shell_item_verb(path, "pintostartscreen", "固定到开始失败"));
-    }
-    let pb = Path::new(trimmed);
-    let folder = pb
-        .parent()
-        .ok_or_else(|| "无法解析父目录".to_string())?
-        .to_string_lossy()
-        .into_owned();
-    let name = pb
-        .file_name()
-        .ok_or_else(|| "无法解析文件名".to_string())?
-        .to_string_lossy()
-        .into_owned();
-    let script = format!(
-        "$sh=New-Object -ComObject Shell.Application; $f=$sh.NameSpace([string]'{folder}'); if($null -eq $f){{exit 1}}; $i=$f.ParseName([string]'{name}'); if($null -eq $i){{exit 1}}; $hit=$false; foreach($v in @($i.Verbs())){{ $n=(($v.Name)+'') -replace '&',''; if($n -match '固定' -and $n -match '开始' -and $n -notmatch '取消'){{ $v.DoIt(); $hit=$true; break }} }}; if(-not $hit){{exit 2}}; exit 0",
-        folder = folder.replace('\'', "''"),
-        name = name.replace('\'', "''"),
-    );
-    let status = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .status()
-        .map_err(|e| format!("固定到开始失败: {e}"))?;
-    if !status.success() {
-        return Err("固定到开始失败".into());
-    }
-    Ok(())
-}
-
-/// Best-effort: put a shortcut into Start Menu\\Programs (All apps list, not a Start pin tile).
-#[cfg(windows)]
-fn add_to_start_apps_list(path: &str) -> Result<(), String> {
-    let trimmed = path.trim();
-    let programs =
-        known_folders::get_known_folder_path(known_folders::KnownFolder::Programs)
-            .ok_or_else(|| "无法定位开始菜单程序目录".to_string())?;
-    fs::create_dir_all(&programs).map_err(|e| format!("创建开始菜单目录失败: {e}"))?;
-
-    if let Some(clsid) = crate::desktop_organize::namespace_clsid_for_path(trimmed) {
-        let name = match crate::desktop_organize::builtin_kind_from_path(trimmed) {
-            Some("computer") => "此电脑",
-            Some("recycle") => "回收站",
-            Some("network") => "网络",
-            _ => "系统项目",
-        };
-        let dest = programs.join(format!("{name}.lnk"));
-        let guid = clsid.trim_start_matches(':');
-        let script = format!(
-            "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut([string]'{dest}'); $s.TargetPath='explorer.exe'; $s.Arguments=[string]'shell::{guid}'; $s.Description=[string]'{name}'; $s.Save()",
-            dest = dest.to_string_lossy().replace('\'', "''"),
-            guid = guid.replace('\'', "''"),
-            name = name.replace('\'', "''"),
-        );
-        let status = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .status()
-            .map_err(|e| format!("创建开始菜单快捷方式失败: {e}"))?;
-        if !status.success() {
-            return Err("创建开始菜单快捷方式失败".into());
-        }
-        return Ok(());
-    }
-
-    let src = Path::new(trimmed);
-    if !src.exists() {
-        return Err("目标不存在".into());
-    }
-    let file_name = src
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| "无法解析文件名".to_string())?;
-    let dest = if src
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
-    {
-        programs.join(file_name)
-    } else {
-        let stem = src
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(file_name);
-        programs.join(format!("{stem}.lnk"))
-    };
-    if src
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
-    {
-        fs::copy(src, &dest).map_err(|e| format!("复制快捷方式失败: {e}"))?;
-        return Ok(());
-    }
-    let script = format!(
-        "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut([string]'{dest}'); $s.TargetPath=[string]'{src}'; $s.WorkingDirectory=[string]'{dir}'; $s.Save()",
-        dest = dest.to_string_lossy().replace('\'', "''"),
-        src = trimmed.replace('\'', "''"),
-        dir = src
-            .parent()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default()
-            .replace('\'', "''"),
-    );
-    let status = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .status()
-        .map_err(|e| format!("创建开始菜单快捷方式失败: {e}"))?;
-    if !status.success() {
-        return Err("创建开始菜单快捷方式失败".into());
-    }
     Ok(())
 }
 
