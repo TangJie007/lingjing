@@ -841,24 +841,11 @@ use std::ffi::OsStr;
     ];
 
     pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
-        let links = match super::builtin_links::ensure_builtin_namespace_links() {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("[desktop-organize] builtin links unavailable: {e}");
-                return Vec::new();
-            }
-        };
-
-        let mut items = Vec::with_capacity(links.len());
-        for (lnk_path, spec) in links {
-            let stock = BUILTIN_DESKTOP_ICONS
-                .iter()
-                .find(|(clsid, _, _)| *clsid == spec.clsid)
-                .and_then(|(_, _, s)| *s);
-            let path_str = lnk_path.to_string_lossy().to_string();
-            let meta = shell_name_and_icon(&lnk_path);
-            let icon = extract_builtin_icon(spec.clsid, stock).or(meta.icon);
-            // Prefer Shell display name when useful; otherwise stable Chinese fallback.
+        let mut items = Vec::with_capacity(BUILTIN_DESKTOP_ICONS.len());
+        for (clsid, fallback_name, stock) in BUILTIN_DESKTOP_ICONS {
+            let path_obj = std::path::PathBuf::from(*clsid);
+            let meta = shell_name_and_icon(&path_obj);
+            let icon = extract_builtin_icon(clsid, *stock).or(meta.icon);
             let name = meta
                 .display_name
                 .map(|s| s.trim().to_string())
@@ -868,11 +855,11 @@ use std::ffi::OsStr;
                         && !s.eq_ignore_ascii_case("recycle")
                         && !s.eq_ignore_ascii_case("network")
                 })
-                .unwrap_or_else(|| spec.fallback_name.to_string());
+                .unwrap_or_else(|| (*fallback_name).to_string());
 
             items.push(super::types::DesktopItem {
                 name,
-                path: path_str,
+                path: (*clsid).to_string(),
                 is_dir: false,
                 kind: "app".into(),
                 builtin: true,

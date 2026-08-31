@@ -95,11 +95,8 @@ pub(crate) fn run_shell_menu_host(
     path: Option<&str>,
     menu_path: &[u32],
 ) -> Result<Vec<ShellMenuEntry>, String> {
-    // 此电脑 / 回收站 / 网络（managed `.lnk` 或遗留 `::{CLSID}`）：
-    // 独立 one-shot，用完即毁，避免拖死普通文件用的常驻 host。
-    if path.is_some_and(|p| {
-        p.trim_start().starts_with("::") || crate::desktop_organize::is_managed_builtin_link(p)
-    }) {
+    // 此电脑 / 回收站 / 网络（`::{CLSID}`）：独立 one-shot，避免拖死常驻 host。
+    if path.is_some_and(|p| p.trim_start().starts_with("::")) {
         return run_one_shot_shell_menu_host(mode, path, menu_path);
     }
     // Root + submenu share the persistent host so blank-desktop cascade

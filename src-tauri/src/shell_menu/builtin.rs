@@ -138,14 +138,14 @@ pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
     )
 }
 
-/// Shell namespace desktop icons (`::{CLSID}`) or managed builtin `.lnk` shortcuts.
+/// Shell namespace desktop icons (`::{CLSID}`) or legacy managed builtin `.lnk`.
 pub fn is_shell_namespace_path(path: &str) -> bool {
     if path.trim_start().starts_with("::") {
         return true;
     }
     #[cfg(windows)]
     {
-        return crate::desktop_organize::is_managed_builtin_link(path);
+        crate::desktop_organize::is_shell_namespace_item(path)
     }
     #[cfg(not(windows))]
     {
@@ -180,7 +180,7 @@ pub fn is_network_places_path(path: &str) -> bool {
     }
 }
 
-/// Built-in menus for 回收站 / 网络 (always); 此电脑 uses this only as Shell fallback.
+/// Built-in menus for 此电脑 / 回收站 / 网络 (always — no Shell QueryContextMenu).
 pub fn namespace_builtin_menu(path: &str) -> Vec<ShellMenuEntry> {
     if is_recycle_bin_path(path) {
         return recycle_builtin_menu();

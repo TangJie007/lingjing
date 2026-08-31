@@ -406,8 +406,8 @@ export function useShellContextMenu() {
   }
 
   async function renameAt(p: string) {
-    // Shell namespace icons / managed builtin shortcuts cannot be renamed.
-    if (p.trim().startsWith("::") || /[\\/]builtin-links[\\/]/i.test(p)) {
+    // System namespace icons (`::{CLSID}`) cannot be renamed.
+    if (p.trim().startsWith("::")) {
       showFenceToast("系统图标不支持重命名");
       return;
     }
@@ -429,6 +429,7 @@ export function useShellContextMenu() {
         /* watcher will refresh */
       }
       invalidateMenuCache(p);
+      invalidateMenuCache(newPath || joinSibling(p, next));
       showFenceToast("已重命名");
     } catch (e) {
       showFenceToast(friendlyError(e));

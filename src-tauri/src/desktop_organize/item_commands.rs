@@ -11,6 +11,24 @@ use super::util::run_on_ui;
 #[cfg(windows)]
 use super::win;
 
+fn paths_same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => {
+            let norm = |p: &Path| {
+                p.to_string_lossy()
+                    .replace('/', "\\")
+                    .trim_end_matches('\\')
+                    .to_ascii_lowercase()
+            };
+            norm(a) == norm(b)
+        }
+    }
+}
+
 #[tauri::command]
 pub fn set_desktop_organize(app: AppHandle, enabled: bool) -> Result<(), String> {
     tracing::info!("[desktop-organize] set_desktop_organize enabled={enabled}");
@@ -31,7 +49,7 @@ pub fn list_desktop_items(app: AppHandle) -> Result<Vec<DesktopItem>, String> {
     Ok(items)
 }
 
-/// Rewrite fence layout entries that still point at legacy `::{CLSID}` paths.
+/// Rewrite fence layout entries that still point at legacy managed `.lnk` paths.
 #[cfg(windows)]
 fn migrate_builtin_clsid_layout(app: &AppHandle, items: &[DesktopItem]) {
     let Ok(mut layout) = super::layout::load_layout(app) else {
@@ -42,19 +60,34 @@ fn migrate_builtin_clsid_layout(app: &AppHandle, items: &[DesktopItem]) {
         let Some(kind) = super::builtin_kind_from_path(&item.path) else {
             continue;
         };
-        let legacy = match kind {
+        let clsid = match kind {
             "computer" => super::CLSID_COMPUTER,
             "recycle" => super::CLSID_RECYCLE,
             "network" => super::CLSID_NETWORK,
             _ => continue,
         };
-        let had_legacy = layout.app_order.iter().any(|p| path_has_clsid(p, legacy))
-            || layout.categories.keys().any(|p| path_has_clsid(p, legacy));
-        if !had_legacy {
-            continue;
+        // Collect legacy keys that should map to this CLSID.
+        let legacy_keys: Vec<String> = layout
+            .app_order
+            .iter()
+            .cloned()
+            .chain(layout.categories.keys().cloned())
+            .filter(|p| {
+                if p == &item.path || p == clsid {
+                    return false;
+                }
+                match super::builtin_kind_from_path(p) {
+                    Some(k) if k == kind => true,
+                    _ => path_has_clsid(p, clsid),
+                }
+            })
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        for old in legacy_keys {
+            super::layout::migrate_path(&mut layout, &old, &item.path);
+            changed = true;
         }
-        super::layout::migrate_path(&mut layout, legacy, &item.path);
-        changed = true;
     }
     if changed {
         let _ = super::layout::save_layout(app, &layout);
@@ -88,24 +121,6 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
             };
             std::process::Command::new("explorer.exe")
                 .arg(&target)
-                .spawn()
-                .map_err(|e| format!("打开系统图标失败: {e}"))?;
-            return Ok(());
-        }
-        if trimmed.starts_with("::") {
-            let target = if trimmed
-                .to_ascii_uppercase()
-                .contains("F02C1A0D-BE21-4350-88B0-7367FC96EF3C")
-                || trimmed
-                    .to_ascii_uppercase()
-                    .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
-            {
-                "shell:NetworkPlacesFolder"
-            } else {
-                trimmed
-            };
-            std::process::Command::new("explorer.exe")
-                .arg(target)
                 .spawn()
                 .map_err(|e| format!("打开系统图标失败: {e}"))?;
             return Ok(());
@@ -189,7 +204,7 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
         || {
             #[cfg(windows)]
             {
-                super::is_managed_builtin_link(trimmed)
+                super::namespace_clsid_for_path(trimmed).is_some()
             }
             #[cfg(not(windows))]
             {
@@ -225,7 +240,7 @@ pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Re
         return Err("系统图标不支持重命名".into());
     }
     #[cfg(windows)]
-    if super::is_managed_builtin_link(trimmed) {
+    if super::is_shell_namespace_item(trimmed) {
         return Err("系统图标不支持重命名".into());
     }
     if name.contains(['\\', '/', ':', '*', '?', '"', '<', '>', '|']) {
@@ -235,8 +250,21 @@ pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Re
     if !old.exists() {
         return Err("文件不存在".into());
     }
+    let final_name = {
+        let candidate = Path::new(name);
+        match (
+            old.extension().and_then(|e| e.to_str()),
+            candidate.extension().and_then(|e| e.to_str()),
+        ) {
+            (Some(ext), None) => format!("{name}.{ext}"),
+            _ => name.to_string(),
+        }
+    };
     let parent = old.parent().ok_or_else(|| "无法解析父目录".to_string())?;
-    let new_path = parent.join(name);
+    let new_path = parent.join(&final_name);
+    if paths_same_file(old, &new_path) {
+        return Ok(trimmed.to_string());
+    }
     if new_path.exists() {
         return Err("目标名称已存在".into());
     }

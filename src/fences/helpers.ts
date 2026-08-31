@@ -25,11 +25,9 @@ export {
 };
 
 const BUILTIN_ORDER = [
-  "此电脑.lnk",
-  "回收站.lnk",
-  "网络.lnk",
   "20D04FE0-3AEA-1069-A2D8-08002B30309D",
   "645FF040-5081-101B-9F08-00AA002F954E",
+  "F02C1A0D-BE21-4350-88B0-7367FC96EF3C",
   "F02C1A0D-B21F-4110-8426-0A0C959C3602",
 ];
 
@@ -120,6 +118,7 @@ export function partitionApps(list: DesktopItem[]): DesktopItem[] {
     if (item.builtin) builtins.push(item);
     else regular.push(item);
   }
+  // Keep backend order (computer / recycle / network).
   builtins.sort((a, b) => builtinRank(a.path) - builtinRank(b.path));
   return [...builtins, ...loadOrder(APP_ORDER_KEY, regular)];
 }

@@ -33,11 +33,14 @@ pub async fn list_desktop_shell_context_menu(
     #[cfg(windows)]
     {
         // Folders: built-in (QueryContextMenu often hangs on folder extensions).
-        // 此电脑 / 回收站 / 网络: managed IDList `.lnk` → Shell menu (one-shot host);
-        // fall back to custom menu if Shell hangs / fails.
+        // 此电脑 / 回收站 / 网络: custom namespace menu (no Shell host — CLSID
+        // QueryContextMenu hangs; shortcut menus were unreliable).
         // Blank desktop / normal files: persistent host.
         if let Some(ref p) = path_opt {
-            if Path::new(p).is_dir() && !crate::shell_menu::is_shell_namespace_path(p) {
+            if crate::shell_menu::is_shell_namespace_path(p) {
+                return Ok(crate::shell_menu::namespace_builtin_menu(p));
+            }
+            if Path::new(p).is_dir() {
                 return Ok(crate::shell_menu::folder_builtin_menu());
             }
         }
@@ -47,17 +50,7 @@ pub async fn list_desktop_shell_context_menu(
                     crate::shell_menu::ensure_blank_refresh_pin(entries),
                 )),
                 Ok(entries) => Ok(entries),
-                Err(e) => {
-                    if let Some(p) = path_opt.as_deref() {
-                        if crate::shell_menu::is_shell_namespace_path(p) {
-                            tracing::info!(
-                                "[desktop-organize] namespace link menu host failed, using builtin: {e}"
-                            );
-                            return Ok(crate::shell_menu::namespace_builtin_menu(p));
-                        }
-                    }
-                    Err(e)
-                }
+                Err(e) => Err(e),
             }
         })
         .await
@@ -483,7 +476,21 @@ fn add_to_start_apps_list(path: &str) -> Result<(), String> {
             _ => "系统项目",
         };
         let dest = programs.join(format!("{name}.lnk"));
-        return create_idlist_shortcut_in(&dest, clsid, name);
+        let guid = clsid.trim_start_matches(':');
+        let script = format!(
+            "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut([string]'{dest}'); $s.TargetPath='explorer.exe'; $s.Arguments=[string]'shell::{guid}'; $s.Description=[string]'{name}'; $s.Save()",
+            dest = dest.to_string_lossy().replace('\'', "''"),
+            guid = guid.replace('\'', "''"),
+            name = name.replace('\'', "''"),
+        );
+        let status = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .status()
+            .map_err(|e| format!("创建开始菜单快捷方式失败: {e}"))?;
+        if !status.success() {
+            return Err("创建开始菜单快捷方式失败".into());
+        }
+        return Ok(());
     }
 
     let src = Path::new(trimmed);
@@ -533,12 +540,6 @@ fn add_to_start_apps_list(path: &str) -> Result<(), String> {
         return Err("创建开始菜单快捷方式失败".into());
     }
     Ok(())
-}
-
-#[cfg(windows)]
-fn create_idlist_shortcut_in(lnk: &Path, clsid: &str, name: &str) -> Result<(), String> {
-    // Reuse the same IDList creation path as managed builtins.
-    super::builtin_links::create_namespace_shortcut_for(lnk, clsid, name)
 }
 
 #[cfg(windows)]

@@ -55,7 +55,11 @@ function finish(name: string | null) {
 export function confirmRenameDialog() {
   const trimmed = value.value.trim();
   const base = basename(currentPath);
-  if (!trimmed || trimmed === base) {
+  const stem = (() => {
+    const dot = base.lastIndexOf(".");
+    return dot > 0 ? base.slice(0, dot) : base;
+  })();
+  if (!trimmed || trimmed === base || trimmed === stem) {
     finish(null);
     return;
   }
