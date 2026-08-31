@@ -669,3 +669,114 @@ body,
   background: #34c759;
   flex-shrink: 0;
 }
+
+/* —— Dynamic Island (desktop organize control) —— */
+.dynamic-island {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: auto;
+}
+
+.island-pill,
+.island-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(22, 24, 28, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  color: #f2f4f8;
+  cursor: pointer;
+}
+
+.island-pill {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font: inherit;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.island-pill:hover {
+  background: rgba(30, 33, 38, 0.9);
+  transform: scale(1.02);
+}
+
+.island-brand {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.island-sep {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.island-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(242, 244, 248, 0.72);
+  white-space: nowrap;
+}
+
+.island-panel {
+  height: 40px;
+  padding: 4px;
+  border-radius: 20px;
+  gap: 4px;
+  animation: island-expand 180ms ease;
+}
+
+@keyframes island-expand {
+  from {
+    opacity: 0.6;
+    transform: scaleX(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.island-action {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.island-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.island-action.danger {
+  color: #ff8e8e;
+}
+
+.island-action.danger:hover {
+  background: rgba(255, 80, 80, 0.16);
+}
+
+#stage.fences-collapsed #apps,
+#stage.fences-collapsed #files {
+  display: none !important;
+}
+
+#stage.icon-dragging .dynamic-island {
+  pointer-events: none;
+}

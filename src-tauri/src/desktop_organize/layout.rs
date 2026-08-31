@@ -22,6 +22,9 @@ pub struct FenceLayout {
     pub archive_order: Vec<String>,
     #[serde(default)]
     pub categories: HashMap<String, String>,
+    /// Hide fence grids; Dynamic Island control remains visible.
+    #[serde(default)]
+    pub fences_collapsed: bool,
 }
 
 fn layout_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {

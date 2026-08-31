@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import type { SortableEvent } from "sortablejs";
 import {
   ContextMenuContent,
@@ -13,6 +13,7 @@ import FenceToast from "./components/FenceToast.vue";
 import RenameDialog from "./components/RenameDialog.vue";
 import ShellMenuEntries from "./components/ShellMenuEntries.vue";
 import ShellMenuLoading from "./components/ShellMenuLoading.vue";
+import DynamicIsland from "./components/DynamicIsland.vue";
 import {
   APP_ORDER_KEY,
   ARCHIVE_ORDER_KEY,
@@ -27,7 +28,11 @@ import {
   persistGroupOrder,
   saveCategoryOverride,
 } from "./helpers";
-import { initFenceLayout } from "./fenceLayout";
+import {
+  initFenceLayout,
+  loadFencesCollapsed,
+  saveFencesCollapsed,
+} from "./fenceLayout";
 import { forgetIcon, mergeGroupItems, pruneIconCache } from "./fenceItems";
 import { friendlyError, showFenceToast } from "./fenceUi";
 import type { DesktopItem, FenceGroupKey, FenceGroupState } from "./types";
@@ -112,6 +117,36 @@ const dragSourcePath = ref("");
 const dirtyGroups = new Set<FenceGroupKey>();
 let lastDragPointer = { x: 0, y: 0 };
 let folderDropEl: HTMLElement | null = null;
+const fencesCollapsed = ref(false);
+const fenceItemCount = computed(() =>
+  (Object.keys(groups) as FenceGroupKey[]).reduce(
+    (n, k) => n + groups[k].items.filter((i) => !i.builtin).length,
+    0,
+  ),
+);
+
+function toggleFencesCollapsed() {
+  fencesCollapsed.value = !fencesCollapsed.value;
+  saveFencesCollapsed(fencesCollapsed.value);
+}
+
+async function openMainSettings() {
+  if (!window.__TAURI__) return;
+  try {
+    await window.__TAURI__.core.invoke("show_main_settings");
+  } catch (e) {
+    showFenceToast(friendlyError(e));
+  }
+}
+
+async function disableDesktopOrganize() {
+  if (!window.__TAURI__) return;
+  try {
+    await window.__TAURI__.core.invoke("set_desktop_organize", { enabled: false });
+  } catch (e) {
+    showFenceToast(friendlyError(e));
+  }
+}
 
 const {
   entries: shellEntries,
@@ -381,6 +416,7 @@ function onStageContextMenu(e: MouseEvent) {
 onMounted(async () => {
   window.__fenceApply = applyFenceItems;
   await initFenceLayout();
+  fencesCollapsed.value = loadFencesCollapsed();
   await externalDrop.start();
   if (!window.__TAURI__) return;
   try {
@@ -416,9 +452,21 @@ onUnmounted(() => {
       <div
         id="stage"
         class="stage"
-        :class="{ 'icon-dragging': dragging, 'file-drop-hover': fileDropHover }"
+        :class="{
+          'icon-dragging': dragging,
+          'file-drop-hover': fileDropHover,
+          'fences-collapsed': fencesCollapsed,
+        }"
         @contextmenu.capture="onStageContextMenu"
       >
+        <DynamicIsland
+          :fences-collapsed="fencesCollapsed"
+          :item-count="fenceItemCount"
+          @toggle-fences="toggleFencesCollapsed"
+          @open-settings="openMainSettings"
+          @disable-organize="disableDesktopOrganize"
+        />
+
         <FenceGroup
           group-key="app"
           v-model:items="groups.app.items"

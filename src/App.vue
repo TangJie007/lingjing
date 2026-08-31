@@ -452,6 +452,7 @@ function openDetail() {
 
 let unlisten: (() => void) | undefined;
 let unlistenPause: (() => void) | undefined;
+let unlistenNavigateSettings: (() => void) | undefined;
 let lastEngineErrorToast = "";
 
 function isBenignEngineError(msg: string) {
@@ -549,6 +550,15 @@ onMounted(async () => {
   });
   unlistenPause = await onPauseRecommend(applyPauseRecommend);
 
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    unlistenNavigateSettings = await listen("navigate-settings", () => {
+      void router.push({ name: "settings" });
+    });
+  } catch (e) {
+    console.warn("listen navigate-settings failed", e);
+  }
+
   // Optional: open hidden on launch
   try {
     const args = (await getCurrentWindow().listen("tauri://launched", () => {})) as unknown;
@@ -561,6 +571,7 @@ onMounted(async () => {
 onUnmounted(() => {
   unlisten?.();
   unlistenPause?.();
+  unlistenNavigateSettings?.();
 });
 
 function onPlayWrapped() {

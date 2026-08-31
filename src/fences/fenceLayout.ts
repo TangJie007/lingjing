@@ -16,6 +16,8 @@ export interface FenceLayout {
   mediaOrder: string[];
   archiveOrder: string[];
   categories: Record<string, string>;
+  /** Hide apps + file fences; Dynamic Island stays visible. */
+  fencesCollapsed?: boolean;
 }
 
 const ORDER_FIELD: Record<string, keyof FenceLayout> = {
@@ -46,6 +48,7 @@ function emptyLayout(): FenceLayout {
     mediaOrder: [],
     archiveOrder: [],
     categories: {},
+    fencesCollapsed: false,
   };
 }
 
@@ -155,6 +158,16 @@ export function saveFenceCategory(path: string, category: string) {
   if (!cache) return;
   cache.categories[path] = category;
   scheduleFenceLayoutSave();
+}
+
+export function saveFencesCollapsed(collapsed: boolean) {
+  if (!cache) cache = emptyLayout();
+  cache.fencesCollapsed = collapsed;
+  scheduleFenceLayoutSave();
+}
+
+export function loadFencesCollapsed(): boolean {
+  return !!getFenceLayout().fencesCollapsed;
 }
 
 /** Keep in-memory order after rename so refresh doesn't treat the item as new. */

@@ -6,6 +6,7 @@ commands.allow = [
   "start_drag",
   "minimize_main",
   "hide_main",
+  "show_main_settings",
   "set_wallpaper",
   "engine_play",
   "engine_pause",

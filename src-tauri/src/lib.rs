@@ -399,6 +399,7 @@ pub fn run() {
             start_drag,
             minimize_main,
             hide_main,
+            show_main_settings,
             wallpaper::commands::set_wallpaper,
             wallpaper::commands::engine_play,
             wallpaper::commands::engine_pause,
@@ -506,4 +507,27 @@ fn hide_main(app: AppHandle) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or_else(|| "主窗口不存在".to_string())?;
     win.hide().map_err(|e| e.to_string())
+}
+
+/// Show main window and ask it to open the Settings page (from Dynamic Island).
+#[tauri::command]
+fn show_main_settings(app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_RESTORE};
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe {
+                let _ = ShowWindow(HWND(hwnd.0 as *mut _), SW_RESTORE);
+            }
+        }
+    }
+    let _ = win.unminimize();
+    win.show().map_err(|e| e.to_string())?;
+    let _ = win.set_focus();
+    let _ = app.emit("navigate-settings", ());
+    Ok(())
 }
