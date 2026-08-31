@@ -206,18 +206,10 @@ function pathFromEvent(e: Event): string {
 
 /**
  * Icons → item Shell menu.
- * Stage / #apps blank → desktop blank menu.
- * Inside a .fence with no icon → suppress (no menu).
+ * Stage / #apps / fence blank → desktop blank menu (supports Paste).
  */
 function onStageContextMenu(e: MouseEvent) {
-  const target = e.target as HTMLElement | null;
   const path = pathFromEvent(e);
-  const isBlankFenceArea = !!target?.closest?.(".fence") && !path;
-  if (isBlankFenceArea) {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    return;
-  }
   // Do not preventDefault — ContextMenuTrigger needs the event to open.
   void prepareShellMenu(path);
 }

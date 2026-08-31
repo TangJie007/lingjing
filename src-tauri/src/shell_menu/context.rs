@@ -310,7 +310,13 @@ pub fn list_shell_context_menu(
         let _ = tx.send(result);
     });
     match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
-        Ok(Ok(items)) if !items.is_empty() => Ok(items),
+        Ok(Ok(items)) if !items.is_empty() => {
+            if path.is_none() {
+                Ok(super::builtin::ensure_paste_entry(items))
+            } else {
+                Ok(items)
+            }
+        }
         Ok(Ok(_)) | Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Timeout) => {
             stage("QueryContextMenu 超时，使用内置菜单");
             if let Some(p) = path {

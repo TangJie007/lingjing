@@ -40,7 +40,13 @@ pub async fn list_desktop_shell_context_menu(
             }
         }
         return tauri::async_runtime::spawn_blocking(move || {
-            run_shell_menu_host("root", path_opt.as_deref(), &[])
+            run_shell_menu_host("root", path_opt.as_deref(), &[]).map(|entries| {
+                if path_opt.is_none() {
+                    crate::shell_menu::ensure_paste_entry(entries)
+                } else {
+                    entries
+                }
+            })
         })
         .await
         .map_err(|e| format!("加载右键菜单任务失败: {e}"))?;
@@ -152,8 +158,8 @@ fn dispatch_builtin_shell_command(
         BUILTIN_COMPRESS_ZIP, BUILTIN_COPY, BUILTIN_CREATE_SHORTCUT, BUILTIN_CUT, BUILTIN_DELETE,
         BUILTIN_DISPLAY_SETTINGS, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT, BUILTIN_OPEN,
         BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL, BUILTIN_OPEN_WITH,
-        BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PROPERTIES, BUILTIN_REFRESH,
-        BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
+        BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PROPERTIES,
+        BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
         BUILTIN_OPEN => open_desktop_item(path.to_string()),
@@ -175,6 +181,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_OPEN_TERMINAL => open_terminal_on_desktop(),
         BUILTIN_DISPLAY_SETTINGS => open_uri("ms-settings:display"),
         BUILTIN_PERSONALIZE => open_uri("ms-settings:personalization"),
+        BUILTIN_PASTE => clipboard_paste_to_desktop(app),
         _ => Err("未知内置命令".into()),
     }
 }
@@ -438,6 +445,126 @@ fn clipboard_set_files(paths: &[&str], cut: bool) -> Result<(), String> {
             }
         }
         let _ = CloseClipboard();
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn clipboard_paste_to_desktop(app: &AppHandle) -> Result<(), String> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows::core::w;
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        RegisterClipboardFormatW,
+    };
+    use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    use windows::Win32::System::Ole::CF_HDROP;
+    use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
+
+    let desktop = primary_desktop_dir()?;
+
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            return Err("无法打开剪贴板".into());
+        }
+        if IsClipboardFormatAvailable(u32::from(CF_HDROP.0)).is_err() {
+            let _ = CloseClipboard();
+            return Err("剪贴板中没有可粘贴的文件".into());
+        }
+
+        let mut cut = false;
+        let fmt = RegisterClipboardFormatW(w!("Preferred DropEffect"));
+        if fmt != 0 {
+            if let Ok(heffect) = GetClipboardData(fmt) {
+                let ep = GlobalLock(windows::Win32::Foundation::HGLOBAL(heffect.0 as _)) as *const u32;
+                if !ep.is_null() {
+                    cut = *ep == 2;
+                    let _ = GlobalUnlock(windows::Win32::Foundation::HGLOBAL(heffect.0 as _));
+                }
+            }
+        }
+
+        let hdrop_handle = GetClipboardData(u32::from(CF_HDROP.0))
+            .map_err(|_| "读取剪贴板文件失败".to_string())?;
+        let hdrop = HDROP(hdrop_handle.0);
+        let count = DragQueryFileW(hdrop, u32::MAX, None);
+        if count == 0 {
+            let _ = CloseClipboard();
+            return Err("剪贴板中没有可粘贴的文件".into());
+        }
+
+        let mut sources: Vec<PathBuf> = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let mut buf = vec![0u16; 520];
+            let n = DragQueryFileW(hdrop, i, Some(&mut buf));
+            if n == 0 {
+                continue;
+            }
+            let path = OsString::from_wide(&buf[..n as usize]);
+            let pb = PathBuf::from(path);
+            if pb.as_os_str().is_empty() {
+                continue;
+            }
+            sources.push(pb);
+        }
+        let _ = CloseClipboard();
+
+        if sources.is_empty() {
+            return Err("剪贴板中没有可粘贴的文件".into());
+        }
+
+        for src in &sources {
+            let name = src
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("粘贴的文件");
+            let dest = unique_path_in(&desktop, name);
+            if src == &dest {
+                continue;
+            }
+            if cut {
+                fs::rename(src, &dest).or_else(|_| {
+                    if src.is_dir() {
+                        // Cross-volume move: copy then remove.
+                        copy_dir_recursive(src, &dest)?;
+                        fs::remove_dir_all(src).map_err(|e| format!("剪切删除失败: {e}"))
+                    } else {
+                        fs::copy(src, &dest).map_err(|e| format!("粘贴失败: {e}"))?;
+                        fs::remove_file(src).map_err(|e| format!("剪切删除失败: {e}"))
+                    }
+                })?;
+            } else if src.is_dir() {
+                copy_dir_recursive(src, &dest)?;
+            } else {
+                fs::copy(src, &dest).map_err(|e| format!("粘贴失败: {e}"))?;
+            }
+        }
+
+        // Cut: clear clipboard so Paste does not repeat a move.
+        if cut {
+            if OpenClipboard(None).is_ok() {
+                let _ = windows::Win32::System::DataExchange::EmptyClipboard();
+                let _ = CloseClipboard();
+            }
+        }
+    }
+
+    refresh(app)
+}
+
+#[cfg(windows)]
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("创建目录失败: {e}"))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("读取目录失败: {e}"))? {
+        let entry = entry.map_err(|e| format!("读取目录项失败: {e}"))?;
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to).map_err(|e| format!("复制失败: {e}"))?;
+        }
     }
     Ok(())
 }

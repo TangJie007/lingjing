@@ -1,8 +1,76 @@
 use crate::desktop_organize::ShellMenuEntry;
 
+use super::clipboard::has_file_drop;
 use super::entry::{item, sep};
 use super::ids::*;
 use super::pin::apply_win11_pin_row;
+
+fn paste_item(enabled: bool) -> ShellMenuEntry {
+    let mut e = item(BUILTIN_PASTE, "粘贴");
+    e.disabled = !enabled;
+    e
+}
+
+fn entry_is_paste(e: &ShellMenuEntry) -> bool {
+    if e.separator {
+        return false;
+    }
+    if e.id == BUILTIN_PASTE {
+        return true;
+    }
+    let label = e.label.trim();
+    label.contains("粘贴") || label.eq_ignore_ascii_case("Paste")
+}
+
+fn menu_has_paste(entries: &[ShellMenuEntry]) -> bool {
+    for e in entries {
+        if entry_is_paste(e) {
+            return true;
+        }
+        if let Some(children) = e.children.as_ref() {
+            if menu_has_paste(children) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Ensure blank-desktop menus expose Paste when CF_HDROP is available.
+pub fn ensure_paste_entry(mut entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
+    let can_paste = has_file_drop();
+    if menu_has_paste(&entries) {
+        // Enable our builtin paste if clipboard now has files.
+        for e in &mut entries {
+            if e.id == BUILTIN_PASTE {
+                e.disabled = !can_paste;
+            }
+        }
+        return entries;
+    }
+    if !can_paste {
+        return entries;
+    }
+    let paste = paste_item(true);
+    if let Some(i) = entries
+        .iter()
+        .position(|e| e.id == BUILTIN_REFRESH || e.label.contains("刷新"))
+    {
+        let at = i + 1;
+        if at < entries.len() && entries[at].separator {
+            entries.insert(at + 1, paste);
+        } else {
+            entries.insert(at, sep());
+            entries.insert(at + 1, paste);
+        }
+    } else {
+        entries.insert(0, paste);
+        if entries.len() > 1 && !entries[1].separator {
+            entries.insert(1, sep());
+        }
+    }
+    entries
+}
 
 /// Minimal fallback when Shell QueryContextMenu hangs (files).
 pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
@@ -53,7 +121,7 @@ pub fn folder_builtin_menu() -> Vec<ShellMenuEntry> {
 
 /// Blank desktop / fence background menu (Explorer-like, no Shell hang).
 pub fn desktop_blank_builtin_menu() -> Vec<ShellMenuEntry> {
-    vec![
+    ensure_paste_entry(vec![
         item(BUILTIN_REFRESH, "刷新"),
         sep(),
         ShellMenuEntry {
@@ -76,6 +144,5 @@ pub fn desktop_blank_builtin_menu() -> Vec<ShellMenuEntry> {
         sep(),
         item(BUILTIN_DISPLAY_SETTINGS, "显示设置"),
         item(BUILTIN_PERSONALIZE, "个性化"),
-    ]
+    ])
 }
-
