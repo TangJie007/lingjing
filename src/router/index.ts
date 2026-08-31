@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-rou
 import OnlineView from "../views/OnlineView.vue";
 import LocalView from "../views/LocalView.vue";
 import FavoritesView from "../views/FavoritesView.vue";
+import PetView from "../views/PetView.vue";
 import SettingsView from "../views/SettingsView.vue";
 import AboutView from "../views/AboutView.vue";
 import { useSettings } from "../composables/useSettings";
@@ -17,6 +18,7 @@ export const NAV_ROUTE_NAMES = [
   "online",
   "local",
   "favorite",
+  "pet",
   "settings",
   "about",
 ] as const;
@@ -42,6 +44,11 @@ const routes: RouteRecordRaw[] = [
     name: "favorite",
     component: FavoritesView,
     meta: { showDrawer: true },
+  },
+  {
+    path: "/pet",
+    name: "pet",
+    component: PetView,
   },
   {
     path: "/settings",

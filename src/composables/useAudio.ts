@@ -16,11 +16,12 @@ function getCtx(): AudioContext | null {
   return audioCtx;
 }
 
-// 5 个导航项的固定频率（Hz）
+// 导航项的固定频率（Hz）
 export const NAV_FREQ: Record<string, number> = {
   在线: 523.25,
   本地: 587.33,
   我的: 659.25,
+  桌宠: 698.46,
   设置: 783.99,
   关于: 880.0,
 };

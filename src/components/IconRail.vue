@@ -31,6 +31,7 @@ const items: NavItem[] = [
   { key: "online", label: "在线", aria: "在线资源" },
   { key: "local", label: "本地", aria: "本地资源" },
   { key: "favorite", label: "我的", aria: "我的收藏", badge: true },
+  { key: "pet", label: "桌宠", aria: "桌宠管理" },
   { key: "settings", label: "设置", aria: "设置" },
   { key: "about", label: "关于", aria: "关于" },
 ];
@@ -123,6 +124,13 @@ watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
         </svg>
         <svg v-else-if="it.key === 'favorite'" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 20s-7-4.5-9.5-9C1 8 2.5 4.5 6 4.5c2 0 3.2 1.2 4 2.3.8-1.1 2-2.3 4-2.3 3.5 0 5 3.5 3.5 6.5C19 15.5 12 20 12 20z" />
+        </svg>
+        <svg v-else-if="it.key === 'pet'" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="7.5" cy="8" r="2.2" />
+          <circle cx="16.5" cy="8" r="2.2" />
+          <circle cx="5" cy="13.5" r="2" />
+          <circle cx="19" cy="13.5" r="2" />
+          <ellipse cx="12" cy="16.5" rx="4.2" ry="3.4" />
         </svg>
         <svg v-else-if="it.key === 'settings'" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
