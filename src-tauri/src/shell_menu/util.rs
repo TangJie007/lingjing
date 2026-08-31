@@ -34,15 +34,15 @@ pub fn invoke_working_directory(path: Option<&str>) -> Option<String> {
 }
 
 /// CMF flags for QueryContextMenu.
-/// - 回收站 / 网络: CMF_ITEMMENU only (narrowest for these)
-/// - other `::{CLSID}` (e.g. 此电脑): CMF_NORMAL | CMF_ITEMMENU
-/// - files: CMF_NORMAL (+ CMF_EXTENDEDVERBS when Shift held)
+/// - raw `::{CLSID}` recycle/network: CMF_ITEMMENU only
+/// - other raw `::{CLSID}`: CMF_NORMAL | CMF_ITEMMENU
+/// - files / managed builtin `.lnk`: CMF_NORMAL (+ CMF_EXTENDEDVERBS when Shift held)
 pub fn menu_flags_for_path(path: Option<&str>) -> u32 {
     if let Some(p) = path {
         let trimmed = p.trim_start();
         if trimmed.starts_with("::") {
             let upper = trimmed.to_ascii_uppercase();
-            // 回收站 / 网络
+            // 回收站 / 网络 (legacy CLSID path)
             if upper.contains("645FF040-5081-101B-9F08-00AA002F954E")
                 || upper.contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
             {

@@ -20,13 +20,17 @@ export function useRenameDialog() {
   return { open, value };
 }
 
-export function requestRename(path: string): Promise<string | null> {
+export function requestRename(
+  path: string,
+  displayName?: string,
+): Promise<string | null> {
   if (resolver) {
     resolver(null);
     resolver = null;
   }
   currentPath = path;
-  value.value = basename(path);
+  const initial = (displayName || "").trim() || basename(path);
+  value.value = initial;
   open.value = true;
   return new Promise((resolve) => {
     resolver = resolve;

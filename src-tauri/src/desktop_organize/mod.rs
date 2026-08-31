@@ -3,6 +3,12 @@
 pub mod drag;
 #[cfg(windows)]
 mod drop_target;
+#[cfg(windows)]
+mod builtin_links;
+#[cfg(windows)]
+pub(crate) use builtin_links::{
+    builtin_kind_from_path, is_managed_builtin_link, CLSID_COMPUTER, CLSID_NETWORK, CLSID_RECYCLE,
+};
 mod icon_cache;
 pub mod item_commands;
 pub mod layout;

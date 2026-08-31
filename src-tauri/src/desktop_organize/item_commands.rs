@@ -23,7 +23,49 @@ pub fn set_desktop_organize(app: AppHandle, enabled: bool) -> Result<(), String>
 
 #[tauri::command]
 pub fn list_desktop_items(app: AppHandle) -> Result<Vec<DesktopItem>, String> {
-    run_on_ui(&app, scan_desktop_items)?
+    let items = run_on_ui(&app, scan_desktop_items)??;
+    #[cfg(windows)]
+    {
+        migrate_builtin_clsid_layout(&app, &items);
+    }
+    Ok(items)
+}
+
+/// Rewrite fence layout entries that still point at legacy `::{CLSID}` paths.
+#[cfg(windows)]
+fn migrate_builtin_clsid_layout(app: &AppHandle, items: &[DesktopItem]) {
+    let Ok(mut layout) = super::layout::load_layout(app) else {
+        return;
+    };
+    let mut changed = false;
+    for item in items.iter().filter(|i| i.builtin) {
+        let Some(kind) = super::builtin_kind_from_path(&item.path) else {
+            continue;
+        };
+        let legacy = match kind {
+            "computer" => super::CLSID_COMPUTER,
+            "recycle" => super::CLSID_RECYCLE,
+            "network" => super::CLSID_NETWORK,
+            _ => continue,
+        };
+        let had_legacy = layout.app_order.iter().any(|p| path_has_clsid(p, legacy))
+            || layout.categories.keys().any(|p| path_has_clsid(p, legacy));
+        if !had_legacy {
+            continue;
+        }
+        super::layout::migrate_path(&mut layout, legacy, &item.path);
+        changed = true;
+    }
+    if changed {
+        let _ = super::layout::save_layout(app, &layout);
+    }
+}
+
+#[cfg(windows)]
+fn path_has_clsid(path: &str, clsid: &str) -> bool {
+    let a = path.replace('/', "\\").to_ascii_uppercase();
+    let b = clsid.replace('/', "\\").to_ascii_uppercase();
+    a == b || a.contains(b.trim_start_matches(':'))
 }
 
 #[tauri::command]
@@ -154,6 +196,10 @@ pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Re
         return Err("路径或名称为空".into());
     }
     if trimmed.starts_with("::") {
+        return Err("系统图标不支持重命名".into());
+    }
+    #[cfg(windows)]
+    if super::is_managed_builtin_link(trimmed) {
         return Err("系统图标不支持重命名".into());
     }
     if name.contains(['\\', '/', ':', '*', '?', '"', '<', '>', '|']) {

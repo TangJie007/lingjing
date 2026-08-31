@@ -6,7 +6,7 @@ import {
   showFenceErrorToast,
   showFenceToast,
 } from "./fenceUi";
-import { migrateFencePath } from "./fenceLayout";
+import { migrateFencePath, samePath } from "./fenceLayout";
 import { requestRename } from "./useRenameDialog";
 
 const FILE_MENU_CACHE_TTL_MS = 8000;
@@ -406,7 +406,13 @@ export function useShellContextMenu() {
   }
 
   async function renameAt(p: string) {
-    const next = await requestRename(p);
+    // Shell namespace icons / managed builtin shortcuts cannot be renamed.
+    if (p.trim().startsWith("::") || /[\\/]builtin-links[\\/]/i.test(p)) {
+      showFenceToast("系统图标不支持重命名");
+      return;
+    }
+    const displayName = await lookupDesktopItemName(p);
+    const next = await requestRename(p, displayName);
     if (!next) return;
     try {
       const newPath = await window.__TAURI__!.core.invoke<string>(
@@ -426,6 +432,20 @@ export function useShellContextMenu() {
       showFenceToast("已重命名");
     } catch (e) {
       showFenceToast(friendlyError(e));
+    }
+  }
+
+  async function lookupDesktopItemName(targetPath: string): Promise<string | undefined> {
+    if (!window.__TAURI__) return undefined;
+    try {
+      const items = await window.__TAURI__.core.invoke<
+        Array<{ path?: string; name?: string }>
+      >("list_desktop_items");
+      const hit = (items || []).find((item) => samePath(item.path || "", targetPath));
+      const name = hit?.name?.trim();
+      return name || undefined;
+    } catch {
+      return undefined;
     }
   }
 

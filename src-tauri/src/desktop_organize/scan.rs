@@ -159,6 +159,15 @@ pub fn scan_desktop_items() -> Result<Vec<DesktopItem>, String> {
 }
 
 fn builtin_rank(path: &str) -> u8 {
+    #[cfg(windows)]
+    {
+        match super::builtin_kind_from_path(path) {
+            Some("computer") => return 0,
+            Some("recycle") => return 1,
+            Some("network") => return 2,
+            _ => {}
+        }
+    }
     match path.to_ascii_uppercase() {
         p if p.contains("20D04FE0-3AEA-1069-A2D8-08002B30309D") => 0,
         p if p.contains("645FF040-5081-101B-9F08-00AA002F954E") => 1,

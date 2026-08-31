@@ -823,32 +823,56 @@ use std::ffi::OsStr;
         &str,
         Option<windows::Win32::UI::Shell::SHSTOCKICONID>,
     )] = &[
-        ("::{20D04FE0-3AEA-1069-A2D8-08002B30309D}", "此电脑", None),
         (
-            "::{645FF040-5081-101B-9F08-00AA002F954E}",
+            super::builtin_links::CLSID_COMPUTER,
+            "此电脑",
+            None,
+        ),
+        (
+            super::builtin_links::CLSID_RECYCLE,
             "回收站",
             Some(windows::Win32::UI::Shell::SIID_RECYCLER),
         ),
         (
-            "::{F02C1A0D-B21F-4110-8426-0A0C959C3602}",
+            super::builtin_links::CLSID_NETWORK,
             "网络",
             Some(windows::Win32::UI::Shell::SIID_MYNETWORK),
         ),
     ];
 
-pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
-        let mut items = Vec::with_capacity(BUILTIN_DESKTOP_ICONS.len());
-        for (path, fallback_name, stock) in BUILTIN_DESKTOP_ICONS {
-            let path_obj = std::path::PathBuf::from(*path);
-            let meta = shell_name_and_icon(&path_obj);
-            let icon = extract_builtin_icon(path, *stock);
+    pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
+        let links = match super::builtin_links::ensure_builtin_namespace_links() {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("[desktop-organize] builtin links unavailable: {e}");
+                return Vec::new();
+            }
+        };
+
+        let mut items = Vec::with_capacity(links.len());
+        for (lnk_path, spec) in links {
+            let stock = BUILTIN_DESKTOP_ICONS
+                .iter()
+                .find(|(clsid, _, _)| *clsid == spec.clsid)
+                .and_then(|(_, _, s)| *s);
+            let path_str = lnk_path.to_string_lossy().to_string();
+            let meta = shell_name_and_icon(&lnk_path);
+            let icon = extract_builtin_icon(spec.clsid, stock).or(meta.icon);
+            // Prefer Shell display name when useful; otherwise stable Chinese fallback.
             let name = meta
                 .display_name
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| (*fallback_name).to_string());
+                .map(|s| s.trim().to_string())
+                .filter(|s| {
+                    !s.is_empty()
+                        && !s.eq_ignore_ascii_case("computer")
+                        && !s.eq_ignore_ascii_case("recycle")
+                        && !s.eq_ignore_ascii_case("network")
+                })
+                .unwrap_or_else(|| spec.fallback_name.to_string());
+
             items.push(super::types::DesktopItem {
                 name,
-                path: (*path).to_string(),
+                path: path_str,
                 is_dir: false,
                 kind: "app".into(),
                 builtin: true,

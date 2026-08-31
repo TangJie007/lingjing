@@ -138,19 +138,43 @@ pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
     )
 }
 
-/// Shell namespace desktop icons (`::{CLSID}`).
+/// Shell namespace desktop icons (`::{CLSID}`) or managed builtin `.lnk` shortcuts.
 pub fn is_shell_namespace_path(path: &str) -> bool {
-    path.trim_start().starts_with("::")
+    if path.trim_start().starts_with("::") {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        return crate::desktop_organize::is_managed_builtin_link(path);
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 pub fn is_recycle_bin_path(path: &str) -> bool {
-    path.to_ascii_uppercase()
-        .contains("645FF040-5081-101B-9F08-00AA002F954E")
+    #[cfg(windows)]
+    {
+        return crate::desktop_organize::builtin_kind_from_path(path) == Some("recycle");
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_ascii_uppercase()
+            .contains("645FF040-5081-101B-9F08-00AA002F954E")
+    }
 }
 
 pub fn is_network_places_path(path: &str) -> bool {
-    path.to_ascii_uppercase()
-        .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
+    #[cfg(windows)]
+    {
+        return crate::desktop_organize::builtin_kind_from_path(path) == Some("network");
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_ascii_uppercase()
+            .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
+    }
 }
 
 /// Built-in menus for 回收站 / 网络 (always); 此电脑 uses this only as Shell fallback.
@@ -177,8 +201,6 @@ fn recycle_builtin_menu() -> Vec<ShellMenuEntry> {
         item(BUILTIN_OPEN, "打开"),
         item(BUILTIN_EMPTY_RECYCLE, "清空回收站"),
         sep(),
-        item(BUILTIN_RENAME, "重命名"),
-        sep(),
         item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
         item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),
         sep(),
@@ -192,8 +214,6 @@ fn network_builtin_menu() -> Vec<ShellMenuEntry> {
         sep(),
         item(BUILTIN_MAP_NETWORK_DRIVE, "映射网络驱动器"),
         item(BUILTIN_DISCONNECT_NETWORK_DRIVE, "断开网络驱动器连接"),
-        sep(),
-        item(BUILTIN_RENAME, "重命名"),
         sep(),
         item(BUILTIN_PIN_START, "固定到「开始」屏幕"),
         item(BUILTIN_PIN_QUICK_ACCESS, "固定到「快速访问」"),

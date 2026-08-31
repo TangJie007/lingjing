@@ -25,6 +25,9 @@ export {
 };
 
 const BUILTIN_ORDER = [
+  "此电脑.lnk",
+  "回收站.lnk",
+  "网络.lnk",
   "20D04FE0-3AEA-1069-A2D8-08002B30309D",
   "645FF040-5081-101B-9F08-00AA002F954E",
   "F02C1A0D-B21F-4110-8426-0A0C959C3602",
