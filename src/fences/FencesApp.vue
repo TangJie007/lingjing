@@ -154,6 +154,7 @@ const {
   loading: shellLoading,
   error: shellError,
   menuOpen: shellMenuOpen,
+  preload: preloadShellMenuData,
   prepare: prepareShellMenu,
   invalidateMenuCache: invalidateShellMenuCache,
   loadSubmenu: loadShellSubmenu,
@@ -422,7 +423,7 @@ function onStagePointerDown(e: PointerEvent) {
 
 function preloadShellMenu(path: string) {
   if (!path || dragging.value || shellDrag.isPending()) return;
-  void prepareShellMenu(path);
+  void preloadShellMenuData(path);
 }
 
 onMounted(async () => {

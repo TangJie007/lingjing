@@ -35,6 +35,21 @@ export function useShellContextMenu() {
   const pendingLoads = new Map<string, Promise<ShellMenuEntry[]>>();
   const pendingSubmenuLoads = new Map<string, Promise<ShellMenuEntry[]>>();
 
+  /**
+   * Hover preload slot — kept separate from the visible menu state.
+   * A new hover replaces the slot; a right-click adopts it into the live menu.
+   */
+  type PreloadSlot = {
+    path: string;
+    gen: number;
+    entries: ShellMenuEntry[] | null;
+    rootDone: boolean;
+    /** Menu generation once adopted by a right-click; null while hovering. */
+    adoptedGen: number | null;
+  };
+  let preloadGen = 0;
+  let preloadSlot: PreloadSlot | null = null;
+
   function cacheKey(targetPath: string): string {
     return targetPath.trim();
   }
@@ -119,6 +134,100 @@ export function useShellContextMenu() {
     }
   });
 
+  async function preload(targetPath: string) {
+    if (!window.__TAURI__ || !targetPath) return;
+    const key = cacheKey(targetPath);
+    const cached = cachedEntries(key);
+    if (cached) return;
+
+    const myGen = ++preloadGen;
+    const slot: PreloadSlot = {
+      path: targetPath,
+      gen: myGen,
+      entries: null,
+      rootDone: false,
+      adoptedGen: null,
+    };
+    // New hover discards any previous in-flight preload or its result.
+    preloadSlot = slot;
+
+    try {
+      let load = pendingLoads.get(key);
+      if (!load) {
+        load = window.__TAURI__.core.invoke<ShellMenuEntry[]>(
+          "list_desktop_shell_context_menu",
+          { path: targetPath },
+        );
+        pendingLoads.set(key, load);
+      }
+      const list = await load;
+      pendingLoads.delete(key);
+      if (slot.gen !== myGen) return;
+      const next = list || [];
+      rememberEntries(key, next);
+      slot.entries = next;
+      slot.rootDone = true;
+      void preloadSlotSubmenus(slot, key);
+    } catch {
+      pendingLoads.delete(key);
+    }
+  }
+
+  /** Fetch submenus into the preload slot only while it is still current. */
+  async function preloadSlotSubmenus(slot: PreloadSlot, key: string) {
+    const submenuPaths = (slot.entries || [])
+      .filter((entry) => entry.children)
+      .map((entry) => entry.menuPath || []);
+    for (const menuPath of submenuPaths) {
+      if (slot !== preloadSlot || slot.gen !== preloadGen) return;
+      await preloadSlotSubmenu(slot, key, menuPath);
+    }
+  }
+
+  async function preloadSlotSubmenu(
+    slot: PreloadSlot,
+    key: string,
+    menuPath: number[],
+  ) {
+    const loadKey = `${key}|${menuPath.join("/")}`;
+    try {
+      let load = pendingSubmenuLoads.get(loadKey);
+      if (!load) {
+        load = window.__TAURI__!.core.invoke<ShellMenuEntry[]>(
+          "list_desktop_shell_context_submenu",
+          { path: slot.path, menuPath },
+        );
+        pendingSubmenuLoads.set(loadKey, load);
+      }
+      const list = await load;
+      pendingSubmenuLoads.delete(loadKey);
+      if (slot !== preloadSlot || slot.gen !== preloadGen) return;
+      const target = findSubmenu(slot.entries || [], menuPath);
+      if (target) target.children = list || [];
+    } catch {
+      pendingSubmenuLoads.delete(loadKey);
+    }
+  }
+
+  function adoptPreload(targetPath: string): boolean {
+    const slot = preloadSlot;
+    if (!slot || slot.path !== targetPath || !slot.rootDone || !slot.entries) {
+      return false;
+    }
+    preloadSlot = null;
+    // Invalidate any older in-flight prepare so its result cannot overwrite
+    // the adopted preload data.
+    generation += 1;
+    path.value = targetPath;
+    error.value = "";
+    entries.value = cloneEntries(slot.entries);
+    loading.value = false;
+    if (!entries.value.length) {
+      error.value = "暂无可用菜单项";
+    }
+    return true;
+  }
+
   async function prepare(targetPath: string) {
     if (!window.__TAURI__) return;
 
@@ -134,6 +243,12 @@ export function useShellContextMenu() {
     }
     lastPrepareAt = now;
     lastPreparePath = targetPath;
+
+    // Prefer the hover preload result for the clicked icon.
+    if (adoptPreload(targetPath)) {
+      void preloadSubmenus(generation);
+      return;
+    }
 
     const myGen = ++generation;
     path.value = targetPath;
@@ -323,6 +438,7 @@ export function useShellContextMenu() {
     loading,
     error,
     menuOpen,
+    preload,
     prepare,
     invalidateMenuCache,
     loadSubmenu,
