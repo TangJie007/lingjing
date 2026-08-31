@@ -1,34 +1,110 @@
-/** Shell OLE drag-out while Sortable is active (foreign window hover). */
+/** Shell OLE drag-out while Sortable is active (into Explorer folders / other apps). */
 
+import { clearIconDragArm } from "./iconDragCursor";
 import { friendlyError, showFenceToast } from "./fenceUi";
 
-export function useShellFileDrag() {
+function cancelHtmlDragArtifacts() {
+  // Force-end Sortable / pointer capture left behind when the mouse is released
+  // over another window (Explorer) after OLE handoff.
+  for (const type of ["pointercancel", "pointerup"] as const) {
+    document.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 0,
+      }),
+    );
+  }
+  document.dispatchEvent(
+    new MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0 }),
+  );
+  // Strip leftover Sortable / drag classes so cursor is no longer "grabbing".
+  const sticky = [
+    "is-dragging",
+    "is-dragging-source",
+    "drag-ghost",
+    "sortable-drag",
+    "sortable-ghost",
+    "sortable-chosen",
+    "sortable-fallback",
+  ];
+  document.querySelectorAll(sticky.map((c) => `.${c}`).join(",")).forEach((el) => {
+    el.classList.remove(...sticky);
+    if (el instanceof HTMLElement) {
+      el.style.removeProperty("display");
+      el.style.removeProperty("opacity");
+      el.style.removeProperty("transform");
+      el.style.removeProperty("position");
+      el.style.removeProperty("top");
+      el.style.removeProperty("left");
+      el.style.removeProperty("width");
+      el.style.removeProperty("height");
+      el.style.removeProperty("z-index");
+      el.style.removeProperty("pointer-events");
+    }
+  });
+  document.querySelectorAll(".sortable-fallback, .drag-ghost").forEach((el) => {
+    el.remove();
+  });
+  document.getElementById("stage")?.classList.remove("icon-dragging", "icon-drag-armed");
+  clearIconDragArm();
+}
+
+export function useShellFileDrag(opts?: {
+  /** Called when handing off to / finishing OLE drag — reset Vue drag UI here. */
+  onUiReset?: () => void;
+}) {
   let activePath = "";
   let previewDataUrl: string | null = null;
   let shiftKey = false;
+  let ctrlKey = false;
   let foreignHits = 0;
   let lastProbe = 0;
   let inFlight = false;
   let pending = false;
+  let pollTimer: number | null = null;
+
+  function stopPoll() {
+    if (pollTimer != null) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function resetUi() {
+    cancelHtmlDragArtifacts();
+    opts?.onUiReset?.();
+  }
 
   function begin(path: string, preview: string | null) {
     activePath = path;
     previewDataUrl = preview;
     shiftKey = false;
+    ctrlKey = false;
     foreignHits = 0;
     lastProbe = 0;
     inFlight = false;
     pending = false;
+    stopPoll();
+    // Cursor leaves the WebView when over Explorer — Sortable "move" stops.
+    // Poll independently so we still hand off to OLE drag-out.
+    pollTimer = window.setInterval(() => {
+      void probe();
+    }, 50);
   }
 
   function end() {
+    stopPoll();
     activePath = "";
     pending = false;
     inFlight = false;
+    foreignHits = 0;
   }
 
-  function setShift(v: boolean) {
-    shiftKey = v;
+  function setModifiers(shift: boolean, ctrl: boolean) {
+    shiftKey = shift;
+    ctrlKey = ctrl;
   }
 
   function isPending() {
@@ -38,7 +114,7 @@ export function useShellFileDrag() {
   async function probe() {
     if (!activePath || pending || inFlight || !window.__TAURI__) return;
     const now = performance.now();
-    if (now - lastProbe < 45) return;
+    if (now - lastProbe < 40) return;
     lastProbe = now;
 
     inFlight = true;
@@ -56,14 +132,14 @@ export function useShellFileDrag() {
 
       pending = true;
       const path = activePath;
-      const mode = shiftKey ? "move" : "copy";
+      const mode = ctrlKey && !shiftKey ? "copy" : "move";
       const preview = previewDataUrl;
+      stopPoll();
       end();
 
-      // End Sortable fallback drag.
-      document.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true, cancelable: true, button: 0 }),
-      );
+      // Soft-cancel Sortable before OLE takes the mouse (physical button still down).
+      cancelHtmlDragArtifacts();
+      opts?.onUiReset?.();
 
       try {
         await window.__TAURI__.core.invoke("start_desktop_file_drag", {
@@ -72,17 +148,26 @@ export function useShellFileDrag() {
           previewDataUrl: preview,
         });
       } catch (err) {
-        showFenceToast(friendlyError(err));
+        const msg = friendlyError(err);
+        if (!msg.includes("鼠标已松开")) {
+          showFenceToast(msg);
+        }
+      } finally {
+        // OLE drag ends when the user releases over Explorer — fence never sees
+        // that mouseup, so force-clear grabbing cursor / Sortable leftovers.
+        resetUi();
       }
     } catch (err) {
       showFenceToast(friendlyError(err));
       foreignHits = 0;
+      resetUi();
     } finally {
       inFlight = false;
+      pending = false;
     }
   }
 
-  return { begin, end, setShift, isPending, probe };
+  return { begin, end, setModifiers, isPending, probe };
 }
 
 export function cellPreviewDataUrl(el: HTMLElement | null): string | null {

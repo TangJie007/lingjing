@@ -116,7 +116,14 @@ const {
   runCommand: runShellCommand,
 } = useShellContextMenu();
 
-const shellDrag = useShellFileDrag();
+const shellDrag = useShellFileDrag({
+  onUiReset: () => {
+    dragging.value = false;
+    fenceDraggingKey.value = null;
+    markIconDragEnd();
+    flushPending();
+  },
+});
 const externalDrop = useExternalFileDrop({
   onHover: (active) => {
     fileDropHover.value = active;
@@ -164,7 +171,7 @@ function onDragEnd(key: FenceGroupKey) {
 
 function onDragMove(_evt: unknown, originalEvent?: Event) {
   const oe = originalEvent as MouseEvent | undefined;
-  shellDrag.setShift(!!oe?.shiftKey);
+  shellDrag.setModifiers(!!oe?.shiftKey, !!oe?.ctrlKey);
   void shellDrag.probe();
   return true;
 }

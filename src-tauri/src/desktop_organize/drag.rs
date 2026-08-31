@@ -23,8 +23,8 @@ fn decode_image_data_url(url: &str) -> Option<Vec<u8>> {
 
 fn parse_drag_mode(mode: Option<&str>) -> drag::DragMode {
     match mode.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
-        Some("move") => drag::DragMode::Move,
-        _ => drag::DragMode::Copy,
+        Some("copy") => drag::DragMode::Copy,
+        _ => drag::DragMode::Move,
     }
 }
 
@@ -76,10 +76,18 @@ fn window_class_name(hwnd: windows::Win32::Foundation::HWND) -> String {
 
 #[cfg(windows)]
 fn is_desktop_shell_class(class: &str) -> bool {
+    // Do NOT include SysListView32 — Explorer folder views use it too.
+    matches!(class, "Progman" | "WorkerW" | "SHELLDLL_DefView")
+}
+
+#[cfg(windows)]
+fn is_explorer_frame_class(class: &str) -> bool {
     matches!(
         class,
-        "Progman" | "WorkerW" | "SHELLDLL_DefView" | "SysListView32"
-    )
+        "CabinetWClass"
+            | "ExploreWClass"
+            | "Microsoft.UI.Content.DesktopChildSiteBridge"
+    ) || class.starts_with("Windows.UI.Core.CoreWindow")
 }
 
 #[cfg(windows)]
@@ -129,6 +137,9 @@ fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
                 return false;
             }
             let class = window_class_name(hwnd);
+            if is_explorer_frame_class(&class) {
+                return true;
+            }
             if is_desktop_shell_class(&class) {
                 return false;
             }
@@ -156,7 +167,7 @@ pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
 }
 
 /// Start a system shell file drag (CF_HDROP) so icons can be dropped into other apps.
-/// `mode`: "copy" (default) or "move". Hold Shift in the UI to request move.
+/// `mode`: "move" (default) or "copy". Hold Ctrl in the UI to request copy.
 #[tauri::command]
 pub fn start_desktop_file_drag(
     app: AppHandle,
@@ -190,6 +201,9 @@ pub fn start_desktop_file_drag(
         }
         let handle = app.clone();
         let win = window.clone();
+        tracing::info!(
+            "[desktop-organize] starting shell file drag path={trimmed} mode={drag_mode:?}"
+        );
         return run_on_ui(&handle, move || {
             if !is_lbutton_down() {
                 return Err("鼠标已松开，取消拖出".into());
@@ -203,6 +217,8 @@ pub fn start_desktop_file_drag(
             drag::start_drag(&win, item, preview, |_result, _pos| {}, opts)
                 .map_err(|e| format!("启动文件拖放失败: {e}"))?;
             tracing::info!("[desktop-organize] shell file drag finished path={trimmed}");
+            // Refresh so moved-away items disappear from fences.
+            let _ = super::lifecycle::refresh(&app);
             Ok(())
         })?;
     }
