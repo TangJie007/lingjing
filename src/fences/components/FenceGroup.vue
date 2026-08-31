@@ -5,13 +5,15 @@ import FenceCell from "./FenceCell.vue";
 import type { DesktopItem, FenceGroupKey } from "../types";
 import { ICON_DRAG_ARM_MS } from "../iconDragCursor";
 
-defineProps<{
+const props = defineProps<{
   groupKey: FenceGroupKey;
   items: DesktopItem[];
   native?: boolean;
   emptyText?: string;
   hostId?: string;
   dragGroup: string | GroupOptions;
+  /** Return false to cancel Sortable reorder (e.g. drop into folder). */
+  folderMoveGuard?: (evt: MoveEvent, originalEvent: Event) => boolean;
 }>();
 
 const emit = defineEmits<{
@@ -21,7 +23,6 @@ const emit = defineEmits<{
   added: [evt: SortableEvent];
   start: [evt: SortableEvent];
   end: [evt: SortableEvent];
-  move: [evt: MoveEvent, originalEvent: Event];
 }>();
 
 function onUpdate(list: DesktopItem[]) {
@@ -30,8 +31,7 @@ function onUpdate(list: DesktopItem[]) {
 }
 
 function onMove(evt: MoveEvent, originalEvent: Event) {
-  emit("move", evt, originalEvent);
-  return true;
+  return props.folderMoveGuard?.(evt, originalEvent) !== false;
 }
 </script>
 

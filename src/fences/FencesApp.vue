@@ -105,6 +105,10 @@ const pendingFenceItems = ref<DesktopItem[] | null>(null);
 const dragging = ref(false);
 const fenceDraggingKey = ref<FenceGroupKey | null>(null);
 const fileDropHover = ref(false);
+/** Drop-on-folder target while Sortable-dragging (Explorer-like move into folder). */
+const pendingFolderDrop = ref<{ src: string; folder: string } | null>(null);
+const dragSourcePath = ref("");
+let lastDragPointer = { x: 0, y: 0 };
 
 const {
   entries: shellEntries,
@@ -120,6 +124,9 @@ const shellDrag = useShellFileDrag({
   onUiReset: () => {
     dragging.value = false;
     fenceDraggingKey.value = null;
+    pendingFolderDrop.value = null;
+    dragSourcePath.value = "";
+    clearFolderDropHighlight();
     markIconDragEnd();
     flushPending();
   },
@@ -151,27 +158,133 @@ function onSorted(key: FenceGroupKey) {
   persist(key);
 }
 
+function clearFolderDropHighlight() {
+  document
+    .querySelectorAll(".cell.folder-drop-over")
+    .forEach((el) => el.classList.remove("folder-drop-over"));
+}
+
+function findFolderDropCell(
+  evt: { dragged?: HTMLElement; related?: HTMLElement },
+  originalEvent?: Event,
+): HTMLElement | null {
+  const dragged = evt.dragged;
+  const candidates: (HTMLElement | null | undefined)[] = [
+    evt.related?.closest?.(".cell") as HTMLElement | null,
+    (originalEvent?.target as HTMLElement | null)?.closest?.(".cell") as
+      | HTMLElement
+      | null,
+  ];
+  const oe = originalEvent as MouseEvent | undefined;
+  if (oe && Number.isFinite(oe.clientX) && Number.isFinite(oe.clientY)) {
+    const under = document.elementFromPoint(oe.clientX, oe.clientY) as
+      | HTMLElement
+      | null;
+    candidates.push(under?.closest?.(".cell") as HTMLElement | null);
+  }
+  for (const cell of candidates) {
+    if (!cell || cell === dragged) continue;
+    if (cell.dataset?.isDir === "1" && cell.dataset?.path) return cell;
+  }
+  return null;
+}
+
 function onDragStart(key: FenceGroupKey, evt: SortableEvent) {
   markIconDragStart();
   dragging.value = true;
   fenceDraggingKey.value = key === "app" ? null : key;
+  pendingFolderDrop.value = null;
+  clearFolderDropHighlight();
   const el = evt.item as HTMLElement;
-  shellDrag.begin(el?.dataset?.path || "", cellPreviewDataUrl(el));
+  const path = el?.dataset?.path || "";
+  dragSourcePath.value = path;
+  shellDrag.setSuspended(false);
+  shellDrag.begin(path, cellPreviewDataUrl(el));
 }
 
-function onDragEnd(key: FenceGroupKey) {
+async function onDragEnd(key: FenceGroupKey) {
+  // Prefer path captured at drag-start (DOM may reshuffle during Sortable).
+  const src =
+    dragSourcePath.value ||
+    pendingFolderDrop.value?.src ||
+    "";
+  let folder = pendingFolderDrop.value?.folder || "";
+  const under = document.elementFromPoint(
+    lastDragPointer.x,
+    lastDragPointer.y,
+  ) as HTMLElement | null;
+  const cell = under?.closest?.(".cell") as HTMLElement | null;
+  if (
+    cell?.dataset?.isDir === "1" &&
+    cell.dataset?.path &&
+    cell.dataset.path !== src
+  ) {
+    folder = cell.dataset.path;
+  }
+
+  pendingFolderDrop.value = null;
+  dragSourcePath.value = "";
+  clearFolderDropHighlight();
   dragging.value = false;
   fenceDraggingKey.value = null;
+  // Stop OLE handoff before filesystem move — otherwise they race on the same path.
+  shellDrag.setSuspended(true);
   shellDrag.end();
   markIconDragEnd();
+
+  if (src && folder && window.__TAURI__) {
+    try {
+      await window.__TAURI__.core.invoke("move_desktop_item_into_folder", {
+        path: src,
+        folderPath: folder,
+      });
+    } catch (e) {
+      showFenceToast(friendlyError(e));
+      try {
+        applyFenceItems(
+          await window.__TAURI__.core.invoke<DesktopItem[]>("list_desktop_items"),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    flushPending();
+    return;
+  }
+
   persist(key);
   persistAll();
   flushPending();
 }
 
-function onDragMove(_evt: unknown, originalEvent?: Event) {
+function onDragMove(
+  evt: { dragged?: HTMLElement; related?: HTMLElement },
+  originalEvent?: Event,
+) {
   const oe = originalEvent as MouseEvent | undefined;
+  if (oe && Number.isFinite(oe.clientX) && Number.isFinite(oe.clientY)) {
+    lastDragPointer = { x: oe.clientX, y: oe.clientY };
+  }
   shellDrag.setModifiers(!!oe?.shiftKey, !!oe?.ctrlKey);
+
+  const folderCell = findFolderDropCell(evt, originalEvent);
+  const srcPath =
+    dragSourcePath.value || evt.dragged?.dataset?.path || "";
+  const folderPath = folderCell?.dataset?.path || "";
+  if (folderCell && folderPath && srcPath && folderPath !== srcPath) {
+    if (!folderCell.classList.contains("folder-drop-over")) {
+      clearFolderDropHighlight();
+      folderCell.classList.add("folder-drop-over");
+    }
+    pendingFolderDrop.value = { src: srcPath, folder: folderPath };
+    // Do not hand off to Explorer OLE while targeting a fence folder.
+    shellDrag.setSuspended(true);
+    return false;
+  }
+
+  clearFolderDropHighlight();
+  pendingFolderDrop.value = null;
+  shellDrag.setSuspended(false);
   void shellDrag.probe();
   return true;
 }
@@ -275,12 +388,12 @@ onUnmounted(() => {
           native
           host-id="apps"
           :drag-group="appDragGroup"
+          :folder-move-guard="onDragMove"
           @open="openItem"
           @sorted="onSorted('app')"
           @added="onAdded('app', $event)"
           @start="onDragStart('app', $event)"
           @end="onDragEnd('app')"
-          @move="onDragMove"
         />
 
         <div id="files">
@@ -301,12 +414,12 @@ onUnmounted(() => {
               :empty-text="emptyTextFor(key)"
               :host-id="hostId[key]"
               :drag-group="fileDragGroup"
+              :folder-move-guard="onDragMove"
               @open="openItem"
               @sorted="onSorted(key)"
               @added="onAdded(key, $event)"
               @start="onDragStart(key, $event)"
               @end="onDragEnd(key)"
-              @move="onDragMove"
             />
           </section>
         </div>

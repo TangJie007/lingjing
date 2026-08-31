@@ -63,6 +63,8 @@ export function useShellFileDrag(opts?: {
   let lastProbe = 0;
   let inFlight = false;
   let pending = false;
+  let suspended = false;
+  let session = 0;
   let pollTimer: number | null = null;
 
   function stopPoll() {
@@ -86,6 +88,8 @@ export function useShellFileDrag(opts?: {
     lastProbe = 0;
     inFlight = false;
     pending = false;
+    suspended = false;
+    session += 1;
     stopPoll();
     // Cursor leaves the WebView when over Explorer — Sortable "move" stops.
     // Poll independently so we still hand off to OLE drag-out.
@@ -100,6 +104,14 @@ export function useShellFileDrag(opts?: {
     pending = false;
     inFlight = false;
     foreignHits = 0;
+    suspended = false;
+    session += 1;
+  }
+
+  /** Pause OLE handoff (e.g. while hovering a folder drop target). */
+  function setSuspended(next: boolean) {
+    suspended = next;
+    if (next) foreignHits = 0;
   }
 
   function setModifiers(shift: boolean, ctrl: boolean) {
@@ -112,17 +124,18 @@ export function useShellFileDrag(opts?: {
   }
 
   async function probe() {
-    if (!activePath || pending || inFlight || !window.__TAURI__) return;
+    if (!activePath || pending || inFlight || suspended || !window.__TAURI__) return;
     const now = performance.now();
     if (now - lastProbe < 40) return;
     lastProbe = now;
 
+    const mySession = session;
     inFlight = true;
     try {
       const foreign = await window.__TAURI__.core.invoke<boolean>(
         "is_desktop_drag_over_foreign",
       );
-      if (!activePath || pending) return;
+      if (mySession !== session || !activePath || pending || suspended) return;
       if (!foreign) {
         foreignHits = 0;
         return;
@@ -167,7 +180,7 @@ export function useShellFileDrag(opts?: {
     }
   }
 
-  return { begin, end, setModifiers, isPending, probe };
+  return { begin, end, setModifiers, setSuspended, isPending, probe };
 }
 
 export function cellPreviewDataUrl(el: HTMLElement | null): string | null {

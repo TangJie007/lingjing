@@ -28,6 +28,12 @@ export function useFenceToast() {
 export function friendlyError(e: unknown): string {
   const msg = String(e).replace(/^Error:\s*/i, "").trim();
   if (/超时|timeout/i.test(msg)) return "操作超时，请重试";
+  if (/not allowed|forbidden|denied by acl|permission/i.test(msg) && !/access/i.test(msg)) {
+    return "操作未被允许，请检查应用权限配置";
+  }
+  if (/command .+ not found|unknown command/i.test(msg)) {
+    return "功能未就绪，请重新启动应用";
+  }
   if (/不存在|not found/i.test(msg)) return "文件不存在或已被移动";
   if (/拒绝|access|denied|permission/i.test(msg)) return "无权访问该文件";
   if (/非法字符|invalid/i.test(msg)) return "名称包含非法字符";

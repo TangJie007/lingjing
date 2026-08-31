@@ -35,8 +35,14 @@ function onPointerUp() {
 <template>
   <div
     class="cell"
-    :class="{ native: !!native, draggable: canDrag, 'no-drag': !canDrag }"
+    :class="{
+      native: !!native,
+      draggable: canDrag,
+      'no-drag': !canDrag,
+      'is-folder': !!item.isDir && !item.builtin,
+    }"
     :data-path="item.path"
+    :data-is-dir="item.isDir && !item.builtin ? '1' : '0'"
     :title="item.path"
     @click="onActivate"
     @pointerdown="onPointerDown"
