@@ -14,7 +14,7 @@ use std::ffi::OsStr;
         CallWindowProcW, EnumWindows, FindWindowExW, FindWindowW, GetParent, GetSystemMetrics,
         GetWindowLongPtrW, GetWindowRect, SetLayeredWindowAttributes, SetParent,
         SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, GWL_EXSTYLE, GWL_STYLE,
-        GWLP_WNDPROC, HICON, HTCLIENT, HWND_TOP, LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN,
+        GWLP_WNDPROC, HICON, HTCLIENT, HWND_BOTTOM, LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN,
         SM_CYSCREEN, STYLESTRUCT, SW_HIDE, SW_SHOW, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
         SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WM_NCCALCSIZE,
         WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT, WM_STYLECHANGED, WM_STYLECHANGING, WS_BORDER,
@@ -891,6 +891,43 @@ pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
         }
     }
 
+    /// Desktop icon list under DefView (sibling of our fence after SetParent).
+    fn find_defview_listview(defview: HWND) -> HWND {
+        unsafe {
+            if defview.0.is_null() {
+                return HWND::default();
+            }
+            let listview = wide("SysListView32");
+            FindWindowExW(
+                Some(defview),
+                None,
+                PCWSTR(listview.as_ptr()),
+                PCWSTR::null(),
+            )
+            .unwrap_or_default()
+        }
+    }
+
+    /// Keep fence under SysListView32 in DefView Z-order (icons above organize UI).
+    unsafe fn place_fence_below_icons(fence: HWND, defview: HWND) {
+        let listview = find_defview_listview(defview);
+        // hWndInsertAfter = sibling above us → fence sits just below SysListView32.
+        let above = if !listview.0.is_null() {
+            Some(listview)
+        } else {
+            Some(HWND_BOTTOM)
+        };
+        let _ = SetWindowPos(
+            fence,
+            above,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+    }
+
     unsafe extern "system" fn enum_monitors_proc(
         hmon: HMONITOR,
         _hdc: HDC,
@@ -1122,9 +1159,16 @@ pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
                 y = 0;
             }
 
+            let listview = find_defview_listview(parent);
+            // Place under SysListView32 (or bottom of DefView if listview missing).
+            let z_after = if !listview.0.is_null() {
+                Some(listview)
+            } else {
+                Some(HWND_BOTTOM)
+            };
             let _ = SetWindowPos(
                 child,
-                Some(HWND_TOP),
+                z_after,
                 x,
                 y,
                 mw,
@@ -1133,6 +1177,10 @@ pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
             );
             force_child_chrome(child, true);
             let _ = ShowWindow(child, SW_SHOW);
+            // ShowWindow can reshuffle Z-order — pin under icons again.
+            if parent == data.defview || !data.defview.0.is_null() {
+                place_fence_below_icons(child, if data.defview.0.is_null() { parent } else { data.defview });
+            }
             let _ = RedrawWindow(
                 Some(child),
                 None,
@@ -1141,7 +1189,7 @@ pub fn scan_builtin_desktop_icons() -> Vec<super::types::DesktopItem> {
             );
 
             tracing::info!(
-                "[desktop-organize] attached child={child:?} parent={parent:?} parent={pl},{pt} {pw}x{ph} primary={x},{y} {mw}x{mh}"
+                "[desktop-organize] attached child={child:?} parent={parent:?} z-under={listview:?} parent={pl},{pt} {pw}x{ph} primary={x},{y} {mw}x{mh}"
             );
             Ok((mw, mh))
         }
