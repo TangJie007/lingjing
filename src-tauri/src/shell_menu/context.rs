@@ -391,9 +391,7 @@ pub fn invoke_shell_context_command(
                 "open" | "openas" | "runas" | "properties" | "edit" | "print" => {
                     Some(shell_execute_verb(p, &verb))
                 }
-                "delete" => Some(
-                    trash::delete(p).map_err(|e| format!("删除失败: {e}")),
-                ),
+                "delete" => Some(super::verbs::delete_to_recycle_bin(p)),
                 "cut" => Some(Err("BUILTIN_CUT".into())),
                 "copy" => Some(Err("BUILTIN_COPY".into())),
                 "link" => Some(Err("BUILTIN_LINK".into())),

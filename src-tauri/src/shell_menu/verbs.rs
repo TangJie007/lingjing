@@ -1,5 +1,6 @@
-use windows::Win32::UI::Shell::{IContextMenu, GCS_VERBA, ShellExecuteW};
+use windows::Win32::UI::Shell::{IContextMenu, GCS_VERBA, ShellExecuteW, SHFileOperationW, FO_DELETE, FOF_ALLOWUNDO, FOF_WANTNUKEWARNING, SHFILEOPSTRUCTW};
 use windows::core::PCWSTR;
+use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 use super::ids::CMD_FIRST;
@@ -46,6 +47,38 @@ pub(crate) fn shell_execute_verb(path: &str, verb: &str) -> Result<(), String> {
         if (ret.0 as isize) <= 32 {
             return Err(format!("执行“{verb}”失败: code={}", ret.0 as isize));
         }
+    }
+    Ok(())
+}
+
+/// Explorer-style delete: move to Recycle Bin with the system confirmation UI.
+pub fn delete_to_recycle_bin(path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::") {
+        return Err("系统图标不支持删除".into());
+    }
+    // SHFileOperation requires a double-null-terminated list.
+    let mut from: Vec<u16> = trimmed.encode_utf16().chain([0u16, 0u16]).collect();
+    let mut op = SHFILEOPSTRUCTW {
+        hwnd: HWND::default(),
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_mut_ptr()),
+        pTo: PCWSTR::null(),
+        // ALLOWUNDO → Recycle Bin; no FOF_NOCONFIRMATION → system confirm dialog.
+        fFlags: FOF_ALLOWUNDO.0 as u16 | FOF_WANTNUKEWARNING.0 as u16,
+        fAnyOperationsAborted: false.into(),
+        hNameMappings: std::ptr::null_mut(),
+        lpszProgressTitle: PCWSTR::null(),
+    };
+    let code = unsafe { SHFileOperationW(&mut op) };
+    if op.fAnyOperationsAborted.as_bool() {
+        return Err("已取消".into());
+    }
+    if code != 0 {
+        return Err(format!("删除失败: code={code}"));
     }
     Ok(())
 }

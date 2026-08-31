@@ -301,7 +301,7 @@ pub fn delete_desktop_item(app: AppHandle, path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        trash::delete(trimmed).map_err(|e| format!("删除失败: {e}"))?;
+        crate::shell_menu::delete_to_recycle_bin(trimmed)?;
         super::icon_cache::invalidate(trimmed);
         if let Ok(mut layout) = super::layout::load_layout(&app) {
             super::layout::remove_path(&mut layout, trimmed);

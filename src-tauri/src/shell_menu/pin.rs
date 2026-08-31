@@ -75,6 +75,11 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
         // Always use our pin glyphs (frontend may replace with asset SVGs).
         pinned.icon = Some(pin_icon_svg(kind));
         pinned.destructive = kind == "delete";
+        // Delete always goes through our Recycle Bin path (SHFileOperation).
+        if kind == "delete" {
+            use super::ids::BUILTIN_DELETE;
+            pinned.id = BUILTIN_DELETE;
+        }
         pinned.label = match kind {
             "cut" => "剪切".into(),
             "copy" => "复制".into(),

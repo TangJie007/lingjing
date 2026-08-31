@@ -1,9 +1,7 @@
 import { ref, watch } from "vue";
 import type { ShellMenuEntry } from "./types";
 import {
-  BUILTIN_DELETE,
   BUILTIN_RENAME,
-  confirmDelete,
   friendlyError,
   showFenceToast,
 } from "./fenceUi";
@@ -170,13 +168,6 @@ export function useShellContextMenu() {
     const menuPath = entry.menuPath || [];
     const p = path.value;
 
-    const isDelete =
-      !!entry.destructive || commandId === BUILTIN_DELETE;
-    if (isDelete && p) {
-      const name = p.split(/[/\\]/).pop() || "";
-      if (!confirmDelete(name)) return;
-    }
-
     // Close + clear immediately so the panel never sits empty as a black strip.
     menuOpen.value = false;
     generation += 1;
@@ -195,9 +186,10 @@ export function useShellContextMenu() {
         commandId,
         menuPath,
       });
-      if (isDelete) showFenceToast("已移到回收站");
+      // Delete uses the system Recycle Bin dialog — no extra toast.
     } catch (e) {
       const msg = String(e);
+      if (/已取消|取消/.test(msg)) return;
       if (msg.includes("重命名") || msg.includes("BUILTIN_RENAME")) {
         if (!p) return;
         await renameAt(p);
