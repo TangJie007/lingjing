@@ -5,16 +5,23 @@ import FenceCell from "./FenceCell.vue";
 import type { DesktopItem, FenceGroupKey } from "../types";
 import { ICON_DRAG_ARM_MS } from "../iconDragCursor";
 
-const props = defineProps<{
-  groupKey: FenceGroupKey;
-  items: DesktopItem[];
-  native?: boolean;
-  emptyText?: string;
-  hostId?: string;
-  dragGroup: string | GroupOptions;
-  /** Return false to cancel Sortable reorder (e.g. drop into folder). */
-  folderMoveGuard?: (evt: MoveEvent, originalEvent: Event) => boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    groupKey: FenceGroupKey;
+    items: DesktopItem[];
+    native?: boolean;
+    emptyText?: string;
+    hostId?: string;
+    dragGroup: string | GroupOptions;
+    /** Sortable delay; 0 = press-to-drag (files). Apps keep long-press. */
+    dragDelay?: number;
+    /** Return false to cancel Sortable reorder (e.g. drop into folder). */
+    folderMoveGuard?: (evt: MoveEvent, originalEvent: Event) => boolean;
+  }>(),
+  {
+    dragDelay: ICON_DRAG_ARM_MS,
+  },
+);
 
 const emit = defineEmits<{
   "update:items": [items: DesktopItem[]];
@@ -46,7 +53,7 @@ function onMove(evt: MoveEvent, originalEvent: Event) {
     filter=".no-drag"
     :prevent-on-filter="true"
     :force-fallback="true"
-    :delay="ICON_DRAG_ARM_MS"
+    :delay="dragDelay"
     :delay-on-touch-only="false"
     :fallback-tolerance="6"
     ghost-class="is-dragging-source"
@@ -66,6 +73,7 @@ function onMove(evt: MoveEvent, originalEvent: Event) {
       :key="item.path"
       :item="item"
       :native="native"
+      :drag-delay="dragDelay"
       @open="emit('open', item.path)"
     />
     <div v-if="!items.length && emptyText" class="fence-empty no-drag">

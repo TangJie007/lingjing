@@ -8,6 +8,8 @@ import type { DesktopItem } from "../types";
 const props = defineProps<{
   item: DesktopItem;
   native?: boolean;
+  /** Match Sortable delay; files use 0. */
+  dragDelay?: number;
 }>();
 
 const emit = defineEmits<{
@@ -24,7 +26,7 @@ function onActivate(e: MouseEvent) {
 
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0) return;
-  onIconPointerDown(canDrag.value);
+  onIconPointerDown(canDrag.value, props.dragDelay);
 }
 
 function onPointerUp() {

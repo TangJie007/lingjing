@@ -9,6 +9,7 @@ import {
   ContextMenuTrigger,
 } from "reka-ui";
 import FenceGroup from "./components/FenceGroup.vue";
+import { FILE_DRAG_DELAY_MS } from "./iconDragCursor";
 import FenceToast from "./components/FenceToast.vue";
 import RenameDialog from "./components/RenameDialog.vue";
 import ShellMenuEntries from "./components/ShellMenuEntries.vue";
@@ -499,6 +500,7 @@ onUnmounted(() => {
               :empty-text="emptyTextFor(key)"
               :host-id="hostId[key]"
               :drag-group="fileDragGroup"
+              :drag-delay="FILE_DRAG_DELAY_MS"
               :folder-move-guard="onDragMove"
               @open="openItem"
               @sorted="onSorted(key)"
