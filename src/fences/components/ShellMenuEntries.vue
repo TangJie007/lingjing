@@ -9,6 +9,7 @@ import {
   ContextMenuSubTrigger,
 } from "reka-ui";
 import type { ShellMenuEntry } from "../types";
+import { shellMenuIcon } from "../shellMenuIcons";
 import ShellMenuLoading from "./ShellMenuLoading.vue";
 
 const props = defineProps<{
@@ -27,6 +28,10 @@ function onSelect(entry: ShellMenuEntry) {
   if (entry.disabled || entry.id == null || entry.id === 0) return;
   emit("command", entry);
 }
+
+function iconOf(entry: ShellMenuEntry) {
+  return shellMenuIcon(entry);
+}
 </script>
 
 <template>
@@ -36,11 +41,12 @@ function onSelect(entry: ShellMenuEntry) {
         v-for="(entry, idx) in pinEntries"
         :key="'pin-' + idx"
         class="pin"
+        :class="{ destructive: entry.destructive }"
         :title="entry.label || ''"
         :disabled="!!entry.disabled"
         @select="onSelect(entry)"
       >
-        <img v-if="entry.icon" :src="entry.icon" alt="" />
+        <img v-if="iconOf(entry)" :src="iconOf(entry)!" alt="" />
         <span v-else class="pin-fallback">{{ (entry.label || "?").slice(0, 1) }}</span>
       </ContextMenuItem>
     </div>
@@ -54,7 +60,7 @@ function onSelect(entry: ShellMenuEntry) {
         >
           <ContextMenuSubTrigger class="item has-sub" :disabled="!!entry.disabled">
             <span class="ico">
-              <img v-if="entry.icon" :src="entry.icon" alt="" />
+              <img v-if="iconOf(entry)" :src="iconOf(entry)!" alt="" />
             </span>
             <span class="lbl">{{ entry.label || "" }}</span>
             <span class="arrow">›</span>
@@ -82,7 +88,7 @@ function onSelect(entry: ShellMenuEntry) {
           @select="onSelect(entry)"
         >
           <span class="ico">
-            <img v-if="entry.icon" :src="entry.icon" alt="" />
+            <img v-if="iconOf(entry)" :src="iconOf(entry)!" alt="" />
           </span>
           <span class="lbl">{{ entry.label || "" }}</span>
         </ContextMenuItem>

@@ -42,7 +42,9 @@ pub async fn list_desktop_shell_context_menu(
         return tauri::async_runtime::spawn_blocking(move || {
             run_shell_menu_host("root", path_opt.as_deref(), &[]).map(|entries| {
                 if path_opt.is_none() {
-                    crate::shell_menu::ensure_paste_entry(entries)
+                    crate::shell_menu::ensure_paste_entry(
+                        crate::shell_menu::ensure_blank_refresh_pin(entries),
+                    )
                 } else {
                     entries
                 }

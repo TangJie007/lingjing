@@ -72,6 +72,47 @@ pub fn ensure_paste_entry(mut entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntr
     entries
 }
 
+fn entry_is_refresh(e: &ShellMenuEntry) -> bool {
+    if e.separator || e.children.is_some() {
+        return false;
+    }
+    e.id == BUILTIN_REFRESH || e.label.contains("刷新")
+}
+
+/// Blank desktop: always pin 刷新 in the header strip (Shell menus put it in the body).
+pub fn ensure_blank_refresh_pin(entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
+    use super::pin::pin_icon_svg;
+
+    let mut pins: Vec<ShellMenuEntry> = Vec::new();
+    let mut body: Vec<ShellMenuEntry> = Vec::new();
+    for e in entries {
+        if entry_is_refresh(&e) {
+            continue;
+        }
+        if e.pin {
+            pins.push(e);
+        } else {
+            body.push(e);
+        }
+    }
+
+    let mut refresh = item(BUILTIN_REFRESH, "刷新");
+    refresh.pin = true;
+    refresh.icon = Some(pin_icon_svg("refresh"));
+
+    let mut out = Vec::with_capacity(pins.len() + body.len() + 2);
+    out.push(refresh);
+    out.append(&mut pins);
+    if !body.is_empty() {
+        while body.first().is_some_and(|e| e.separator) {
+            body.remove(0);
+        }
+        out.push(sep());
+        out.append(&mut body);
+    }
+    out
+}
+
 /// Minimal fallback when Shell QueryContextMenu hangs (files).
 pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
     if std::path::Path::new(path).is_dir() {
@@ -121,8 +162,14 @@ pub fn folder_builtin_menu() -> Vec<ShellMenuEntry> {
 
 /// Blank desktop / fence background menu (Explorer-like, no Shell hang).
 pub fn desktop_blank_builtin_menu() -> Vec<ShellMenuEntry> {
+    use super::pin::pin_icon_svg;
+
+    let mut refresh = item(BUILTIN_REFRESH, "刷新");
+    refresh.pin = true;
+    refresh.icon = Some(pin_icon_svg("refresh"));
+
     ensure_paste_entry(vec![
-        item(BUILTIN_REFRESH, "刷新"),
+        refresh,
         sep(),
         ShellMenuEntry {
             id: 0,

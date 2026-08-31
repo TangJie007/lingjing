@@ -312,7 +312,9 @@ pub fn list_shell_context_menu(
     match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
         Ok(Ok(items)) if !items.is_empty() => {
             if path.is_none() {
-                Ok(super::builtin::ensure_paste_entry(items))
+                Ok(super::builtin::ensure_paste_entry(
+                    super::builtin::ensure_blank_refresh_pin(items),
+                ))
             } else {
                 Ok(items)
             }

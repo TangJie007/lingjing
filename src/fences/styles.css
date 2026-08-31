@@ -455,10 +455,11 @@ body,
 }
 
 .shell-ctx-pins .pin img {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
   opacity: 0.95;
+  object-fit: contain;
 }
 
 .shell-ctx-pins .pin-fallback {
