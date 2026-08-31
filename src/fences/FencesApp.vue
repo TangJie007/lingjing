@@ -31,6 +31,7 @@ import { initFenceLayout } from "./fenceLayout";
 import { friendlyError, showFenceToast } from "./fenceUi";
 import type { DesktopItem, FenceGroupKey, FenceGroupState } from "./types";
 import { cellPreviewDataUrl, useShellFileDrag } from "./useShellFileDrag";
+import { useExternalFileDrop } from "./useExternalFileDrop";
 import { markIconDragEnd, markIconDragStart } from "./iconOpen";
 import { useShellContextMenu } from "./useShellContextMenu";
 
@@ -103,6 +104,7 @@ const fileDragGroup = { name: "files", pull: true, put: ["files", "apps"] };
 const pendingFenceItems = ref<DesktopItem[] | null>(null);
 const dragging = ref(false);
 const fenceDraggingKey = ref<FenceGroupKey | null>(null);
+const fileDropHover = ref(false);
 
 const {
   entries: shellEntries,
@@ -115,6 +117,11 @@ const {
 } = useShellContextMenu();
 
 const shellDrag = useShellFileDrag();
+const externalDrop = useExternalFileDrop({
+  onHover: (active) => {
+    fileDropHover.value = active;
+  },
+});
 
 function persist(key: FenceGroupKey) {
   persistGroupOrder(groups[key].orderKey, groups[key].items);
@@ -217,6 +224,7 @@ function onStageContextMenu(e: MouseEvent) {
 onMounted(async () => {
   window.__fenceApply = applyFenceItems;
   await initFenceLayout();
+  await externalDrop.start();
   if (!window.__TAURI__) return;
   try {
     applyFenceItems(await window.__TAURI__.core.invoke<DesktopItem[]>("list_desktop_items"));
@@ -230,9 +238,17 @@ onMounted(async () => {
   } catch (e) {
     console.warn("listen fence-items failed", e);
   }
+  try {
+    await window.__TAURI__.event.listen<string>("fence-toast", (e) => {
+      if (e.payload) showFenceToast(friendlyError(e.payload));
+    });
+  } catch (e) {
+    console.warn("listen fence-toast failed", e);
+  }
 });
 
 onUnmounted(() => {
+  externalDrop.stop();
   if (window.__fenceApply === applyFenceItems) delete window.__fenceApply;
 });
 </script>
@@ -242,7 +258,8 @@ onUnmounted(() => {
     <ContextMenuTrigger as-child>
       <div
         id="stage"
-        :class="{ 'icon-dragging': dragging }"
+        class="stage"
+        :class="{ 'icon-dragging': dragging, 'file-drop-hover': fileDropHover }"
         @contextmenu.capture="onStageContextMenu"
       >
         <FenceGroup

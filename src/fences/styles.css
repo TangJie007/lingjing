@@ -91,6 +91,17 @@ body,
   inset: 0;
 }
 
+#stage.file-drop-hover::after {
+  content: "";
+  position: fixed;
+  inset: 12px;
+  border: 2px dashed rgba(120, 180, 255, 0.75);
+  border-radius: 12px;
+  background: rgba(80, 140, 220, 0.1);
+  pointer-events: none;
+  z-index: 50;
+}
+
 #apps {
   position: absolute;
   left: 0;

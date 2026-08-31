@@ -45,6 +45,9 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
             return Err(e);
         }
         let _ = window.set_ignore_cursor_events(false);
+        // SetParent invalidates tao/wry RegisterDragDrop — reinstall OLE targets.
+        super::drop_target::set_app(app.clone());
+        super::drop_target::install(hwnd.0 as isize);
     }
     #[cfg(not(windows))]
     {
@@ -53,6 +56,27 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
 
     let items = scan_desktop_items()?;
     let _ = window.eval("location.reload()");
+    // reload recreates WebView2 child HWNDs — reinstall on UI thread after they exist.
+    #[cfg(windows)]
+    {
+        let hwnd_raw = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+        if hwnd_raw != 0 {
+            let app_for_drop = app.clone();
+            std::thread::spawn(move || {
+                // Gaps between attempts (must RegisterDragDrop on UI/STA thread).
+                for gap_ms in [500u64, 800, 1500] {
+                    std::thread::sleep(std::time::Duration::from_millis(gap_ms));
+                    let app2 = app_for_drop.clone();
+                    if let Err(e) = super::util::run_on_ui(&app_for_drop, move || {
+                        super::drop_target::set_app(app2);
+                        super::drop_target::install(hwnd_raw);
+                    }) {
+                        tracing::info!("[desktop-organize] drop reinstall failed: {e}");
+                    }
+                }
+            });
+        }
+    }
     push_items_to_fence(app, &items)?;
     set_active(true);
     start_desktop_watch(app);
@@ -63,6 +87,8 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
 fn disable_inner(app: &AppHandle) -> Result<(), String> {
     set_active(false);
     stop_desktop_watch();
+    #[cfg(windows)]
+    super::drop_target::uninstall();
 
     if let Some(window) = app.get_webview_window(FENCE_LABEL) {
         #[cfg(windows)]
@@ -113,6 +139,8 @@ pub fn reassert(app: &AppHandle) {
         if let Ok(hwnd) = window.hwnd() {
             let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
             win::touch_fence_chrome(hwnd.0 as isize);
+            super::drop_target::set_app(app.clone());
+            super::drop_target::install(hwnd.0 as isize);
         }
         let _ = window.set_ignore_cursor_events(false);
     }

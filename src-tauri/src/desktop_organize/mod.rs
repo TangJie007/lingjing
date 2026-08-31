@@ -1,6 +1,8 @@
 //! Desktop organize: fence window lifecycle, desktop scan, Shell menus, drag-out.
 
 pub mod drag;
+#[cfg(windows)]
+mod drop_target;
 pub mod item_commands;
 pub mod layout;
 pub mod lifecycle;

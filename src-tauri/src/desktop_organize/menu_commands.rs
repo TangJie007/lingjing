@@ -462,8 +462,6 @@ fn clipboard_paste_to_desktop(app: &AppHandle) -> Result<(), String> {
     use windows::Win32::System::Ole::CF_HDROP;
     use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
-    let desktop = primary_desktop_dir()?;
-
     unsafe {
         if OpenClipboard(None).is_err() {
             return Err("无法打开剪贴板".into());
@@ -514,32 +512,7 @@ fn clipboard_paste_to_desktop(app: &AppHandle) -> Result<(), String> {
             return Err("剪贴板中没有可粘贴的文件".into());
         }
 
-        for src in &sources {
-            let name = src
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("粘贴的文件");
-            let dest = unique_path_in(&desktop, name);
-            if src == &dest {
-                continue;
-            }
-            if cut {
-                fs::rename(src, &dest).or_else(|_| {
-                    if src.is_dir() {
-                        // Cross-volume move: copy then remove.
-                        copy_dir_recursive(src, &dest)?;
-                        fs::remove_dir_all(src).map_err(|e| format!("剪切删除失败: {e}"))
-                    } else {
-                        fs::copy(src, &dest).map_err(|e| format!("粘贴失败: {e}"))?;
-                        fs::remove_file(src).map_err(|e| format!("剪切删除失败: {e}"))
-                    }
-                })?;
-            } else if src.is_dir() {
-                copy_dir_recursive(src, &dest)?;
-            } else {
-                fs::copy(src, &dest).map_err(|e| format!("粘贴失败: {e}"))?;
-            }
-        }
+        place_paths_on_desktop(app, &sources, Some(cut))?;
 
         // Cut: clear clipboard so Paste does not repeat a move.
         if cut {
@@ -550,7 +523,7 @@ fn clipboard_paste_to_desktop(app: &AppHandle) -> Result<(), String> {
         }
     }
 
-    refresh(app)
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -567,6 +540,109 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn same_volume(a: &Path, b: &Path) -> bool {
+    use std::path::Component;
+    match (a.components().next(), b.components().next()) {
+        (Some(Component::Prefix(pa)), Some(Component::Prefix(pb))) => pa == pb,
+        _ => false,
+    }
+}
+
+#[cfg(windows)]
+fn is_direct_child_of(path: &Path, dir: &Path) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    match (parent.canonicalize(), dir.canonicalize()) {
+        (Ok(p), Ok(d)) => p == d,
+        _ => parent == dir,
+    }
+}
+
+/// Place files/folders onto the user desktop (Explorer drop / Paste).
+#[cfg(windows)]
+pub(crate) fn place_paths_on_desktop(
+    app: &AppHandle,
+    paths: &[PathBuf],
+    move_files: Option<bool>,
+) -> Result<(), String> {
+    let desktop = primary_desktop_dir()?;
+    if paths.is_empty() {
+        return Err("没有可放置的文件".into());
+    }
+
+    let mut did_anything = false;
+    for src in paths {
+        if src.as_os_str().is_empty() || !src.exists() {
+            continue;
+        }
+        // Already sitting on the desktop — skip.
+        if is_direct_child_of(src, &desktop) {
+            continue;
+        }
+
+        let name = src
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("放置的文件");
+        let dest = unique_path_in(&desktop, name);
+        if src == &dest {
+            continue;
+        }
+
+        let do_move = move_files.unwrap_or_else(|| same_volume(src, &desktop));
+        if do_move {
+            fs::rename(src, &dest).or_else(|_| {
+                if src.is_dir() {
+                    copy_dir_recursive(src, &dest)?;
+                    fs::remove_dir_all(src).map_err(|e| format!("移动删除失败: {e}"))
+                } else {
+                    fs::copy(src, &dest).map_err(|e| format!("放置失败: {e}"))?;
+                    fs::remove_file(src).map_err(|e| format!("移动删除失败: {e}"))
+                }
+            })?;
+        } else if src.is_dir() {
+            copy_dir_recursive(src, &dest)?;
+        } else {
+            fs::copy(src, &dest).map_err(|e| format!("放置失败: {e}"))?;
+        }
+        did_anything = true;
+    }
+
+    if did_anything || !paths.is_empty() {
+        refresh(app)?;
+    }
+    Ok(())
+}
+
+/// Drop files from Explorer (or other apps) onto the desktop fence.
+#[tauri::command]
+pub async fn drop_files_to_desktop(
+    app: AppHandle,
+    paths: Vec<String>,
+    move_files: Option<bool>,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let paths: Vec<PathBuf> = paths
+            .into_iter()
+            .map(|p| PathBuf::from(p.trim()))
+            .filter(|p| !p.as_os_str().is_empty())
+            .collect();
+        return tauri::async_runtime::spawn_blocking(move || {
+            place_paths_on_desktop(&app, &paths, move_files)
+        })
+        .await
+        .map_err(|e| format!("放置文件任务失败: {e}"))?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, paths, move_files);
+        Err("桌面整理仅支持 Windows".into())
+    }
 }
 
 /// Show the real Windows Shell menu and execute the selected command before
