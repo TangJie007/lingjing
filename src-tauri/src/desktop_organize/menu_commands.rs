@@ -91,6 +91,36 @@ pub async fn list_desktop_shell_context_submenu(
     }
 }
 
+#[tauri::command]
+pub async fn load_desktop_shell_context_menu_icons(
+    app: AppHandle,
+    path: String,
+) -> Result<Vec<ShellMenuEntry>, String> {
+    let trimmed = path.trim();
+    let path_opt = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    let _window = app
+        .get_webview_window(FENCE_LABEL)
+        .ok_or_else(|| "格子窗口未就绪".to_string())?;
+
+    #[cfg(windows)]
+    {
+        return tauri::async_runtime::spawn_blocking(move || {
+            run_shell_menu_host("root-icons", path_opt.as_deref(), &[])
+        })
+        .await
+        .map_err(|e| format!("加载右键菜单图标任务失败: {e}"))?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (_window, path_opt);
+        Err("桌面整理仅支持 Windows".into())
+    }
+}
+
 /// Invoke a Shell COM context menu command previously listed for path/blank desktop.
 #[tauri::command]
 pub async fn invoke_desktop_shell_context_command(

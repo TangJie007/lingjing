@@ -155,6 +155,7 @@ const {
   error: shellError,
   menuOpen: shellMenuOpen,
   prepare: prepareShellMenu,
+  invalidateMenuCache: invalidateShellMenuCache,
   loadSubmenu: loadShellSubmenu,
   runCommand: runShellCommand,
 } = useShellContextMenu();
@@ -414,6 +415,11 @@ function onStageContextMenu(e: MouseEvent) {
   void prepareShellMenu(path);
 }
 
+function onStagePointerDown(e: PointerEvent) {
+  if (e.button !== 2) return;
+  void prepareShellMenu(pathFromEvent(e));
+}
+
 onMounted(async () => {
   window.__fenceApply = applyFenceItems;
   await initFenceLayout();
@@ -426,9 +432,10 @@ onMounted(async () => {
     showFenceToast(friendlyError(e));
   }
   try {
-    await window.__TAURI__.event.listen<DesktopItem[]>("fence-items", (e) =>
-      applyFenceItems(e.payload || []),
-    );
+    await window.__TAURI__.event.listen<DesktopItem[]>("fence-items", (e) => {
+      invalidateShellMenuCache();
+      applyFenceItems(e.payload || []);
+    });
   } catch (e) {
     console.warn("listen fence-items failed", e);
   }
@@ -458,6 +465,7 @@ onUnmounted(() => {
           'file-drop-hover': fileDropHover,
           'fences-collapsed': fencesCollapsed,
         }"
+        @pointerdown.capture="onStagePointerDown"
         @contextmenu.capture="onStageContextMenu"
       >
         <DynamicIsland

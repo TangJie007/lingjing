@@ -110,6 +110,7 @@ pub fn maybe_run_shell_menu_host() -> bool {
             crate::shell_menu::pump_messages();
             let result = match mode.as_str() {
                 "root" => crate::shell_menu::list_shell_context_menu(hwnd, path),
+                "root-icons" => crate::shell_menu::list_shell_context_menu_icons(hwnd, path),
                 "submenu" => {
                     crate::shell_menu::list_shell_context_submenu(hwnd, path, &menu_path)
                 }

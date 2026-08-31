@@ -9,6 +9,15 @@ import {
 import { migrateFencePath } from "./fenceLayout";
 import { requestRename } from "./useRenameDialog";
 
+const FILE_MENU_CACHE_TTL_MS = 8000;
+const BLANK_MENU_CACHE_TTL_MS = 1500;
+const MAX_MENU_CACHE = 64;
+
+type MenuCacheEntry = {
+  at: number;
+  entries: ShellMenuEntry[];
+};
+
 /**
  * Shell context menu data layer for reka-ui ContextMenu.
  * UI open/close + positioning are owned by ContextMenuTrigger/Content.
@@ -22,6 +31,102 @@ export function useShellContextMenu() {
   let generation = 0;
   let lastPrepareAt = 0;
   let lastPreparePath = "\0";
+  const menuCache = new Map<string, MenuCacheEntry>();
+  const pendingLoads = new Map<string, Promise<ShellMenuEntry[]>>();
+  const pendingIconLoads = new Set<string>();
+  const iconHydratedKeys = new Set<string>();
+
+  function cacheKey(targetPath: string): string {
+    return targetPath.trim();
+  }
+
+  function cloneEntries(list: ShellMenuEntry[]): ShellMenuEntry[] {
+    return list.map((entry) => ({
+      ...entry,
+      menuPath: entry.menuPath ? [...entry.menuPath] : entry.menuPath,
+      children: entry.children ? cloneEntries(entry.children) : entry.children,
+    }));
+  }
+
+  function cachedEntries(key: string): ShellMenuEntry[] | null {
+    const hit = menuCache.get(key);
+    if (!hit) return null;
+    const ttl = key ? FILE_MENU_CACHE_TTL_MS : BLANK_MENU_CACHE_TTL_MS;
+    if (Date.now() - hit.at > ttl) {
+      menuCache.delete(key);
+      return null;
+    }
+    return cloneEntries(hit.entries);
+  }
+
+  function rememberEntries(key: string, list: ShellMenuEntry[]) {
+    menuCache.set(key, { at: Date.now(), entries: cloneEntries(list) });
+    while (menuCache.size > MAX_MENU_CACHE) {
+      const oldest = menuCache.keys().next().value;
+      if (oldest == null) break;
+      menuCache.delete(oldest);
+    }
+  }
+
+  function invalidateMenuCache(targetPath?: string) {
+    if (targetPath == null) {
+      menuCache.clear();
+      pendingIconLoads.clear();
+      iconHydratedKeys.clear();
+      return;
+    }
+    const key = cacheKey(targetPath);
+    menuCache.delete(key);
+    menuCache.delete("");
+    pendingIconLoads.delete(key);
+    pendingIconLoads.delete("");
+    iconHydratedKeys.delete(key);
+    iconHydratedKeys.delete("");
+  }
+
+  function sameEntry(a: ShellMenuEntry, b: ShellMenuEntry): boolean {
+    return (
+      a.id === b.id &&
+      a.label === b.label &&
+      samePath(a.menuPath, b.menuPath || [])
+    );
+  }
+
+  function mergeIcons(target: ShellMenuEntry[], source: ShellMenuEntry[]) {
+    for (const entry of target) {
+      const hit = source.find((candidate) => sameEntry(entry, candidate));
+      if (!hit) continue;
+      if (hit.icon) entry.icon = hit.icon;
+      if (entry.children && hit.children) {
+        mergeIcons(entry.children, hit.children);
+      }
+    }
+  }
+
+  async function hydrateMenuIcons(targetPath: string, key: string, myGen: number) {
+    if (pendingIconLoads.has(key) || iconHydratedKeys.has(key) || !window.__TAURI__) return;
+    pendingIconLoads.add(key);
+    try {
+      const withIcons = await window.__TAURI__.core.invoke<ShellMenuEntry[]>(
+        "load_desktop_shell_context_menu_icons",
+        { path: targetPath },
+      );
+      const cached = menuCache.get(key);
+      if (cached) {
+        mergeIcons(cached.entries, withIcons || []);
+      }
+      if (myGen === generation && path.value === targetPath) {
+        const next = cloneEntries(entries.value);
+        mergeIcons(next, withIcons || []);
+        entries.value = next;
+      }
+      iconHydratedKeys.add(key);
+    } catch (e) {
+      console.info("[shell-menu] lazy icon load failed", e);
+    } finally {
+      pendingIconLoads.delete(key);
+    }
+  }
 
   function clear() {
     entries.value = [];
@@ -53,6 +158,7 @@ export function useShellContextMenu() {
     if (!window.__TAURI__) return;
 
     const now = Date.now();
+    const key = cacheKey(targetPath);
     // pointerdown + contextmenu both call prepare for the same gesture
     if (
       targetPath === lastPreparePath &&
@@ -66,22 +172,44 @@ export function useShellContextMenu() {
 
     const myGen = ++generation;
     path.value = targetPath;
-    loading.value = true;
     error.value = "";
+
+    const cached = cachedEntries(key);
+    if (cached) {
+      loading.value = false;
+      entries.value = cached;
+      void hydrateMenuIcons(targetPath, key, myGen);
+      if (!entries.value.length) {
+        error.value = "暂无可用菜单项";
+      }
+      return;
+    }
+
+    loading.value = true;
     // Clear immediately so we never show another item's shell commands.
     entries.value = [];
 
     try {
-      const list = await window.__TAURI__.core.invoke<ShellMenuEntry[]>(
-        "list_desktop_shell_context_menu",
-        { path: targetPath },
-      );
+      let load = pendingLoads.get(key);
+      if (!load) {
+        load = window.__TAURI__.core.invoke<ShellMenuEntry[]>(
+          "list_desktop_shell_context_menu",
+          { path: targetPath },
+        );
+        pendingLoads.set(key, load);
+      }
+      const list = await load;
+      pendingLoads.delete(key);
       if (myGen !== generation) return;
-      entries.value = list || [];
+      const next = list || [];
+      rememberEntries(key, next);
+      entries.value = cloneEntries(next);
+      void hydrateMenuIcons(targetPath, key, myGen);
       if (!entries.value.length) {
         error.value = "暂无可用菜单项";
       }
     } catch (e) {
+      pendingLoads.delete(key);
       if (myGen === generation) {
         entries.value = [];
         error.value = friendlyError(e);
@@ -152,6 +280,7 @@ export function useShellContextMenu() {
       } catch {
         /* watcher will refresh */
       }
+      invalidateMenuCache(p);
       showFenceToast("已重命名");
     } catch (e) {
       showFenceToast(friendlyError(e));
@@ -187,6 +316,7 @@ export function useShellContextMenu() {
         commandId,
         menuPath,
       });
+      invalidateMenuCache(p);
       // Delete uses the system Recycle Bin dialog — no extra toast.
     } catch (e) {
       const msg = String(e);
@@ -208,6 +338,7 @@ export function useShellContextMenu() {
     error,
     menuOpen,
     prepare,
+    invalidateMenuCache,
     loadSubmenu,
     runCommand,
   };

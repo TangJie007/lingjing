@@ -170,6 +170,7 @@ unsafe fn enumerate_hmenu(
     hmenu: HMENU,
     parent_path: &[u32],
     _depth: u32,
+    include_icons: bool,
 ) -> Vec<ShellMenuEntry> {
     if hmenu.is_invalid() {
         return Vec::new();
@@ -184,11 +185,14 @@ unsafe fn enumerate_hmenu(
         let mut text_buf = [0u16; 512];
         let mut mii = MENUITEMINFOW {
             cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
-            fMask: MIIM_BITMAP | MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU,
+            fMask: MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU,
             dwTypeData: windows::core::PWSTR(text_buf.as_mut_ptr()),
             cch: text_buf.len() as u32 - 1,
             ..Default::default()
         };
+        if include_icons {
+            mii.fMask |= MIIM_BITMAP;
+        }
         if GetMenuItemInfoW(hmenu, i as u32, true, &mut mii).is_err() {
             continue;
         }
@@ -239,7 +243,7 @@ unsafe fn enumerate_hmenu(
             label: label.clone(),
             disabled,
             separator: false,
-            icon: unsafe { hbitmap_to_data_url(mii.hbmpItem) },
+            icon: include_icons.then(|| unsafe { hbitmap_to_data_url(mii.hbmpItem) }).flatten(),
             children,
             menu_path,
             pin: false,
@@ -275,6 +279,7 @@ unsafe fn initialize_submenu_path(
 fn list_shell_context_menu_inner(
     hwnd: HWND,
     path: Option<&str>,
+    include_icons: bool,
 ) -> Result<Vec<ShellMenuEntry>, String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -289,7 +294,7 @@ fn list_shell_context_menu_inner(
             return Err(format!("QueryContextMenu: {hr:?}"));
         }
         stage("读取菜单项");
-        let items = enumerate_hmenu(&pcm, hmenu, &[], 0);
+        let items = enumerate_hmenu(&pcm, hmenu, &[], 0, include_icons);
         let items = apply_win11_pin_row(Some(&pcm), items);
         stage("完成");
         let _ = DestroyMenu(hmenu);
@@ -306,7 +311,7 @@ pub fn list_shell_context_menu(
     let (tx, rx) = mpsc::sync_channel(1);
     thread::spawn(move || {
         let hwnd = HWND(hwnd_raw as *mut _);
-        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref());
+        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref(), false);
         let _ = tx.send(result);
     });
     match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
@@ -331,6 +336,28 @@ pub fn list_shell_context_menu(
     }
 }
 
+pub fn list_shell_context_menu_icons(
+    hwnd: HWND,
+    path: Option<&str>,
+) -> Result<Vec<ShellMenuEntry>, String> {
+    let path_owned = path.map(|s| s.to_string());
+    let hwnd_raw = hwnd.0 as isize;
+    let (tx, rx) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let hwnd = HWND(hwnd_raw as *mut _);
+        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref(), true);
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            stage("菜单图标加载超时");
+            Err("菜单图标加载超时".into())
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err("菜单图标加载线程异常退出".into()),
+    }
+}
+
 pub fn list_shell_context_submenu(
     hwnd: HWND,
     path: Option<&str>,
@@ -351,7 +378,7 @@ pub fn list_shell_context_submenu(
         let result = (|| {
             let submenu = initialize_submenu_path(&pcm, hmenu, menu_path)?;
             stage("二级菜单：读取菜单项");
-            Ok(enumerate_hmenu(&pcm, submenu, menu_path, 0))
+            Ok(enumerate_hmenu(&pcm, submenu, menu_path, 0, false))
         })();
         let _ = DestroyMenu(hmenu);
         result
