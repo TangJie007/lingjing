@@ -147,7 +147,7 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Result<(), String> {
+pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Result<String, String> {
     let trimmed = path.trim();
     let name = new_name.trim();
     if trimmed.is_empty() || name.is_empty() {
@@ -169,12 +169,12 @@ pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Re
         return Err("目标名称已存在".into());
     }
     fs::rename(old, &new_path).map_err(|e| format!("重命名失败: {e}"))?;
+    let new = new_path.to_string_lossy().into_owned();
     if let Ok(mut layout) = super::layout::load_layout(&app) {
-        let new = new_path.to_string_lossy().into_owned();
         super::layout::migrate_path(&mut layout, trimmed, &new);
         let _ = super::layout::save_layout(&app, &layout);
     }
-    Ok(())
+    Ok(new)
 }
 
 #[tauri::command]

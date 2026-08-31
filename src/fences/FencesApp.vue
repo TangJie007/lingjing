@@ -10,6 +10,7 @@ import {
 } from "reka-ui";
 import FenceGroup from "./components/FenceGroup.vue";
 import FenceToast from "./components/FenceToast.vue";
+import RenameDialog from "./components/RenameDialog.vue";
 import ShellMenuEntries from "./components/ShellMenuEntries.vue";
 import ShellMenuLoading from "./components/ShellMenuLoading.vue";
 import {
@@ -316,4 +317,5 @@ onUnmounted(() => {
     </ContextMenuPortal>
   </ContextMenuRoot>
   <FenceToast />
+  <RenameDialog />
 </template>

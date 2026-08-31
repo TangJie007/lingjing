@@ -11,6 +11,7 @@ import {
   loadFenceOrder,
   saveFenceCategory,
   saveFenceOrder,
+  samePath,
 } from "./fenceLayout";
 
 export {
@@ -36,22 +37,33 @@ export function saveOrder(key: string, paths: string[]) {
 export function loadOrder(key: string, items: DesktopItem[]): DesktopItem[] {
   try {
     const saved = loadFenceOrder(key);
-    const map = new Map(items.map((a) => [a.path, a]));
+    const map = new Map<string, DesktopItem>();
+    for (const a of items) {
+      map.set(normalizeKey(a.path), a);
+    }
     const out: DesktopItem[] = [];
+    const used = new Set<string>();
     for (const p of saved) {
       if (typeof p !== "string" || p.startsWith("::")) continue;
-      if (map.has(p)) {
-        out.push(map.get(p)!);
-        map.delete(p);
+      const k = normalizeKey(p);
+      const hit = map.get(k);
+      if (hit) {
+        out.push(hit);
+        used.add(k);
       }
     }
     for (const a of items) {
-      if (map.has(a.path)) out.push(a);
+      const k = normalizeKey(a.path);
+      if (!used.has(k)) out.push(a);
     }
     return out;
   } catch {
     return items;
   }
+}
+
+function normalizeKey(p: string): string {
+  return p.replace(/\//g, "\\").toLowerCase();
 }
 
 export function loadCategoryOverrides(): Record<string, string> {
@@ -66,6 +78,9 @@ export function effectiveCategory(item: DesktopItem | null | undefined): string 
   if (!item) return "other";
   const overrides = loadCategoryOverrides();
   if (overrides[item.path]) return overrides[item.path];
+  for (const [p, cat] of Object.entries(overrides)) {
+    if (samePath(p, item.path)) return cat;
+  }
   return item.kind || "other";
 }
 

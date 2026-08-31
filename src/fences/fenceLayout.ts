@@ -157,6 +157,59 @@ export function saveFenceCategory(path: string, category: string) {
   scheduleFenceLayoutSave();
 }
 
+/** Keep in-memory order after rename so refresh doesn't treat the item as new. */
+export function migrateFencePath(oldPath: string, newPath: string) {
+  if (!cache || !oldPath || !newPath || samePath(oldPath, newPath)) return;
+  const fields: (keyof FenceLayout)[] = [
+    "appOrder",
+    "imageOrder",
+    "documentOrder",
+    "folderOrder",
+    "mediaOrder",
+    "archiveOrder",
+  ];
+  for (const field of fields) {
+    const arr = cache[field] as string[];
+    const idx = arr.findIndex((p) => samePath(p, oldPath));
+    if (idx >= 0) arr[idx] = newPath;
+  }
+  const catKey = Object.keys(cache.categories).find((p) => samePath(p, oldPath));
+  if (catKey) {
+    const cat = cache.categories[catKey];
+    delete cache.categories[catKey];
+    cache.categories[newPath] = cat;
+  }
+}
+
+export function removeFencePath(path: string) {
+  if (!cache || !path) return;
+  const fields: (keyof FenceLayout)[] = [
+    "appOrder",
+    "imageOrder",
+    "documentOrder",
+    "folderOrder",
+    "mediaOrder",
+    "archiveOrder",
+  ];
+  for (const field of fields) {
+    const arr = cache[field] as string[];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (samePath(arr[i], path)) arr.splice(i, 1);
+    }
+  }
+  for (const key of Object.keys(cache.categories)) {
+    if (samePath(key, path)) delete cache.categories[key];
+  }
+}
+
+export function samePath(a: string, b: string): boolean {
+  return normalizePath(a) === normalizePath(b);
+}
+
+function normalizePath(p: string): string {
+  return p.replace(/\//g, "\\").toLowerCase();
+}
+
 export function loadFenceOrder(orderKey: string): string[] {
   const field = ORDER_FIELD[orderKey];
   if (!field) return [];
@@ -165,4 +218,15 @@ export function loadFenceOrder(orderKey: string): string[] {
 
 export function loadFenceCategories(): Record<string, string> {
   return { ...getFenceLayout().categories };
+}
+
+/** Re-read layout from Rust (e.g. after backend migrated a path). */
+export async function reloadFenceLayout(): Promise<void> {
+  if (!window.__TAURI__) return;
+  try {
+    const rust = await window.__TAURI__.core.invoke<FenceLayout>("load_fence_layout");
+    cache = rust || emptyLayout();
+  } catch {
+    /* keep existing cache */
+  }
 }

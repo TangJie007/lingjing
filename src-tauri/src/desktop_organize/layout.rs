@@ -48,8 +48,16 @@ pub fn save_layout(app: &AppHandle, layout: &FenceLayout) -> Result<(), String> 
     crate::util::write_json_atomic(&path, layout)
 }
 
+fn path_key(p: &str) -> String {
+    p.replace('/', "\\").to_ascii_lowercase()
+}
+
+fn same_path(a: &str, b: &str) -> bool {
+    path_key(a) == path_key(b)
+}
+
 fn replace_in_order(order: &mut Vec<String>, old: &str, new: &str) {
-    if let Some(idx) = order.iter().position(|p| p == old) {
+    if let Some(idx) = order.iter().position(|p| same_path(p, old)) {
         order[idx] = new.to_string();
     }
 }
@@ -61,19 +69,34 @@ pub fn migrate_path(layout: &mut FenceLayout, old: &str, new: &str) {
     replace_in_order(&mut layout.folder_order, old, new);
     replace_in_order(&mut layout.media_order, old, new);
     replace_in_order(&mut layout.archive_order, old, new);
-    if let Some(cat) = layout.categories.remove(old) {
-        layout.categories.insert(new.to_string(), cat);
+    let cat_key = layout
+        .categories
+        .keys()
+        .find(|p| same_path(p, old))
+        .cloned();
+    if let Some(key) = cat_key {
+        if let Some(cat) = layout.categories.remove(&key) {
+            layout.categories.insert(new.to_string(), cat);
+        }
     }
 }
 
 pub fn remove_path(layout: &mut FenceLayout, path: &str) {
-    layout.app_order.retain(|p| p != path);
-    layout.image_order.retain(|p| p != path);
-    layout.document_order.retain(|p| p != path);
-    layout.folder_order.retain(|p| p != path);
-    layout.media_order.retain(|p| p != path);
-    layout.archive_order.retain(|p| p != path);
-    layout.categories.remove(path);
+    layout.app_order.retain(|p| !same_path(p, path));
+    layout.image_order.retain(|p| !same_path(p, path));
+    layout.document_order.retain(|p| !same_path(p, path));
+    layout.folder_order.retain(|p| !same_path(p, path));
+    layout.media_order.retain(|p| !same_path(p, path));
+    layout.archive_order.retain(|p| !same_path(p, path));
+    let cat_keys: Vec<String> = layout
+        .categories
+        .keys()
+        .filter(|p| same_path(p, path))
+        .cloned()
+        .collect();
+    for key in cat_keys {
+        layout.categories.remove(&key);
+    }
 }
 
 #[tauri::command]
