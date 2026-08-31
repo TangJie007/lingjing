@@ -7,11 +7,11 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use windows::core::{factory, AgileReference, Interface, PCSTR, PCWSTR, HSTRING};
+use windows::core::{factory, Interface, PCSTR, PCWSTR, HSTRING};
 use windows::ApplicationModel::DataTransfer::{
-    DataPackageOperation, DataRequest, DataRequestedEventArgs, DataTransferManager,
+    DataRequest, DataRequestedEventArgs, DataTransferManager,
 };
 use windows::Foundation::TypedEventHandler;
 use windows::Storage::{IStorageItem, StorageFile, StorageFolder};
@@ -29,7 +29,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow, GetCursorPos,
     GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW, RegisterClassExW, SetForegroundWindow,
     ShowWindow, CS_HREDRAW, CS_VREDRAW, MENUITEMINFOW, MF_BYPOSITION, MFT_SEPARATOR, MIIM_FTYPE,
-    MIIM_ID, SW_SHOW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_POPUP, WM_DESTROY, HMENU,
+    MIIM_ID, SW_SHOW, WINDOW_EX_STYLE, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW,
+    WM_DESTROY, HMENU,
 };
 use windows_collections::IIterable;
 
@@ -41,8 +42,8 @@ use super::verbs::command_verb;
 static SHARE_CLASS: OnceLock<Vec<u16>> = OnceLock::new();
 static OWNED_HWND: Mutex<Option<isize>> = Mutex::new(None);
 
-/// Must run on the UI thread (message pump + window creation).
-pub fn share_path_native(path: &str) -> Result<(), String> {
+/// Must run on the thread that owns the temporary top-level window.
+pub fn share_path_native(_owner_hwnd_raw: isize, path: &str) -> Result<(), String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("路径为空".into());
@@ -51,6 +52,10 @@ pub fn share_path_native(path: &str) -> Result<(), String> {
         return Err("目标不存在".into());
     }
 
+    // Use a real, activatable top-level owner. The Fence HWND is a child of
+    // SHELLDLL_DefView, hidden Tauri windows are not reliable share owners, and
+    // borderless WS_POPUP owners are accepted initially by some Windows 11
+    // builds but immediately canceled.
     let hwnd = create_owner_window()?;
     let hwnd_raw = hwnd.0 as isize;
     if let Ok(mut g) = OWNED_HWND.lock() {
@@ -58,7 +63,7 @@ pub fn share_path_native(path: &str) -> Result<(), String> {
             destroy_hwnd(HWND(old as _));
         }
     }
-    // Keep owner alive for the share sheet lifetime.
+    // Keep fallback owner alive for the share sheet lifetime.
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(180));
         finish_owner(hwnd_raw);
@@ -75,31 +80,34 @@ pub fn share_path_native(path: &str) -> Result<(), String> {
             tracing::info!("[share] DataTransferManager UI shown path={trimmed}");
             return Ok(());
         }
+        Err(e) if e == "已取消共享" => {
+            finish_owner(hwnd_raw);
+            return Err(e);
+        }
         Err(e) => tracing::warn!("[share] DataTransferManager failed: {e}"),
     }
 
     // 2) In-process Shell InvokeCommand with OUR owner HWND (not PowerShell).
-    match share_via_shell_invoke(hwnd, trimmed) {
-        Ok(()) => {
-            tracing::info!("[share] Shell InvokeCommand ok path={trimmed}");
-            unsafe { pump_for(1500) };
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!("[share] Shell InvokeCommand failed: {e}");
-            finish_owner(hwnd_raw);
-            Err(e)
-        }
+    let result = share_via_shell_invoke(hwnd, trimmed).map(|_| {
+        tracing::info!("[share] Shell InvokeCommand ok path={trimmed}");
+        unsafe { pump_for(1500) };
+    });
+    if let Err(e) = &result {
+        tracing::error!("[share] Shell InvokeCommand failed: {e}");
+        finish_owner(hwnd_raw);
     }
+    result
 }
 
 fn share_via_dtm(hwnd: HWND, path: &str) -> Result<(), String> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
     let supported = DataTransferManager::IsSupported().map_err(|e| e.to_string())?;
     if !supported {
         return Err("系统不支持 DataTransferManager".into());
     }
 
-    let items = resolve_storage_items(path).map_err(|e| format!("准备共享失败: {e}"))?;
     let title = Path::new(path)
         .file_name()
         .and_then(|s| s.to_str())
@@ -114,6 +122,7 @@ fn share_via_dtm(hwnd: HWND, path: &str) -> Result<(), String> {
     let (tx_data, rx_data) = mpsc::sync_channel::<Result<(), String>>(1);
     let (tx_done, rx_done) = mpsc::sync_channel::<bool>(1);
     let title_h = HSTRING::from(title.as_str());
+    let path_h = path.to_string();
 
     let handler = TypedEventHandler::new(
         move |_s: windows::core::Ref<'_, DataTransferManager>,
@@ -122,7 +131,7 @@ fn share_via_dtm(hwnd: HWND, path: &str) -> Result<(), String> {
                 tracing::info!("[share] DataRequested");
                 let args = args.as_ref().ok_or_else(|| "DataRequested args null".to_string())?;
                 let request = args.Request().map_err(|e| e.to_string())?;
-                fill_request(&title_h, &items, &request).map_err(|e| e.to_string())?;
+                fill_request(&title_h, &path_h, &request).map_err(|e| e.to_string())?;
                 let data = request.Data().map_err(|e| e.to_string())?;
                 let txc = tx_done.clone();
                 let _ = data.ShareCompleted(&TypedEventHandler::new(move |_, _| {
@@ -146,68 +155,30 @@ fn share_via_dtm(hwnd: HWND, path: &str) -> Result<(), String> {
         .DataRequested(&handler)
         .map_err(|e| format!("DataRequested register: {e}"))?;
 
-    unsafe {
-        let _ = SetForegroundWindow(hwnd);
-    }
-    let shown_at = Instant::now();
     if let Err(e) = unsafe { interop.ShowShareUIForWindow(hwnd) } {
         let _ = manager.RemoveDataRequested(token);
         return Err(format!("ShowShareUIForWindow: {e}"));
     }
 
-    // Pump until DataRequested fills (or timeout). Stay on UI thread.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let setup = loop {
-        pump_messages();
-        match rx_data.try_recv() {
-            Ok(r) => break r,
-            Err(mpsc::TryRecvError::Empty) => {
-                if Instant::now() > deadline {
-                    let _ = manager.RemoveDataRequested(token);
-                    return Err("等待 DataRequested 超时".into());
-                }
-                std::thread::sleep(Duration::from_millis(16));
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                let _ = manager.RemoveDataRequested(token);
-                return Err("DataRequested 通道断开".into());
-            }
-        }
-    };
+    let setup = rx_data
+        .recv_timeout(Duration::from_secs(10))
+        .map_err(|e| format!("等待 DataRequested 失败: {e}"))?;
     if let Err(e) = setup {
         let _ = manager.RemoveDataRequested(token);
         return Err(e);
     }
 
-    // Keep pumping so the share flyout stays alive; don't tear down immediately.
-    let settle = Instant::now() + Duration::from_secs(3);
-    let mut outcome = None;
-    while Instant::now() < settle {
-        pump_messages();
-        match rx_done.try_recv() {
-            Ok(completed) => {
-                outcome = Some(completed);
-                break;
-            }
-            Err(mpsc::TryRecvError::Empty) => {}
-            Err(mpsc::TryRecvError::Disconnected) => break,
-        }
-        std::thread::sleep(Duration::from_millis(16));
+    // Keep the manager, token and handler alive for the complete share session.
+    let completed = rx_done
+        .recv()
+        .map_err(|e| format!("等待共享结果失败: {e}"))?;
+    let _ = manager.RemoveDataRequested(token);
+    drop(handler);
+    if completed {
+        Ok(())
+    } else {
+        Err("已取消共享".into())
     }
-
-    // Some desktop/WorkerW configurations accept ShowShareUIForWindow and fire
-    // DataRequested, but immediately cancel before a user can interact. That is
-    // not a successful share launch; let the caller fall back to the Shell
-    // context-menu verb, which owns the share session itself.
-    if outcome == Some(false) && shown_at.elapsed() < Duration::from_secs(1) {
-        let _ = manager.RemoveDataRequested(token);
-        return Err("共享面板被系统立即取消".into());
-    }
-
-    // Leave registration + hwnd for later cancel/complete; forget local handler ref.
-    std::mem::forget(handler);
-    let _ = token; // keep registered (Remove later when owner destroyed)
-    Ok(())
 }
 
 fn share_via_shell_invoke(hwnd: HWND, path: &str) -> Result<(), String> {
@@ -323,24 +294,23 @@ unsafe fn acquire_item_menu(hwnd: HWND, path: &str) -> Result<IContextMenu, Stri
 
 fn fill_request(
     title: &HSTRING,
-    storage_items: &[AgileReference<IStorageItem>],
+    path: &str,
     request: &DataRequest,
 ) -> windows::core::Result<()> {
     let data = request.Data()?;
     let properties = data.Properties()?;
     properties.SetTitle(title)?;
     properties.SetDescription(title)?;
-    data.SetRequestedOperation(DataPackageOperation::Copy)?;
-    let items = storage_items
-        .iter()
-        .map(|item| item.resolve().map(Some))
-        .collect::<windows::core::Result<Vec<Option<IStorageItem>>>>()?;
+    let items = resolve_storage_items(path)?
+        .into_iter()
+        .map(Some)
+        .collect::<Vec<Option<IStorageItem>>>();
     let items: IIterable<IStorageItem> = items.into();
     data.SetStorageItemsReadOnly(&items)?;
     Ok(())
 }
 
-fn resolve_storage_items(path: &str) -> windows::core::Result<Vec<AgileReference<IStorageItem>>> {
+fn resolve_storage_items(path: &str) -> windows::core::Result<Vec<IStorageItem>> {
     let path = std::fs::canonicalize(path)?;
     let path = strip_verbatim_prefix(&path);
     let hpath = HSTRING::from(path.as_path());
@@ -349,7 +319,7 @@ fn resolve_storage_items(path: &str) -> windows::core::Result<Vec<AgileReference
     } else {
         StorageFile::GetFileFromPathAsync(&hpath)?.get()?.cast()?
     };
-    Ok(vec![AgileReference::new(&item)?])
+    Ok(vec![item])
 }
 
 fn strip_verbatim_prefix(path: &Path) -> PathBuf {
@@ -419,14 +389,14 @@ fn create_owner_window() -> Result<HWND, String> {
         let _ = GetCursorPos(&mut pt);
         let title = wide("LingScape Share");
         CreateWindowExW(
-            WINDOW_EX_STYLE(0),
+            WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0),
             PCWSTR(class.as_ptr()),
             PCWSTR(title.as_ptr()),
-            WS_POPUP,
+            WS_OVERLAPPEDWINDOW,
             pt.x.saturating_sub(16),
             pt.y.saturating_sub(16),
-            32,
-            32,
+            160,
+            80,
             None,
             None,
             None,

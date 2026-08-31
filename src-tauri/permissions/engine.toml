@@ -41,6 +41,7 @@ commands.allow = [
   "start_desktop_file_drag",
   "drop_files_to_desktop",
   "show_desktop_native_context_menu",
+  "show_desktop_explorer_context_menu",
   "set_desktop_organize",
   "list_desktop_items",
   "load_fence_layout",

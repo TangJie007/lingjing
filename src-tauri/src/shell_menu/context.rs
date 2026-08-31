@@ -3,19 +3,26 @@ use std::thread;
 use std::time::Duration;
 
 use windows::core::{Interface, PCWSTR};
-use windows::Win32::Foundation::{HWND, POINT};
-use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, IServiceProvider, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+};
+use windows::Win32::System::Variant::VariantInit;
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{
-    BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, IShellFolder, IShellItem, ILFree,
-    SHBindToParent, SHCreateItemFromParsingName, SHGetDesktopFolder, SHParseDisplayName,
-    CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, SEE_MASK_UNICODE,
+    BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, IFolderView, IShellBrowser,
+    IShellFolder, IShellItem, IShellWindows, ILFree, SHBindToParent,
+    SHCreateItemFromParsingName, SHGDN_FORPARSING, SHGetDesktopFolder, SHParseDisplayName,
+    ShellWindows, StrRetToBufW, CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, SEE_MASK_UNICODE,
+    SID_STopLevelBrowser, SVGIO_ALLVIEW, SVSI_DESELECTOTHERS, SVSI_ENSUREVISIBLE, SVSI_FOCUSED,
+    SVSI_SELECT, SVSI_SELECTIONMARK, SWC_DESKTOP, SWFO_NEEDDISPATCH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, DestroyMenu, GetCursorPos, GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW,
-    GetSubMenu, SetForegroundWindow, TrackPopupMenuEx, HMENU, MENUITEMINFOW, MF_BYPOSITION,
-    MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU,
-    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_INITMENUPOPUP,
+    GetSubMenu, PostMessageW, SetForegroundWindow, TrackPopupMenuEx, HMENU, MENUITEMINFOW,
+    MF_BYPOSITION, MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING,
+    MIIM_SUBMENU, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_CONTEXTMENU,
+    WM_INITMENUPOPUP,
 };
 
 use crate::desktop_organize::ShellMenuEntry;
@@ -119,6 +126,138 @@ unsafe fn find_shell_defview() -> HWND {
     };
     let _ = EnumWindows(Some(enum_cb), windows::Win32::Foundation::LPARAM(&mut search as *mut _ as isize));
     search.found
+}
+
+unsafe fn find_defview_listview(defview: HWND) -> HWND {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::FindWindowExW;
+
+    if defview.0.is_null() {
+        return HWND::default();
+    }
+    FindWindowExW(Some(defview), None, w!("SysListView32"), PCWSTR::null()).unwrap_or_default()
+}
+
+fn point_lparam(pt: POINT) -> LPARAM {
+    let x = (pt.x as i16 as u16) as isize;
+    let y = ((pt.y as i16 as u16) as isize) << 16;
+    LPARAM(x | y)
+}
+
+unsafe fn desktop_folder_view() -> Result<IFolderView, String> {
+    let shell_windows: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)
+        .map_err(|e| format!("创建 ShellWindows 失败: {e}"))?;
+    let loc = VariantInit();
+    let root = VariantInit();
+    let mut hwnd = 0i32;
+    let dispatch = shell_windows
+        .FindWindowSW(
+            &loc,
+            &root,
+            SWC_DESKTOP,
+            &mut hwnd,
+            SWFO_NEEDDISPATCH,
+        )
+        .map_err(|e| format!("查找 Explorer 桌面窗口失败: {e}"))?;
+    let provider: IServiceProvider = dispatch
+        .cast()
+        .map_err(|e| format!("获取 Explorer IServiceProvider 失败: {e}"))?;
+    let browser: IShellBrowser = provider
+        .QueryService(&SID_STopLevelBrowser)
+        .map_err(|e| format!("获取 Explorer ShellBrowser 失败: {e}"))?;
+    let view = browser
+        .QueryActiveShellView()
+        .map_err(|e| format!("获取 Explorer ShellView 失败: {e}"))?;
+    view.cast()
+        .map_err(|e| format!("获取 Explorer FolderView 失败: {e}"))
+}
+
+unsafe fn folder_item_path(folder: &IShellFolder, pidl: *const ITEMIDLIST) -> Option<String> {
+    let mut name = std::mem::zeroed();
+    folder
+        .GetDisplayNameOf(pidl, SHGDN_FORPARSING, &mut name)
+        .ok()?;
+    let mut buf = [0u16; 1024];
+    StrRetToBufW(&mut name, Some(pidl), &mut buf).ok()?;
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    if len == 0 {
+        None
+    } else {
+        Some(String::from_utf16_lossy(&buf[..len]))
+    }
+}
+
+fn same_shell_path(a: &str, b: &str) -> bool {
+    fn normalize(s: &str) -> String {
+        let trimmed = s.trim().trim_start_matches(r"\\?\");
+        trimmed.replace('/', "\\").to_ascii_lowercase()
+    }
+    normalize(a) == normalize(b)
+}
+
+unsafe fn select_desktop_item_for_path(path: &str) -> Result<bool, String> {
+    let target = std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string());
+    let view = desktop_folder_view()?;
+    let folder: IShellFolder = view
+        .GetFolder()
+        .map_err(|e| format!("获取桌面 ShellFolder 失败: {e}"))?;
+    let count = view
+        .ItemCount(SVGIO_ALLVIEW)
+        .map_err(|e| format!("读取桌面 item 数量失败: {e}"))?;
+    for i in 0..count {
+        let Ok(pidl) = view.Item(i) else {
+            continue;
+        };
+        let matched = folder_item_path(&folder, pidl)
+            .map(|candidate| same_shell_path(&candidate, &target))
+            .unwrap_or(false);
+        ILFree(Some(pidl));
+        if matched {
+            let flags = (SVSI_SELECT.0
+                | SVSI_DESELECTOTHERS.0
+                | SVSI_FOCUSED.0
+                | SVSI_SELECTIONMARK.0
+                | SVSI_ENSUREVISIBLE.0) as u32;
+            view.SelectItem(i, flags)
+                .map_err(|e| format!("选中 Explorer 桌面 item 失败: {e}"))?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Ask Explorer's own desktop view to handle the context-menu gesture. This is
+/// intentionally separate from `show_native_shell_context_menu`, which builds a
+/// classic Win32 popup in our helper process.
+pub fn show_explorer_desktop_context_menu(path: Option<&str>) -> Result<(), String> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if let Some(path) = path.filter(|p| !p.trim().is_empty()) {
+            match select_desktop_item_for_path(path) {
+                Ok(true) => tracing::info!("[shell-menu] Explorer desktop item selected path={path}"),
+                Ok(false) => tracing::warn!("[shell-menu] Explorer desktop item not found path={path}"),
+                Err(e) => tracing::warn!("[shell-menu] Explorer desktop item select failed: {e}"),
+            }
+        }
+        let defview = find_shell_defview();
+        if defview.0.is_null() {
+            return Err("未找到 Explorer 桌面视图".into());
+        }
+        let listview = find_defview_listview(defview);
+        let target = if !listview.0.is_null() { listview } else { defview };
+        let mut pt = POINT::default();
+        let _ = GetCursorPos(&mut pt);
+        let _ = SetForegroundWindow(defview);
+        PostMessageW(
+            Some(target),
+            WM_CONTEXTMENU,
+            WPARAM(target.0 as usize),
+            point_lparam(pt),
+        )
+        .map_err(|e| format!("转发 Explorer 右键菜单失败: {e}"))
+    }
 }
 
 unsafe fn acquire_desktop_bg_menu(hwnd: HWND) -> Result<IContextMenu, String> {

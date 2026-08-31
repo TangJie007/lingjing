@@ -4,6 +4,7 @@ import {
   BUILTIN_RENAME,
   friendlyError,
   showFenceErrorToast,
+  showFenceToast,
 } from "./fenceUi";
 import { migrateFencePath } from "./fenceLayout";
 import { requestRename } from "./useRenameDialog";
@@ -134,6 +135,26 @@ export function useShellContextMenu() {
     }
   }
 
+  async function showNative(targetPath: string) {
+    menuOpen.value = false;
+    generation += 1;
+    clear();
+    if (!window.__TAURI__) return;
+    try {
+      await window.__TAURI__.core.invoke("show_desktop_explorer_context_menu", {
+        path: targetPath || "",
+      });
+    } catch (e) {
+      try {
+        await window.__TAURI__.core.invoke("show_desktop_native_context_menu", {
+          path: targetPath || "",
+        });
+      } catch {
+        showFenceErrorToast(friendlyError(e));
+      }
+    }
+  }
+
   async function renameAt(p: string) {
     const next = await requestRename(p);
     if (!next) return;
@@ -208,6 +229,7 @@ export function useShellContextMenu() {
     menuOpen,
     prepare,
     loadSubmenu,
+    showNative,
     runCommand,
   };
 }

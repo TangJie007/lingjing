@@ -156,6 +156,7 @@ const {
   menuOpen: shellMenuOpen,
   prepare: prepareShellMenu,
   loadSubmenu: loadShellSubmenu,
+  showNative: showNativeShellMenu,
   runCommand: runShellCommand,
 } = useShellContextMenu();
 
@@ -410,6 +411,12 @@ function pathFromEvent(e: Event): string {
  */
 function onStageContextMenu(e: MouseEvent) {
   const path = pathFromEvent(e);
+  if (path) {
+    e.preventDefault();
+    e.stopPropagation();
+    void showNativeShellMenu(path);
+    return;
+  }
   // Do not preventDefault — ContextMenuTrigger needs the event to open.
   void prepareShellMenu(path);
 }
