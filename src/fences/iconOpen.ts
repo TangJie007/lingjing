@@ -1,3 +1,5 @@
+import { clearIconDragArm } from "./iconDragCursor";
+
 let dragActive = false;
 let dragEndedAt = 0;
 
@@ -5,11 +7,13 @@ const DBLCLICK_MS = 480;
 
 export function markIconDragStart() {
   dragActive = true;
+  clearIconDragArm();
 }
 
 export function markIconDragEnd() {
   dragActive = false;
   dragEndedAt = performance.now();
+  clearIconDragArm();
 }
 
 export function canOpenIcon() {

@@ -3,6 +3,7 @@ import { VueDraggable } from "vue-draggable-plus";
 import type { GroupOptions, MoveEvent, SortableEvent } from "sortablejs";
 import FenceCell from "./FenceCell.vue";
 import type { DesktopItem, FenceGroupKey } from "../types";
+import { ICON_DRAG_ARM_MS } from "../iconDragCursor";
 
 defineProps<{
   groupKey: FenceGroupKey;
@@ -45,7 +46,7 @@ function onMove(evt: MoveEvent, originalEvent: Event) {
     filter=".no-drag"
     :prevent-on-filter="true"
     :force-fallback="true"
-    :delay="220"
+    :delay="ICON_DRAG_ARM_MS"
     :delay-on-touch-only="false"
     :fallback-tolerance="6"
     ghost-class="is-dragging-source"

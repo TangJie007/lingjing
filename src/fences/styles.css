@@ -213,6 +213,11 @@ body,
   user-select: none;
 }
 
+#stage.icon-drag-armed,
+#stage.icon-drag-armed .cell.draggable {
+  cursor: grab !important;
+}
+
 #stage.icon-dragging,
 #stage.icon-dragging .cell.draggable {
   cursor: grabbing !important;
