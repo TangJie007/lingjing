@@ -115,6 +115,9 @@ pub fn ensure_blank_refresh_pin(entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEn
 
 /// Minimal fallback when Shell QueryContextMenu hangs (files).
 pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
+    if is_shell_namespace_path(path) {
+        return namespace_builtin_menu(path);
+    }
     if std::path::Path::new(path).is_dir() {
         return folder_builtin_menu();
     }
@@ -133,6 +136,25 @@ pub fn fallback_menu(path: &str) -> Vec<ShellMenuEntry> {
             item(BUILTIN_PROPERTIES, "属性"),
         ],
     )
+}
+
+/// Shell namespace desktop icons (`::{CLSID}`) — never QueryContextMenu (hangs the host).
+pub fn is_shell_namespace_path(path: &str) -> bool {
+    path.trim_start().starts_with("::")
+}
+
+/// Built-in menu for 此电脑 / 回收站 / 网络.
+pub fn namespace_builtin_menu(path: &str) -> Vec<ShellMenuEntry> {
+    let upper = path.to_ascii_uppercase();
+    let is_recycle = upper.contains("645FF040-5081-101B-9F08-00AA002F954E");
+
+    let mut entries = vec![item(BUILTIN_OPEN, "打开")];
+    if is_recycle {
+        entries.push(item(BUILTIN_EMPTY_RECYCLE, "清空回收站"));
+    }
+    entries.push(sep());
+    entries.push(item(BUILTIN_PROPERTIES, "属性"));
+    entries
 }
 
 /// Built-in folder menu replicating common Windows Explorer folder items.

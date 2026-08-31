@@ -32,9 +32,12 @@ pub async fn list_desktop_shell_context_menu(
 
     #[cfg(windows)]
     {
-        // Folders: built-in (QueryContextMenu often hangs on folder extensions).
-        // Blank desktop: real Shell desktop-background menu via host (path = None).
+        // Folders / shell namespace icons (此电脑/回收站/网络): built-in only.
+        // QueryContextMenu on these hangs the persistent Shell host and freezes all menus.
         if let Some(ref p) = path_opt {
+            if crate::shell_menu::is_shell_namespace_path(p) {
+                return Ok(crate::shell_menu::namespace_builtin_menu(p));
+            }
             if Path::new(p).is_dir() {
                 return Ok(crate::shell_menu::folder_builtin_menu());
             }
@@ -78,6 +81,12 @@ pub async fn list_desktop_shell_context_submenu(
 
     #[cfg(windows)]
     {
+        // Namespace icons have no Shell cascade menus worth loading.
+        if let Some(ref p) = path_opt {
+            if crate::shell_menu::is_shell_namespace_path(p) {
+                return Ok(Vec::new());
+            }
+        }
         return tauri::async_runtime::spawn_blocking(move || {
             run_shell_menu_host("submenu", path_opt.as_deref(), &menu_path)
         })
@@ -158,10 +167,10 @@ fn dispatch_builtin_shell_command(
 ) -> Result<(), String> {
     use crate::shell_menu::{
         BUILTIN_COMPRESS_ZIP, BUILTIN_COPY, BUILTIN_CREATE_SHORTCUT, BUILTIN_CUT, BUILTIN_DELETE,
-        BUILTIN_DISPLAY_SETTINGS, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT, BUILTIN_OPEN,
-        BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL, BUILTIN_OPEN_WITH,
-        BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PROPERTIES,
-        BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
+        BUILTIN_DISPLAY_SETTINGS, BUILTIN_EMPTY_RECYCLE, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT,
+        BUILTIN_OPEN, BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL,
+        BUILTIN_OPEN_WITH, BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS,
+        BUILTIN_PROPERTIES, BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
         BUILTIN_OPEN => open_desktop_item(path.to_string()),
@@ -184,6 +193,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_DISPLAY_SETTINGS => open_uri("ms-settings:display"),
         BUILTIN_PERSONALIZE => open_uri("ms-settings:personalization"),
         BUILTIN_PASTE => clipboard_paste_to_desktop(app),
+        BUILTIN_EMPTY_RECYCLE => empty_recycle_bin(),
         _ => Err("未知内置命令".into()),
     }
 }
@@ -258,6 +268,20 @@ fn open_terminal_on_desktop() -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("打开终端失败: {e}"))?;
     Ok(())
+}
+
+#[cfg(windows)]
+fn empty_recycle_bin() -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::SHEmptyRecycleBinW;
+
+    // SHERB_NOCONFIRMATION is intentionally omitted so Windows still prompts.
+    const SHERB_NOPROGRESSUI: u32 = 0x0000_0002;
+    const SHERB_NOSOUND: u32 = 0x0000_0004;
+    unsafe {
+        SHEmptyRecycleBinW(None, PCWSTR::null(), SHERB_NOPROGRESSUI | SHERB_NOSOUND)
+            .map_err(|e| format!("清空回收站失败: {e}"))
+    }
 }
 
 #[cfg(windows)]

@@ -128,12 +128,12 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
     if trimmed.is_empty() {
         return Err("路径为空".into());
     }
-    if trimmed.starts_with("::") {
-        return Err("系统图标不支持此操作".into());
-    }
-    let p = Path::new(trimmed);
-    if !p.exists() {
-        return Err("文件不存在".into());
+    let is_namespace = trimmed.starts_with("::");
+    if !is_namespace {
+        let p = Path::new(trimmed);
+        if !p.exists() {
+            return Err("文件不存在".into());
+        }
     }
     #[cfg(windows)]
     {
