@@ -11,7 +11,6 @@ pub(crate) fn pin_icon_svg(kind: &str) -> String {
         "cut" => "M14 4l-4 4 4 4M6 4v12M10 8H2",
         "copy" => "M6 6h8v10H6zM4 4h8",
         "rename" => "M3 13l7-7 3 3-7 7H3v-3zM11 5l2 2",
-        "share" => "M12 4v3c-5 0-8 2-9 6 2-2 4-3 9-3v3l5-4.5L12 4z",
         "delete" => "M5 6h10M7 6V5h6v1M7 8v7h6V8",
         "refresh" => "M12 3a7 7 0 0 1 7 7h-2a5 5 0 1 0-1.5 3.5L17 12v4h-4l1.2-1.2A7 7 0 1 1 12 3z",
         _ => "M4 8h12",
@@ -50,8 +49,8 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
     use super::entry::item;
     use super::ids::BUILTIN_RENAME;
 
-    const ORDER: &[&str] = &["cut", "copy", "rename", "share", "delete"];
-    let mut slots: [Option<ShellMenuEntry>; 5] = [None, None, None, None, None];
+    const ORDER: &[&str] = &["cut", "copy", "rename", "delete"];
+    let mut slots: [Option<ShellMenuEntry>; 4] = [None, None, None, None];
     let mut taken = std::collections::HashSet::<u32>::new();
 
     for entry in &entries {
@@ -64,6 +63,10 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
         let Some(kind) = pin_kind_from_verb_or_label(&verb, &entry.label) else {
             continue;
         };
+        if kind == "share" {
+            taken.insert(entry.id);
+            continue;
+        }
         let Some(idx) = ORDER.iter().position(|k| *k == kind) else {
             continue;
         };
@@ -75,19 +78,14 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
         // Always use our pin glyphs (frontend may replace with asset SVGs).
         pinned.icon = Some(pin_icon_svg(kind));
         pinned.destructive = kind == "delete";
-        // Delete / Share: handle in-app (host InvokeCommand breaks Share HWND).
         if kind == "delete" {
             use super::ids::BUILTIN_DELETE;
             pinned.id = BUILTIN_DELETE;
-        } else if kind == "share" {
-            use super::ids::BUILTIN_SHARE;
-            pinned.id = BUILTIN_SHARE;
         }
         pinned.label = match kind {
             "cut" => "剪切".into(),
             "copy" => "复制".into(),
             "rename" => "重命名".into(),
-            "share" => "共享".into(),
             "delete" => "删除".into(),
             _ => pinned.label,
         };
@@ -125,7 +123,7 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
         // Drop body duplicates of pinned actions (including forced rename).
         if !entry.separator && entry.children.is_none() && any_pin {
             if let Some(kind) = pin_kind_from_verb_or_label("", &entry.label) {
-                if ORDER.contains(&kind) {
+                if kind == "share" || ORDER.contains(&kind) {
                     continue;
                 }
             }

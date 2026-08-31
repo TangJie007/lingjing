@@ -44,8 +44,8 @@ export function friendlyError(e: unknown): string {
   if (/拒绝|access|denied|permission/i.test(msg)) return "无权访问该文件";
   if (/非法字符|invalid/i.test(msg)) return "名称包含非法字符";
   if (/已存在|exists/i.test(msg)) return "目标名称已存在";
-  // Keep share / shell errors readable (still cap runaway PowerShell dumps).
-  if (/共享|share|powershell|未找到共享/i.test(msg)) {
+  // Keep shell errors readable (still cap runaway PowerShell dumps).
+  if (/powershell/i.test(msg)) {
     return msg.length > 240 ? `${msg.slice(0, 237)}…` : msg;
   }
   return msg.length > 96 ? `${msg.slice(0, 93)}…` : msg;

@@ -8,7 +8,6 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "set", item: WallpaperItem): void;
   (e: "favorite", item: WallpaperItem): void;
-  (e: "share", item: WallpaperItem): void;
   (e: "download", item: WallpaperItem): void;
 }>();
 
@@ -97,7 +96,6 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
             :aria-label="item.favorite ? '已收藏' : '收藏'"
             @click="emit('favorite', item)"
           >{{ item.favorite ? "♥ 收藏" : "♡ 收藏" }}</div>
-          <div class="btn-ghost" role="button" tabindex="0" aria-label="分享" @click="emit('share', item)">↗ 分享</div>
           <div class="btn-ghost" role="button" tabindex="0" aria-label="下载" @click="emit('download', item)">↓ 下载</div>
         </div>
         <div class="btn-apply" role="button" tabindex="0" aria-label="设为壁纸" @click="emit('set', item)">设为壁纸</div>

@@ -427,7 +427,6 @@ pub fn run() {
             desktop_organize::menu_commands::list_desktop_shell_context_submenu,
             desktop_organize::menu_commands::invoke_desktop_shell_context_command,
             desktop_organize::menu_commands::show_desktop_native_context_menu,
-            desktop_organize::menu_commands::show_desktop_explorer_context_menu,
             desktop_organize::item_commands::show_desktop_item_in_folder,
             desktop_organize::item_commands::open_desktop_item_with,
             desktop_organize::item_commands::open_desktop_item_properties,

@@ -135,20 +135,6 @@ export function useShellContextMenu() {
     }
   }
 
-  async function showNative(targetPath: string) {
-    menuOpen.value = false;
-    generation += 1;
-    clear();
-    if (!window.__TAURI__) return;
-    try {
-      await window.__TAURI__.core.invoke("show_desktop_native_context_menu", {
-        path: targetPath || "",
-      });
-    } catch (e) {
-      showFenceErrorToast(friendlyError(e));
-    }
-  }
-
   async function renameAt(p: string) {
     const next = await requestRename(p);
     if (!next) return;
@@ -223,7 +209,6 @@ export function useShellContextMenu() {
     menuOpen,
     prepare,
     loadSubmenu,
-    showNative,
     runCommand,
   };
 }

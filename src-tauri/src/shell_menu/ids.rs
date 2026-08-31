@@ -25,7 +25,6 @@ pub const BUILTIN_OPEN_TERMINAL: u32 = BUILTIN_CMD_BASE + 17;
 pub const BUILTIN_DISPLAY_SETTINGS: u32 = BUILTIN_CMD_BASE + 18;
 pub const BUILTIN_PERSONALIZE: u32 = BUILTIN_CMD_BASE + 19;
 pub const BUILTIN_PASTE: u32 = BUILTIN_CMD_BASE + 20;
-pub const BUILTIN_SHARE: u32 = BUILTIN_CMD_BASE + 21;
 
 pub fn is_builtin_command(command_id: u32) -> bool {
     command_id >= BUILTIN_CMD_BASE

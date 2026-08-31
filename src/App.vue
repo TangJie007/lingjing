@@ -268,18 +268,6 @@ async function onSet(item: WallpaperItem) {
   }
 }
 
-async function onShare(item: WallpaperItem) {
-  const text = [item.name, item.author ? `by ${item.author}` : "", item.mediaSrc ?? ""]
-    .filter(Boolean)
-    .join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-    showToast("已复制到剪贴板");
-  } catch {
-    showToast("复制失败，请检查剪贴板权限");
-  }
-}
-
 async function onDownload(item: WallpaperItem) {
   if (!item.mediaSrc) {
     showToast("该资源无法下载");
@@ -632,7 +620,6 @@ async function onFirstRunConfirm(autostart: boolean) {
         @close="drawerOpen = false"
         @set="onSet"
         @favorite="onFavorite"
-        @share="onShare"
         @download="onDownload"
       />
     </div>

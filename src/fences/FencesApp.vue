@@ -151,13 +151,11 @@ async function disableDesktopOrganize() {
 
 const {
   entries: shellEntries,
-  path: shellPath,
   loading: shellLoading,
   error: shellError,
   menuOpen: shellMenuOpen,
   prepare: prepareShellMenu,
   loadSubmenu: loadShellSubmenu,
-  showNative: showNativeShellMenu,
   runCommand: runShellCommand,
 } = useShellContextMenu();
 
@@ -528,10 +526,8 @@ onUnmounted(() => {
         <ShellMenuEntries
           v-else-if="shellEntries.length"
           :entries="shellEntries"
-          show-more-options
           @command="runShellCommand"
           @submenu="loadShellSubmenu"
-          @more-options="showNativeShellMenu(shellPath)"
         />
       </ContextMenuContent>
     </ContextMenuPortal>

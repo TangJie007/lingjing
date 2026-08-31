@@ -12,7 +12,6 @@ use super::scan::desktop_scan_dirs;
 use super::shell_host::run_shell_menu_host;
 use super::state::FENCE_LABEL;
 use super::types::ShellMenuEntry;
-use super::util::run_on_ui;
 
 /// List Shell COM context menu entries (custom UI; includes icons when available).
 /// Folders always use the built-in Explorer-like menu (QueryContextMenu hangs on many folders).
@@ -113,20 +112,6 @@ pub async fn invoke_desktop_shell_context_command(
     #[cfg(windows)]
     {
         if crate::shell_menu::is_builtin_command(command_id) {
-            if command_id == crate::shell_menu::BUILTIN_SHARE {
-                let p = path_opt.unwrap_or_default();
-                let owner_hwnd = app
-                    .get_webview_window("main")
-                    .and_then(|window| window.hwnd().ok())
-                    .map(|hwnd| hwnd.0 as isize)
-                    .unwrap_or(0);
-                // Share UI events are tied to the HWND's UI thread. The Fence
-                // HWND itself is a desktop child, so share.rs creates a short
-                // lived top-level owner on this thread.
-                return run_on_ui(&app, move || {
-                    crate::shell_menu::share_path_native(owner_hwnd, &p)
-                })?;
-            }
             return dispatch_builtin_shell_command(
                 &app,
                 path_opt.as_deref().unwrap_or(""),
@@ -176,7 +161,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_DISPLAY_SETTINGS, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT, BUILTIN_OPEN,
         BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL, BUILTIN_OPEN_WITH,
         BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PROPERTIES,
-        BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHARE, BUILTIN_SHOW_IN_FOLDER,
+        BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
         BUILTIN_OPEN => open_desktop_item(path.to_string()),
@@ -190,14 +175,6 @@ fn dispatch_builtin_shell_command(
         BUILTIN_CREATE_SHORTCUT => create_desktop_shortcut(path),
         BUILTIN_DELETE => delete_desktop_item(app.clone(), path.to_string()),
         BUILTIN_RENAME => Err("重命名需由前端提供新名称".into()),
-        BUILTIN_SHARE => {
-            let owner_hwnd = app
-                .get_webview_window("main")
-                .and_then(|window| window.hwnd().ok())
-                .map(|hwnd| hwnd.0 as isize)
-                .unwrap_or(0);
-            crate::shell_menu::share_path_native(owner_hwnd, path)
-        }
         BUILTIN_COMPRESS_ZIP => compress_path_to_zip(path),
         BUILTIN_REFRESH => refresh(app),
         BUILTIN_NEW_FOLDER => create_on_desktop("新建文件夹", true),
@@ -702,35 +679,3 @@ pub async fn show_desktop_native_context_menu(
     }
 }
 
-/// Ask Explorer's desktop view to handle the right-click gesture itself. On
-/// Windows 11 this is the only path that can use Explorer's modern menu UI.
-#[tauri::command]
-pub async fn show_desktop_explorer_context_menu(
-    app: AppHandle,
-    path: String,
-) -> Result<(), String> {
-    let trimmed = path.trim();
-    let path_opt = if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    };
-    let _window = app
-        .get_webview_window(FENCE_LABEL)
-        .ok_or_else(|| "格子窗口未就绪".to_string())?;
-
-    #[cfg(windows)]
-    {
-        let path_for_explorer = path_opt;
-        return tauri::async_runtime::spawn_blocking(move || {
-            crate::shell_menu::show_explorer_desktop_context_menu(path_for_explorer.as_deref())
-        })
-        .await
-        .map_err(|e| format!("显示 Explorer 右键菜单任务失败: {e}"))?;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = path;
-        Err("桌面整理仅支持 Windows".into())
-    }
-}
