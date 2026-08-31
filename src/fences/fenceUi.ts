@@ -33,6 +33,10 @@ export function useFenceToast() {
 
 export function friendlyError(e: unknown): string {
   const msg = String(e).replace(/^Error:\s*/i, "").trim();
+  // Keep our intentional multi-sentence guidance intact.
+  if (/固定到「开始」|所有应用/.test(msg)) {
+    return msg.length > 280 ? `${msg.slice(0, 277)}…` : msg;
+  }
   if (/超时|timeout/i.test(msg)) return "操作超时，请重试";
   if (/not allowed|forbidden|denied by acl|permission/i.test(msg) && !/access/i.test(msg)) {
     return "操作未被允许，请检查应用权限配置";

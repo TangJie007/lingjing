@@ -33,14 +33,10 @@ pub async fn list_desktop_shell_context_menu(
     #[cfg(windows)]
     {
         // Folders: built-in (QueryContextMenu often hangs on folder extensions).
-        // 回收站 / 网络: always custom menu (Shell QueryContextMenu hangs / incomplete).
-        // 此电脑: one-shot host + narrow CMF; blank desktop: persistent host.
+        // 此电脑 / 回收站 / 网络: managed IDList `.lnk` → Shell menu (one-shot host);
+        // fall back to custom menu if Shell hangs / fails.
+        // Blank desktop / normal files: persistent host.
         if let Some(ref p) = path_opt {
-            if crate::shell_menu::is_recycle_bin_path(p)
-                || crate::shell_menu::is_network_places_path(p)
-            {
-                return Ok(crate::shell_menu::namespace_builtin_menu(p));
-            }
             if Path::new(p).is_dir() && !crate::shell_menu::is_shell_namespace_path(p) {
                 return Ok(crate::shell_menu::folder_builtin_menu());
             }
@@ -55,7 +51,7 @@ pub async fn list_desktop_shell_context_menu(
                     if let Some(p) = path_opt.as_deref() {
                         if crate::shell_menu::is_shell_namespace_path(p) {
                             tracing::info!(
-                                "[desktop-organize] namespace menu host failed, using builtin: {e}"
+                                "[desktop-organize] namespace link menu host failed, using builtin: {e}"
                             );
                             return Ok(crate::shell_menu::namespace_builtin_menu(p));
                         }
@@ -149,6 +145,14 @@ pub async fn invoke_desktop_shell_context_command(
                 Err(e) if e == "BUILTIN_LINK" => {
                     let p = path_for_builtin.ok_or_else(|| "路径为空".to_string())?;
                     create_desktop_shortcut(&p)
+                }
+                Err(e) if e == "BUILTIN_PIN_START" => {
+                    let p = path_for_builtin.ok_or_else(|| "路径为空".to_string())?;
+                    pin_shell_item_to_start(&p)
+                }
+                Err(e) if e == "BUILTIN_PIN_HOME" => {
+                    let p = path_for_builtin.ok_or_else(|| "路径为空".to_string())?;
+                    pin_shell_item_to_quick_access(&p)
                 }
                 Err(e) if e == "BUILTIN_RENAME" => Err("重命名需由前端提供新名称".into()),
                 Err(e) => Err(e),
@@ -314,6 +318,9 @@ fn open_folder_in_new_window(path: &str) -> Result<(), String> {
 #[cfg(windows)]
 fn shell_namespace_target(path: &str) -> String {
     let trimmed = path.trim();
+    if let Some(clsid) = crate::desktop_organize::namespace_clsid_for_path(trimmed) {
+        return format!("shell:{clsid}");
+    }
     if trimmed.starts_with("::") {
         format!("shell:{trimmed}")
     } else {
@@ -325,7 +332,7 @@ fn shell_namespace_target(path: &str) -> String {
 fn invoke_shell_namespace_verb(path: &str, verb: &str, err_label: &str) -> Result<(), String> {
     let target = shell_namespace_target(path);
     let script = format!(
-        "$s=(New-Object -ComObject Shell.Application).NameSpace([string]'{}'); if($null -eq $s){{exit 1}}; $s.Self.InvokeVerb([string]'{}')",
+        "$s=(New-Object -ComObject Shell.Application).NameSpace([string]'{}'); if($null -eq $s){{exit 1}}; try {{ $s.Self.InvokeVerb([string]'{}') }} catch {{ exit 2 }}",
         target.replace('\'', "''"),
         verb.replace('\'', "''")
     );
@@ -340,18 +347,198 @@ fn invoke_shell_namespace_verb(path: &str, verb: &str, err_label: &str) -> Resul
 }
 
 #[cfg(windows)]
+fn invoke_shell_item_verb(path: &str, verb: &str, err_label: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+
+    // Namespace parsing names: NameSpace(shell::{CLSID}).Self
+    if trimmed.starts_with("::") || trimmed.to_ascii_lowercase().starts_with("shell:") {
+        return invoke_shell_namespace_verb(trimmed, verb, err_label);
+    }
+    if let Some(clsid) = crate::desktop_organize::namespace_clsid_for_path(trimmed) {
+        return invoke_shell_namespace_verb(&format!("shell:{clsid}"), verb, err_label);
+    }
+
+    // Files/folders: parent folder + ParseName (NameSpace(file) is invalid).
+    let pb = Path::new(trimmed);
+    let (folder, name) = if pb.is_dir() {
+        (trimmed.to_string(), String::new())
+    } else {
+        let parent = pb
+            .parent()
+            .ok_or_else(|| "无法解析父目录".to_string())?
+            .to_string_lossy()
+            .into_owned();
+        let name = pb
+            .file_name()
+            .ok_or_else(|| "无法解析文件名".to_string())?
+            .to_string_lossy()
+            .into_owned();
+        (parent, name)
+    };
+
+    let script = if name.is_empty() {
+        format!(
+            "$sh=New-Object -ComObject Shell.Application; $f=$sh.NameSpace([string]'{folder}'); if($null -eq $f){{exit 1}}; try {{ $f.Self.InvokeVerb([string]'{verb}') }} catch {{ exit 2 }}; exit 0",
+            folder = folder.replace('\'', "''"),
+            verb = verb.replace('\'', "''"),
+        )
+    } else {
+        format!(
+            "$sh=New-Object -ComObject Shell.Application; $f=$sh.NameSpace([string]'{folder}'); if($null -eq $f){{exit 1}}; $i=$f.ParseName([string]'{name}'); if($null -eq $i){{exit 1}}; try {{ $i.InvokeVerb([string]'{verb}') }} catch {{ exit 2 }}; exit 0",
+            folder = folder.replace('\'', "''"),
+            name = name.replace('\'', "''"),
+            verb = verb.replace('\'', "''"),
+        )
+    };
+    let status = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map_err(|e| format!("{err_label}: {e}"))?;
+    if !status.success() {
+        return Err(err_label.into());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 fn pin_shell_item_to_quick_access(path: &str) -> Result<(), String> {
-    // Shell verb "pintohome" — same as Explorer “固定到快速访问”.
-    invoke_shell_namespace_verb(path, "pintohome", "固定到快速访问失败")
+    invoke_shell_item_verb(path, "pintohome", "固定到快速访问失败")
 }
 
 #[cfg(windows)]
 fn pin_shell_item_to_start(path: &str) -> Result<(), String> {
-    // Win10/11 verbs vary; try startpin then pintostartscreen.
-    if invoke_shell_namespace_verb(path, "startpin", "固定到开始失败").is_ok() {
+    // Prefer localized verb DoIt — InvokeVerb("startpin") often returns success
+    // without pinning. Win11 usually denies DoIt with E_ACCESSDENIED.
+    if try_pin_to_start_via_verbs(path).is_ok() {
         return Ok(());
     }
-    invoke_shell_namespace_verb(path, "pintostartscreen", "固定到开始失败")
+    match add_to_start_apps_list(path) {
+        Ok(()) => Err(
+            "Windows 禁止第三方程序直接固定到「开始」（桌面整理替代资源管理器菜单后会触发）。已放入开始菜单「所有应用」，请在开始菜单中右键该项目再选择固定。"
+                .into(),
+        ),
+        Err(_) => Err(
+            "Windows 禁止第三方程序直接固定到「开始」。请打开开始菜单搜索该应用后右键固定。"
+                .into(),
+        ),
+    }
+}
+
+#[cfg(windows)]
+fn try_pin_to_start_via_verbs(path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("路径为空".into());
+    }
+    if trimmed.starts_with("::")
+        || trimmed.to_ascii_lowercase().starts_with("shell:")
+        || crate::desktop_organize::namespace_clsid_for_path(trimmed).is_some()
+    {
+        return invoke_shell_item_verb(path, "startpin", "固定到开始失败")
+            .or_else(|_| invoke_shell_item_verb(path, "pintostartscreen", "固定到开始失败"));
+    }
+    let pb = Path::new(trimmed);
+    let folder = pb
+        .parent()
+        .ok_or_else(|| "无法解析父目录".to_string())?
+        .to_string_lossy()
+        .into_owned();
+    let name = pb
+        .file_name()
+        .ok_or_else(|| "无法解析文件名".to_string())?
+        .to_string_lossy()
+        .into_owned();
+    let script = format!(
+        "$sh=New-Object -ComObject Shell.Application; $f=$sh.NameSpace([string]'{folder}'); if($null -eq $f){{exit 1}}; $i=$f.ParseName([string]'{name}'); if($null -eq $i){{exit 1}}; $hit=$false; foreach($v in @($i.Verbs())){{ $n=(($v.Name)+'') -replace '&',''; if($n -match '固定' -and $n -match '开始' -and $n -notmatch '取消'){{ $v.DoIt(); $hit=$true; break }} }}; if(-not $hit){{exit 2}}; exit 0",
+        folder = folder.replace('\'', "''"),
+        name = name.replace('\'', "''"),
+    );
+    let status = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map_err(|e| format!("固定到开始失败: {e}"))?;
+    if !status.success() {
+        return Err("固定到开始失败".into());
+    }
+    Ok(())
+}
+
+/// Best-effort: put a shortcut into Start Menu\\Programs (All apps list, not a Start pin tile).
+#[cfg(windows)]
+fn add_to_start_apps_list(path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    let programs =
+        known_folders::get_known_folder_path(known_folders::KnownFolder::Programs)
+            .ok_or_else(|| "无法定位开始菜单程序目录".to_string())?;
+    fs::create_dir_all(&programs).map_err(|e| format!("创建开始菜单目录失败: {e}"))?;
+
+    if let Some(clsid) = crate::desktop_organize::namespace_clsid_for_path(trimmed) {
+        let name = match crate::desktop_organize::builtin_kind_from_path(trimmed) {
+            Some("computer") => "此电脑",
+            Some("recycle") => "回收站",
+            Some("network") => "网络",
+            _ => "系统项目",
+        };
+        let dest = programs.join(format!("{name}.lnk"));
+        return create_idlist_shortcut_in(&dest, clsid, name);
+    }
+
+    let src = Path::new(trimmed);
+    if !src.exists() {
+        return Err("目标不存在".into());
+    }
+    let file_name = src
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| "无法解析文件名".to_string())?;
+    let dest = if src
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
+    {
+        programs.join(file_name)
+    } else {
+        let stem = src
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(file_name);
+        programs.join(format!("{stem}.lnk"))
+    };
+    if src
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
+    {
+        fs::copy(src, &dest).map_err(|e| format!("复制快捷方式失败: {e}"))?;
+        return Ok(());
+    }
+    let script = format!(
+        "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut([string]'{dest}'); $s.TargetPath=[string]'{src}'; $s.WorkingDirectory=[string]'{dir}'; $s.Save()",
+        dest = dest.to_string_lossy().replace('\'', "''"),
+        src = trimmed.replace('\'', "''"),
+        dir = src
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            .replace('\'', "''"),
+    );
+    let status = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map_err(|e| format!("创建开始菜单快捷方式失败: {e}"))?;
+    if !status.success() {
+        return Err("创建开始菜单快捷方式失败".into());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn create_idlist_shortcut_in(lnk: &Path, clsid: &str, name: &str) -> Result<(), String> {
+    // Reuse the same IDList creation path as managed builtins.
+    super::builtin_links::create_namespace_shortcut_for(lnk, clsid, name)
 }
 
 #[cfg(windows)]

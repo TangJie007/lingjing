@@ -171,6 +171,7 @@ fn builtin_rank(path: &str) -> u8 {
     match path.to_ascii_uppercase() {
         p if p.contains("20D04FE0-3AEA-1069-A2D8-08002B30309D") => 0,
         p if p.contains("645FF040-5081-101B-9F08-00AA002F954E") => 1,
+        p if p.contains("F02C1A0D-BE21-4350-88B0-7367FC96EF3C") => 2,
         p if p.contains("F02C1A0D-B21F-4110-8426-0A0C959C3602") => 2,
         _ => 3,
     }

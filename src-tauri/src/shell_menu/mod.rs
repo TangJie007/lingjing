@@ -15,8 +15,8 @@ mod util;
 mod verbs;
 
 pub use builtin::{
-    ensure_blank_refresh_pin, ensure_paste_entry, folder_builtin_menu, is_network_places_path,
-    is_recycle_bin_path, is_shell_namespace_path, namespace_builtin_menu,
+    ensure_blank_refresh_pin, ensure_paste_entry, folder_builtin_menu, is_shell_namespace_path,
+    namespace_builtin_menu,
 };
 pub use context::{
     invoke_shell_context_command, list_shell_context_menu, list_shell_context_submenu,

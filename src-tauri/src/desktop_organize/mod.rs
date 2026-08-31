@@ -7,7 +7,8 @@ mod drop_target;
 mod builtin_links;
 #[cfg(windows)]
 pub(crate) use builtin_links::{
-    builtin_kind_from_path, is_managed_builtin_link, CLSID_COMPUTER, CLSID_NETWORK, CLSID_RECYCLE,
+    builtin_kind_from_path, is_managed_builtin_link, namespace_clsid_for_path, CLSID_COMPUTER,
+    CLSID_NETWORK, CLSID_RECYCLE,
 };
 mod icon_cache;
 pub mod item_commands;

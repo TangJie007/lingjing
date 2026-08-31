@@ -173,7 +173,10 @@ pub fn is_network_places_path(path: &str) -> bool {
     #[cfg(not(windows))]
     {
         path.to_ascii_uppercase()
-            .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
+            .contains("F02C1A0D-BE21-4350-88B0-7367FC96EF3C")
+            || path
+                .to_ascii_uppercase()
+                .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
     }
 }
 

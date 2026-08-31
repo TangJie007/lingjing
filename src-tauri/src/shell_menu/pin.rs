@@ -44,6 +44,30 @@ pub(crate) fn pin_kind_from_verb_or_label(verb: &str, label: &str) -> Option<&'s
     None
 }
 
+/// Win11 blocks third-party `InvokeCommand` for Start pin (`E_ACCESSDENIED`).
+pub(crate) fn is_pin_to_start_verb_or_label(verb: &str, label: &str) -> bool {
+    let v = verb.to_ascii_lowercase();
+    if v.contains("unpin") || label.contains("取消固定") || label.contains("从“开始”取消") {
+        return false;
+    }
+    if matches!(
+        v.as_str(),
+        "startpin" | "pintostartscreen" | "pintostart"
+    ) || v.contains("startpin")
+    {
+        return true;
+    }
+    label.contains("固定") && label.contains("开始")
+}
+
+pub(crate) fn is_pin_to_home_verb_or_label(verb: &str, label: &str) -> bool {
+    let v = verb.to_ascii_lowercase();
+    if v == "pintohome" || v.contains("pintohome") {
+        return true;
+    }
+    label.contains("固定") && label.contains("快速访问")
+}
+
 /// Pull Win11 common actions into a pinned top strip; keep the rest below.
 pub(crate) fn apply_win11_pin_row(
     pcm: Option<&IContextMenu>,

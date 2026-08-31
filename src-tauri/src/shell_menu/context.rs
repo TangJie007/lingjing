@@ -25,11 +25,21 @@ use super::host::{pump_for, pump_messages};
 use super::icons::hbitmap_to_data_url;
 use super::ids::is_builtin_command;
 use super::ids::{BUILTIN_DELETE, CMD_FIRST, CMD_LAST};
-use super::pin::apply_win11_pin_row;
+use super::pin::{apply_win11_pin_row, is_pin_to_home_verb_or_label, is_pin_to_start_verb_or_label};
 use super::util::{clean_menu_label, invoke_working_directory, menu_flags_for_path, stage, wide};
 use super::verbs::{command_verb, shell_execute_verb};
 
 const QUERY_MENU_TIMEOUT: Duration = Duration::from_secs(5);
+
+unsafe fn command_menu_label(hmenu: HMENU, command_id: u32) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::MF_BYCOMMAND;
+    let mut buf = [0u16; 512];
+    let n = GetMenuStringW(hmenu, command_id, Some(&mut buf), MF_BYCOMMAND);
+    if n > 0 {
+        return clean_menu_label(&String::from_utf16_lossy(&buf[..n as usize]));
+    }
+    String::new()
+}
 
 unsafe fn invoke_owner_hwnd(hwnd: HWND) -> HWND {
     let dv = find_shell_defview();
@@ -405,7 +415,18 @@ pub fn invoke_shell_context_command(
 
         // Prefer reliable ShellExecute for common verbs — InvokeCommand often fails
         // outside Explorer (no IContextMenuSite / wrong HWND / no message pump).
-        if let (Some(p), Some(verb)) = (path, command_verb(&pcm, command_id)) {
+        // Win11 also denies Start-pin InvokeCommand from non-Explorer processes.
+        let verb = command_verb(&pcm, command_id).unwrap_or_default();
+        let label = command_menu_label(hmenu, command_id);
+        if let Some(p) = path {
+            if is_pin_to_start_verb_or_label(&verb, &label) {
+                let _ = DestroyMenu(hmenu);
+                return Err("BUILTIN_PIN_START".into());
+            }
+            if is_pin_to_home_verb_or_label(&verb, &label) {
+                let _ = DestroyMenu(hmenu);
+                return Err("BUILTIN_PIN_HOME".into());
+            }
             let handled = match verb.as_str() {
                 "open" | "openas" | "runas" | "properties" | "edit" | "print" => {
                     Some(shell_execute_verb(p, &verb))

@@ -80,10 +80,25 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
+        if let Some(clsid) = super::namespace_clsid_for_path(trimmed) {
+            let target = if matches!(super::builtin_kind_from_path(trimmed), Some("network")) {
+                "shell:NetworkPlacesFolder".to_string()
+            } else {
+                format!("shell:{clsid}")
+            };
+            std::process::Command::new("explorer.exe")
+                .arg(&target)
+                .spawn()
+                .map_err(|e| format!("打开系统图标失败: {e}"))?;
+            return Ok(());
+        }
         if trimmed.starts_with("::") {
             let target = if trimmed
                 .to_ascii_uppercase()
-                .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
+                .contains("F02C1A0D-BE21-4350-88B0-7367FC96EF3C")
+                || trimmed
+                    .to_ascii_uppercase()
+                    .contains("F02C1A0D-B21F-4110-8426-0A0C959C3602")
             {
                 "shell:NetworkPlacesFolder"
             } else {
@@ -170,7 +185,17 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
     if trimmed.is_empty() {
         return Err("路径为空".into());
     }
-    let is_namespace = trimmed.starts_with("::");
+    let is_namespace = trimmed.starts_with("::")
+        || {
+            #[cfg(windows)]
+            {
+                super::is_managed_builtin_link(trimmed)
+            }
+            #[cfg(not(windows))]
+            {
+                false
+            }
+        };
     if !is_namespace {
         let p = Path::new(trimmed);
         if !p.exists() {
@@ -179,7 +204,8 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        return win::shell_show_properties(trimmed);
+        let props_path = super::namespace_clsid_for_path(trimmed).unwrap_or(trimmed);
+        return win::shell_show_properties(props_path);
     }
     #[cfg(not(windows))]
     {
