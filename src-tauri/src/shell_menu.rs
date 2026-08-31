@@ -286,6 +286,7 @@ fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<ShellMenuEntry>)
         if pinned.icon.is_none() {
             pinned.icon = Some(pin_icon_svg(kind));
         }
+        pinned.destructive = kind == "delete";
         pinned.label = match kind {
             "cut" => "剪切".into(),
             "copy" => "复制".into(),
@@ -532,6 +533,7 @@ unsafe fn enumerate_hmenu(
                 children: None,
                 menu_path: parent_path.to_vec(),
                 pin: false,
+                destructive: false,
             });
             continue;
         }
@@ -565,13 +567,14 @@ unsafe fn enumerate_hmenu(
 
         out.push(ShellMenuEntry {
             id: if children.is_some() { 0 } else { mii.wID },
-            label,
+            label: label.clone(),
             disabled,
             separator: false,
             icon: unsafe { hbitmap_to_data_url(mii.hbmpItem) },
             children,
             menu_path,
             pin: false,
+            destructive: mii.wID == BUILTIN_DELETE || label.contains("删除"),
         });
     }
     out
@@ -610,6 +613,7 @@ fn item(id: u32, label: &str) -> ShellMenuEntry {
         children: None,
         menu_path: Vec::new(),
         pin: false,
+        destructive: id == BUILTIN_DELETE,
     }
 }
 
@@ -623,6 +627,7 @@ fn sep() -> ShellMenuEntry {
         children: None,
         menu_path: Vec::new(),
         pin: false,
+        destructive: false,
     }
 }
 
@@ -690,6 +695,7 @@ pub fn desktop_blank_builtin_menu() -> Vec<ShellMenuEntry> {
             ]),
             menu_path: Vec::new(),
             pin: false,
+            destructive: false,
         },
         sep(),
         item(BUILTIN_OPEN_DESKTOP, "打开桌面文件夹"),

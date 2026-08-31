@@ -698,6 +698,8 @@ pub fn run() {
             desktop_organize::item_commands::open_desktop_item_properties,
             desktop_organize::item_commands::rename_desktop_item,
             desktop_organize::item_commands::delete_desktop_item,
+            desktop_organize::layout::load_fence_layout,
+            desktop_organize::layout::save_fence_layout,
             desktop_organize::drag::is_desktop_drag_over_foreign,
             desktop_organize::drag::start_desktop_file_drag,
             desktop_organize::item_commands::set_desktop_organize,

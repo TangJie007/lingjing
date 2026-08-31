@@ -39,5 +39,7 @@ commands.allow = [
   "start_desktop_file_drag",
   "set_desktop_organize",
   "list_desktop_items",
+  "load_fence_layout",
+  "save_fence_layout",
   "refresh_desktop_organize"
 ]

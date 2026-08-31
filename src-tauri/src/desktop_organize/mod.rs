@@ -2,6 +2,7 @@
 
 pub mod drag;
 pub mod item_commands;
+pub mod layout;
 pub mod lifecycle;
 pub mod menu_commands;
 mod scan;

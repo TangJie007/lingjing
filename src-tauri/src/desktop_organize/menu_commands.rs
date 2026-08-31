@@ -165,7 +165,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_CUT => clipboard_set_files(&[path], true),
         BUILTIN_COPY => clipboard_set_files(&[path], false),
         BUILTIN_CREATE_SHORTCUT => create_desktop_shortcut(path),
-        BUILTIN_DELETE => delete_desktop_item(path.to_string()),
+        BUILTIN_DELETE => delete_desktop_item(app.clone(), path.to_string()),
         BUILTIN_RENAME => Err("重命名需由前端提供新名称".into()),
         BUILTIN_COMPRESS_ZIP => compress_path_to_zip(path),
         BUILTIN_REFRESH => refresh(app),

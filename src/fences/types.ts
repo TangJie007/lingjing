@@ -26,6 +26,8 @@ export interface ShellMenuEntry {
   loading?: boolean;
   /** Win11 top icon-strip action */
   pin?: boolean;
+  /** Destructive action (delete) */
+  destructive?: boolean;
 }
 
 export interface FenceGroupState {

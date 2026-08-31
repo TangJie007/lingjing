@@ -147,7 +147,7 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn rename_desktop_item(path: String, new_name: String) -> Result<(), String> {
+pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Result<(), String> {
     let trimmed = path.trim();
     let name = new_name.trim();
     if trimmed.is_empty() || name.is_empty() {
@@ -169,11 +169,16 @@ pub fn rename_desktop_item(path: String, new_name: String) -> Result<(), String>
         return Err("目标名称已存在".into());
     }
     fs::rename(old, &new_path).map_err(|e| format!("重命名失败: {e}"))?;
+    if let Ok(mut layout) = super::layout::load_layout(&app) {
+        let new = new_path.to_string_lossy().into_owned();
+        super::layout::migrate_path(&mut layout, trimmed, &new);
+        let _ = super::layout::save_layout(&app, &layout);
+    }
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_desktop_item(path: String) -> Result<(), String> {
+pub fn delete_desktop_item(app: AppHandle, path: String) -> Result<(), String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("路径为空".into());
@@ -188,6 +193,10 @@ pub fn delete_desktop_item(path: String) -> Result<(), String> {
     #[cfg(windows)]
     {
         trash::delete(trimmed).map_err(|e| format!("删除失败: {e}"))?;
+        if let Ok(mut layout) = super::layout::load_layout(&app) {
+            super::layout::remove_path(&mut layout, trimmed);
+            let _ = super::layout::save_layout(&app, &layout);
+        }
         return Ok(());
     }
     #[cfg(not(windows))]

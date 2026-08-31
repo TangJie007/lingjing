@@ -1,12 +1,27 @@
 import type { DesktopItem, FenceGroupKey } from "./types";
+import {
+  APP_ORDER_KEY,
+  ARCHIVE_ORDER_KEY,
+  CATEGORY_KEY,
+  DOC_ORDER_KEY,
+  FOLDER_ORDER_KEY,
+  IMAGE_ORDER_KEY,
+  MEDIA_ORDER_KEY,
+  loadFenceCategories,
+  loadFenceOrder,
+  saveFenceCategory,
+  saveFenceOrder,
+} from "./fenceLayout";
 
-export const APP_ORDER_KEY = "lingscape-fence-app-order";
-export const IMAGE_ORDER_KEY = "lingscape-fence-image-order";
-export const DOC_ORDER_KEY = "lingscape-fence-document-order";
-export const FOLDER_ORDER_KEY = "lingscape-fence-folder-order";
-export const MEDIA_ORDER_KEY = "lingscape-fence-media-order";
-export const ARCHIVE_ORDER_KEY = "lingscape-fence-archive-order";
-export const CATEGORY_KEY = "lingscape-fence-category";
+export {
+  APP_ORDER_KEY,
+  IMAGE_ORDER_KEY,
+  DOC_ORDER_KEY,
+  FOLDER_ORDER_KEY,
+  MEDIA_ORDER_KEY,
+  ARCHIVE_ORDER_KEY,
+  CATEGORY_KEY,
+};
 
 const BUILTIN_ORDER = [
   "20D04FE0-3AEA-1069-A2D8-08002B30309D",
@@ -15,16 +30,12 @@ const BUILTIN_ORDER = [
 ];
 
 export function saveOrder(key: string, paths: string[]) {
-  try {
-    localStorage.setItem(key, JSON.stringify(paths));
-  } catch {
-    /* ignore */
-  }
+  saveFenceOrder(key, paths);
 }
 
 export function loadOrder(key: string, items: DesktopItem[]): DesktopItem[] {
   try {
-    const saved = JSON.parse(localStorage.getItem(key) || "[]") as unknown[];
+    const saved = loadFenceOrder(key);
     const map = new Map(items.map((a) => [a.path, a]));
     const out: DesktopItem[] = [];
     for (const p of saved) {
@@ -44,22 +55,11 @@ export function loadOrder(key: string, items: DesktopItem[]): DesktopItem[] {
 }
 
 export function loadCategoryOverrides(): Record<string, string> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(CATEGORY_KEY) || "{}");
-    return raw && typeof raw === "object" ? (raw as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
+  return loadFenceCategories();
 }
 
 export function saveCategoryOverride(path: string, category: string) {
-  try {
-    const map = loadCategoryOverrides();
-    map[path] = category;
-    localStorage.setItem(CATEGORY_KEY, JSON.stringify(map));
-  } catch {
-    /* ignore */
-  }
+  saveFenceCategory(path, category);
 }
 
 export function effectiveCategory(item: DesktopItem | null | undefined): string {

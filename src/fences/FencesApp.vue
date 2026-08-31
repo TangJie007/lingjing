@@ -9,6 +9,7 @@ import {
   ContextMenuTrigger,
 } from "reka-ui";
 import FenceGroup from "./components/FenceGroup.vue";
+import FenceToast from "./components/FenceToast.vue";
 import ShellMenuEntries from "./components/ShellMenuEntries.vue";
 import ShellMenuLoading from "./components/ShellMenuLoading.vue";
 import {
@@ -25,6 +26,8 @@ import {
   persistGroupOrder,
   saveCategoryOverride,
 } from "./helpers";
+import { initFenceLayout } from "./fenceLayout";
+import { friendlyError, showFenceToast } from "./fenceUi";
 import type { DesktopItem, FenceGroupKey, FenceGroupState } from "./types";
 import { cellPreviewDataUrl, useShellFileDrag } from "./useShellFileDrag";
 import { markIconDragEnd, markIconDragStart } from "./iconOpen";
@@ -190,7 +193,7 @@ async function openItem(path: string) {
   try {
     await window.__TAURI__.core.invoke("open_desktop_item", { path });
   } catch (e) {
-    console.warn("open failed", e);
+    showFenceToast(friendlyError(e));
   }
 }
 
@@ -220,11 +223,12 @@ function onStageContextMenu(e: MouseEvent) {
 
 onMounted(async () => {
   window.__fenceApply = applyFenceItems;
+  await initFenceLayout();
   if (!window.__TAURI__) return;
   try {
     applyFenceItems(await window.__TAURI__.core.invoke<DesktopItem[]>("list_desktop_items"));
   } catch (e) {
-    console.warn("list_desktop_items failed", e);
+    showFenceToast(friendlyError(e));
   }
   try {
     await window.__TAURI__.event.listen<DesktopItem[]>("fence-items", (e) =>
@@ -299,7 +303,7 @@ onUnmounted(() => {
         :collision-padding="8"
       >
         <ShellMenuLoading v-if="shellLoading && !shellEntries.length" />
-        <ContextMenuItem v-else-if="shellError" class="item" disabled>
+        <ContextMenuItem v-else-if="shellError" class="item shell-ctx-error" disabled>
           <span class="lbl">{{ shellError }}</span>
         </ContextMenuItem>
         <ShellMenuEntries
@@ -311,4 +315,5 @@ onUnmounted(() => {
       </ContextMenuContent>
     </ContextMenuPortal>
   </ContextMenuRoot>
+  <FenceToast />
 </template>

@@ -28,4 +28,7 @@ pub struct ShellMenuEntry {
     /// Win11-style pinned action in the top icon strip.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pin: bool,
+    /// Destructive action (e.g. delete) — UI may confirm before running.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub destructive: bool,
 }

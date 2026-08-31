@@ -16,7 +16,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  command: [id: number, menuPath: number[]];
+  command: [entry: ShellMenuEntry];
   submenu: [menuPath: number[]];
 }>();
 
@@ -25,7 +25,7 @@ const bodyEntries = computed(() => props.entries.filter((e) => !e.pin));
 
 function onSelect(entry: ShellMenuEntry) {
   if (entry.disabled || entry.id == null || entry.id === 0) return;
-  emit("command", entry.id, entry.menuPath || []);
+  emit("command", entry);
 }
 </script>
 
@@ -65,7 +65,7 @@ function onSelect(entry: ShellMenuEntry) {
               <ShellMenuEntries
                 v-else-if="entry.children.length"
                 :entries="entry.children"
-                @command="(id, path) => emit('command', id, path)"
+                @command="emit('command', $event)"
                 @submenu="emit('submenu', $event)"
               />
               <ContextMenuItem v-else class="item" disabled>
@@ -77,6 +77,7 @@ function onSelect(entry: ShellMenuEntry) {
         <ContextMenuItem
           v-else
           class="item"
+          :class="{ destructive: entry.destructive }"
           :disabled="!!entry.disabled"
           @select="onSelect(entry)"
         >

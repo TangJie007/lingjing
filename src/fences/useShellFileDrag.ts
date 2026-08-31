@@ -1,5 +1,7 @@
 /** Shell OLE drag-out while Sortable is active (foreign window hover). */
 
+import { friendlyError, showFenceToast } from "./fenceUi";
+
 export function useShellFileDrag() {
   let activePath = "";
   let previewDataUrl: string | null = null;
@@ -70,10 +72,10 @@ export function useShellFileDrag() {
           previewDataUrl: preview,
         });
       } catch (err) {
-        console.warn("shell file drag failed", err);
+        showFenceToast(friendlyError(err));
       }
     } catch (err) {
-      console.warn("foreign drag probe failed", err);
+      showFenceToast(friendlyError(err));
       foreignHits = 0;
     } finally {
       inFlight = false;

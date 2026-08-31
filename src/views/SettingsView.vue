@@ -165,7 +165,7 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
       <div class="set-row">
         <div class="lead">
           <div class="t">桌面整理</div>
-          <div class="d">隐藏系统桌面图标，用格子窗口接管桌面文件</div>
+          <div class="d">隐藏系统桌面图标，用格子窗口整理桌面文件；布局与分类会自动保存</div>
         </div>
         <button
           type="button"
