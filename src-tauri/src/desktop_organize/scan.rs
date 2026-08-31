@@ -24,13 +24,37 @@ fn scan_dir(dir: &Path, items: &mut Vec<DesktopItem>, seen: &mut std::collection
         };
         let is_dir = meta.is_dir();
         let kind = classify_kind(&name, is_dir);
-        let (display_name, mut icon) = shell_name_and_icon(&path, &name, is_dir);
+
+        let (display_name, mut icon) =
+            if let Some((cached_name, cached_icon)) = super::icon_cache::get(&path) {
+                (cached_name, cached_icon)
+            } else {
+                let (dn, ic) = shell_name_and_icon(&path, &name, is_dir);
+                #[cfg(windows)]
+                let ic = {
+                    let mut ic = ic;
+                    if kind == "image" {
+                        // Slightly smaller preview — faster encode, still sharp enough for fence.
+                        if let Some(preview) = win::image_file_preview(&path, 72) {
+                            ic = Some(preview);
+                        }
+                    }
+                    ic
+                };
+                #[cfg(not(windows))]
+                let ic = ic;
+                super::icon_cache::put(&path, dn.clone(), ic.clone());
+                (dn, ic)
+            };
+
         #[cfg(windows)]
-        if kind == "image" {
-            if let Some(preview) = win::image_file_preview(&path, 96) {
+        if kind == "image" && icon.is_none() {
+            if let Some(preview) = win::image_file_preview(&path, 72) {
                 icon = Some(preview);
+                super::icon_cache::put(&path, display_name.clone(), icon.clone());
             }
         }
+
         seen.insert(path_key);
         items.push(DesktopItem {
             name: display_name,

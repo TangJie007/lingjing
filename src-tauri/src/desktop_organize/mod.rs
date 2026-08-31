@@ -3,6 +3,7 @@
 pub mod drag;
 #[cfg(windows)]
 mod drop_target;
+mod icon_cache;
 pub mod item_commands;
 pub mod layout;
 pub mod lifecycle;

@@ -56,26 +56,11 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
 
     let items = scan_desktop_items()?;
     let _ = window.eval("location.reload()");
-    // reload recreates WebView2 child HWNDs — reinstall on UI thread after they exist.
+    // reload recreates WebView2 child HWNDs — debounced reinstall (coalesced).
     #[cfg(windows)]
     {
         let hwnd_raw = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
-        if hwnd_raw != 0 {
-            let app_for_drop = app.clone();
-            std::thread::spawn(move || {
-                // Gaps between attempts (must RegisterDragDrop on UI/STA thread).
-                for gap_ms in [500u64, 800, 1500] {
-                    std::thread::sleep(std::time::Duration::from_millis(gap_ms));
-                    let app2 = app_for_drop.clone();
-                    if let Err(e) = super::util::run_on_ui(&app_for_drop, move || {
-                        super::drop_target::set_app(app2);
-                        super::drop_target::install(hwnd_raw);
-                    }) {
-                        tracing::info!("[desktop-organize] drop reinstall failed: {e}");
-                    }
-                }
-            });
-        }
+        super::drop_target::schedule_install(app, hwnd_raw, &[600, 1800]);
     }
     push_items_to_fence(app, &items)?;
     set_active(true);
@@ -87,6 +72,7 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
 fn disable_inner(app: &AppHandle) -> Result<(), String> {
     set_active(false);
     stop_desktop_watch();
+    super::icon_cache::clear();
     #[cfg(windows)]
     super::drop_target::uninstall();
 
@@ -139,8 +125,8 @@ pub fn reassert(app: &AppHandle) {
         if let Ok(hwnd) = window.hwnd() {
             let _ = win::attach_fence_to_desktop(hwnd.0 as isize);
             win::touch_fence_chrome(hwnd.0 as isize);
-            super::drop_target::set_app(app.clone());
-            super::drop_target::install(hwnd.0 as isize);
+            // Debounce: power/display events can burst reassert.
+            super::drop_target::schedule_install(app, hwnd.0 as isize, &[200]);
         }
         let _ = window.set_ignore_cursor_events(false);
     }
@@ -170,7 +156,7 @@ fn start_desktop_watch(app: &AppHandle) {
             use std::sync::mpsc::channel;
 
             let (tx, rx) = channel();
-            let mut debouncer = match new_debouncer(Duration::from_millis(450), tx) {
+            let mut debouncer = match new_debouncer(Duration::from_millis(650), tx) {
                 Ok(d) => d,
                 Err(e) => {
                     tracing::info!("[desktop-organize] watcher create failed: {e}");

@@ -3,6 +3,11 @@
 import { clearIconDragArm } from "./iconDragCursor";
 import { friendlyError, showFenceToast } from "./fenceUi";
 
+const PROBE_INTERVAL_MS = 120;
+const PROBE_MIN_GAP_MS = 100;
+/** Skip huge image data-URLs as OLE preview — decode/copy cost dominates. */
+const MAX_PREVIEW_CHARS = 48_000;
+
 function cancelHtmlDragArtifacts() {
   // Force-end Sortable / pointer capture left behind when the mouse is released
   // over another window (Explorer) after OLE handoff.
@@ -19,7 +24,7 @@ function cancelHtmlDragArtifacts() {
   document.dispatchEvent(
     new MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0 }),
   );
-  // Strip leftover Sortable / drag classes so cursor is no longer "grabbing".
+
   const sticky = [
     "is-dragging",
     "is-dragging-source",
@@ -29,7 +34,8 @@ function cancelHtmlDragArtifacts() {
     "sortable-chosen",
     "sortable-fallback",
   ];
-  document.querySelectorAll(sticky.map((c) => `.${c}`).join(",")).forEach((el) => {
+  const root = document.getElementById("stage") || document.body;
+  root.querySelectorAll(sticky.map((c) => `.${c}`).join(",")).forEach((el) => {
     el.classList.remove(...sticky);
     if (el instanceof HTMLElement) {
       el.style.removeProperty("display");
@@ -44,7 +50,7 @@ function cancelHtmlDragArtifacts() {
       el.style.removeProperty("pointer-events");
     }
   });
-  document.querySelectorAll(".sortable-fallback, .drag-ghost").forEach((el) => {
+  document.querySelectorAll("body > .sortable-fallback, body > .drag-ghost").forEach((el) => {
     el.remove();
   });
   document.getElementById("stage")?.classList.remove("icon-dragging", "icon-drag-armed");
@@ -74,6 +80,14 @@ export function useShellFileDrag(opts?: {
     }
   }
 
+  function startPoll() {
+    stopPoll();
+    if (!activePath || suspended) return;
+    pollTimer = window.setInterval(() => {
+      void probe();
+    }, PROBE_INTERVAL_MS);
+  }
+
   function resetUi() {
     cancelHtmlDragArtifacts();
     opts?.onUiReset?.();
@@ -81,7 +95,8 @@ export function useShellFileDrag(opts?: {
 
   function begin(path: string, preview: string | null) {
     activePath = path;
-    previewDataUrl = preview;
+    previewDataUrl =
+      preview && preview.length <= MAX_PREVIEW_CHARS ? preview : null;
     shiftKey = false;
     ctrlKey = false;
     foreignHits = 0;
@@ -90,12 +105,7 @@ export function useShellFileDrag(opts?: {
     pending = false;
     suspended = false;
     session += 1;
-    stopPoll();
-    // Cursor leaves the WebView when over Explorer — Sortable "move" stops.
-    // Poll independently so we still hand off to OLE drag-out.
-    pollTimer = window.setInterval(() => {
-      void probe();
-    }, 50);
+    startPoll();
   }
 
   function end() {
@@ -110,8 +120,14 @@ export function useShellFileDrag(opts?: {
 
   /** Pause OLE handoff (e.g. while hovering a folder drop target). */
   function setSuspended(next: boolean) {
+    if (suspended === next) return;
     suspended = next;
-    if (next) foreignHits = 0;
+    if (next) {
+      foreignHits = 0;
+      stopPoll();
+    } else if (activePath) {
+      startPoll();
+    }
   }
 
   function setModifiers(shift: boolean, ctrl: boolean) {
@@ -126,7 +142,7 @@ export function useShellFileDrag(opts?: {
   async function probe() {
     if (!activePath || pending || inFlight || suspended || !window.__TAURI__) return;
     const now = performance.now();
-    if (now - lastProbe < 40) return;
+    if (now - lastProbe < PROBE_MIN_GAP_MS) return;
     lastProbe = now;
 
     const mySession = session;
@@ -150,7 +166,6 @@ export function useShellFileDrag(opts?: {
       stopPoll();
       end();
 
-      // Soft-cancel Sortable before OLE takes the mouse (physical button still down).
       cancelHtmlDragArtifacts();
       opts?.onUiReset?.();
 
@@ -166,8 +181,6 @@ export function useShellFileDrag(opts?: {
           showFenceToast(msg);
         }
       } finally {
-        // OLE drag ends when the user releases over Explorer — fence never sees
-        // that mouseup, so force-clear grabbing cursor / Sortable leftovers.
         resetUi();
       }
     } catch (err) {
@@ -186,5 +199,7 @@ export function useShellFileDrag(opts?: {
 export function cellPreviewDataUrl(el: HTMLElement | null): string | null {
   const img = el?.querySelector("img");
   const src = img?.src || "";
-  return src.startsWith("data:image/png;base64,") ? src : null;
+  if (!src.startsWith("data:image/png;base64,")) return null;
+  if (src.length > MAX_PREVIEW_CHARS) return null;
+  return src;
 }

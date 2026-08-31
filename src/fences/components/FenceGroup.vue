@@ -41,7 +41,7 @@ function onMove(evt: MoveEvent, originalEvent: Event) {
     class="drag-host"
     :class="{ 'fence-grid': !native }"
     :id="hostId"
-    :animation="160"
+    :animation="90"
     :group="dragGroup"
     filter=".no-drag"
     :prevent-on-filter="true"

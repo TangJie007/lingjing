@@ -10,6 +10,7 @@ use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::ptr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter};
@@ -39,6 +40,7 @@ unsafe impl Sync for InstalledTarget {}
 
 static INSTALLED: Mutex<Vec<InstalledTarget>> = Mutex::new(Vec::new());
 static DROP_APP: Mutex<Option<AppHandle>> = Mutex::new(None);
+static INSTALL_GEN: AtomicU64 = AtomicU64::new(0);
 
 fn hdrop_format() -> FORMATETC {
     FORMATETC {
@@ -100,6 +102,32 @@ pub fn install(hwnd_raw: isize) {
     );
     if let Ok(mut g) = INSTALLED.lock() {
         *g = installed;
+    }
+}
+
+/// Debounced reinstall after WebView reload / SetParent.
+/// Multiple delays share one generation so a newer schedule cancels older bursts,
+/// while attempts within the same schedule still run.
+pub fn schedule_install(app: &AppHandle, hwnd_raw: isize, delays_ms: &[u64]) {
+    if hwnd_raw == 0 || delays_ms.is_empty() {
+        return;
+    }
+    let gen = INSTALL_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    for &delay_ms in delays_ms {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            if INSTALL_GEN.load(Ordering::SeqCst) != gen {
+                return;
+            }
+            let app2 = app.clone();
+            if let Err(e) = super::util::run_on_ui(&app, move || {
+                set_app(app2);
+                install(hwnd_raw);
+            }) {
+                tracing::info!("[desktop-organize] drop reinstall failed: {e}");
+            }
+        });
     }
 }
 

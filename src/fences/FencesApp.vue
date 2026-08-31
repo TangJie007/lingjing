@@ -28,6 +28,7 @@ import {
   saveCategoryOverride,
 } from "./helpers";
 import { initFenceLayout } from "./fenceLayout";
+import { forgetIcon, mergeGroupItems, pruneIconCache } from "./fenceItems";
 import { friendlyError, showFenceToast } from "./fenceUi";
 import type { DesktopItem, FenceGroupKey, FenceGroupState } from "./types";
 import { cellPreviewDataUrl, useShellFileDrag } from "./useShellFileDrag";
@@ -108,7 +109,9 @@ const fileDropHover = ref(false);
 /** Drop-on-folder target while Sortable-dragging (Explorer-like move into folder). */
 const pendingFolderDrop = ref<{ src: string; folder: string } | null>(null);
 const dragSourcePath = ref("");
+const dirtyGroups = new Set<FenceGroupKey>();
 let lastDragPointer = { x: 0, y: 0 };
+let folderDropEl: HTMLElement | null = null;
 
 const {
   entries: shellEntries,
@@ -141,8 +144,13 @@ function persist(key: FenceGroupKey) {
   persistGroupOrder(groups[key].orderKey, groups[key].items);
 }
 
-function persistAll() {
-  for (const k of Object.keys(groups) as FenceGroupKey[]) persist(k);
+function persistDirty() {
+  for (const k of dirtyGroups) persist(k);
+  dirtyGroups.clear();
+}
+
+function markDirty(key: FenceGroupKey) {
+  dirtyGroups.add(key);
 }
 
 function onAdded(key: FenceGroupKey, evt: SortableEvent) {
@@ -151,17 +159,27 @@ function onAdded(key: FenceGroupKey, evt: SortableEvent) {
   saveCategoryOverride(path, key);
   const item = groups[key].items.find((i) => i.path === path);
   if (item) item.kind = key;
+  markDirty(key);
   persist(key);
 }
 
 function onSorted(key: FenceGroupKey) {
+  markDirty(key);
   persist(key);
 }
 
 function clearFolderDropHighlight() {
-  document
-    .querySelectorAll(".cell.folder-drop-over")
-    .forEach((el) => el.classList.remove("folder-drop-over"));
+  if (folderDropEl) {
+    folderDropEl.classList.remove("folder-drop-over");
+    folderDropEl = null;
+  }
+}
+
+function setFolderDropHighlight(cell: HTMLElement | null) {
+  if (folderDropEl === cell) return;
+  if (folderDropEl) folderDropEl.classList.remove("folder-drop-over");
+  folderDropEl = cell;
+  cell?.classList.add("folder-drop-over");
 }
 
 function findFolderDropCell(
@@ -169,30 +187,38 @@ function findFolderDropCell(
   originalEvent?: Event,
 ): HTMLElement | null {
   const dragged = evt.dragged;
-  const candidates: (HTMLElement | null | undefined)[] = [
-    evt.related?.closest?.(".cell") as HTMLElement | null,
-    (originalEvent?.target as HTMLElement | null)?.closest?.(".cell") as
-      | HTMLElement
-      | null,
-  ];
-  const oe = originalEvent as MouseEvent | undefined;
-  if (oe && Number.isFinite(oe.clientX) && Number.isFinite(oe.clientY)) {
-    const under = document.elementFromPoint(oe.clientX, oe.clientY) as
-      | HTMLElement
-      | null;
-    candidates.push(under?.closest?.(".cell") as HTMLElement | null);
+  // Prefer Sortable related — avoid elementFromPoint on every move.
+  const related = evt.related?.closest?.(".cell") as HTMLElement | null;
+  if (related && related !== dragged && related.dataset?.isDir === "1") {
+    return related;
   }
-  for (const cell of candidates) {
-    if (!cell || cell === dragged) continue;
-    if (cell.dataset?.isDir === "1" && cell.dataset?.path) return cell;
+  const fromTarget = (originalEvent?.target as HTMLElement | null)?.closest?.(
+    ".cell",
+  ) as HTMLElement | null;
+  if (fromTarget && fromTarget !== dragged && fromTarget.dataset?.isDir === "1") {
+    return fromTarget;
   }
   return null;
+}
+
+function removeItemLocally(path: string) {
+  forgetIcon(path);
+  for (const k of Object.keys(groups) as FenceGroupKey[]) {
+    const list = groups[k].items;
+    const idx = list.findIndex((i) => i.path === path);
+    if (idx >= 0) {
+      list.splice(idx, 1);
+      markDirty(k);
+    }
+  }
 }
 
 function onDragStart(key: FenceGroupKey, evt: SortableEvent) {
   markIconDragStart();
   dragging.value = true;
   fenceDraggingKey.value = key === "app" ? null : key;
+  dirtyGroups.clear();
+  markDirty(key);
   pendingFolderDrop.value = null;
   clearFolderDropHighlight();
   const el = evt.item as HTMLElement;
@@ -203,11 +229,8 @@ function onDragStart(key: FenceGroupKey, evt: SortableEvent) {
 }
 
 async function onDragEnd(key: FenceGroupKey) {
-  // Prefer path captured at drag-start (DOM may reshuffle during Sortable).
   const src =
-    dragSourcePath.value ||
-    pendingFolderDrop.value?.src ||
-    "";
+    dragSourcePath.value || pendingFolderDrop.value?.src || "";
   let folder = pendingFolderDrop.value?.folder || "";
   const under = document.elementFromPoint(
     lastDragPointer.x,
@@ -227,12 +250,14 @@ async function onDragEnd(key: FenceGroupKey) {
   clearFolderDropHighlight();
   dragging.value = false;
   fenceDraggingKey.value = null;
-  // Stop OLE handoff before filesystem move — otherwise they race on the same path.
   shellDrag.setSuspended(true);
   shellDrag.end();
   markIconDragEnd();
 
   if (src && folder && window.__TAURI__) {
+    markDirty(key);
+    removeItemLocally(src);
+    persistDirty();
     try {
       await window.__TAURI__.core.invoke("move_desktop_item_into_folder", {
         path: src,
@@ -252,8 +277,8 @@ async function onDragEnd(key: FenceGroupKey) {
     return;
   }
 
-  persist(key);
-  persistAll();
+  markDirty(key);
+  persistDirty();
   flushPending();
 }
 
@@ -272,20 +297,15 @@ function onDragMove(
     dragSourcePath.value || evt.dragged?.dataset?.path || "";
   const folderPath = folderCell?.dataset?.path || "";
   if (folderCell && folderPath && srcPath && folderPath !== srcPath) {
-    if (!folderCell.classList.contains("folder-drop-over")) {
-      clearFolderDropHighlight();
-      folderCell.classList.add("folder-drop-over");
-    }
+    setFolderDropHighlight(folderCell);
     pendingFolderDrop.value = { src: srcPath, folder: folderPath };
-    // Do not hand off to Explorer OLE while targeting a fence folder.
     shellDrag.setSuspended(true);
     return false;
   }
 
-  clearFolderDropHighlight();
+  setFolderDropHighlight(null);
   pendingFolderDrop.value = null;
   shellDrag.setSuspended(false);
-  void shellDrag.probe();
   return true;
 }
 
@@ -298,13 +318,30 @@ function flushPending() {
 
 function render(items: DesktopItem[] | null | undefined) {
   const list = items || [];
-  groups.app.items = partitionApps(list);
+  pruneIconCache(list.map((i) => i.path));
+  const apps = partitionApps(list);
   const buckets = partitionByCategory(list);
-  groups.image.items = loadOrder(IMAGE_ORDER_KEY, buckets.image);
-  groups.document.items = loadOrder(DOC_ORDER_KEY, buckets.document);
-  groups.folder.items = loadOrder(FOLDER_ORDER_KEY, buckets.folder);
-  groups.media.items = loadOrder(MEDIA_ORDER_KEY, buckets.media);
-  groups.archive.items = loadOrder(ARCHIVE_ORDER_KEY, buckets.archive);
+  groups.app.items = mergeGroupItems(groups.app.items, apps);
+  groups.image.items = mergeGroupItems(
+    groups.image.items,
+    loadOrder(IMAGE_ORDER_KEY, buckets.image),
+  );
+  groups.document.items = mergeGroupItems(
+    groups.document.items,
+    loadOrder(DOC_ORDER_KEY, buckets.document),
+  );
+  groups.folder.items = mergeGroupItems(
+    groups.folder.items,
+    loadOrder(FOLDER_ORDER_KEY, buckets.folder),
+  );
+  groups.media.items = mergeGroupItems(
+    groups.media.items,
+    loadOrder(MEDIA_ORDER_KEY, buckets.media),
+  );
+  groups.archive.items = mergeGroupItems(
+    groups.archive.items,
+    loadOrder(ARCHIVE_ORDER_KEY, buckets.archive),
+  );
 }
 
 function applyFenceItems(items: DesktopItem[] | null | undefined) {

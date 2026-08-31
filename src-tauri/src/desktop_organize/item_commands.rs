@@ -169,6 +169,7 @@ pub fn rename_desktop_item(app: AppHandle, path: String, new_name: String) -> Re
         return Err("目标名称已存在".into());
     }
     fs::rename(old, &new_path).map_err(|e| format!("重命名失败: {e}"))?;
+    super::icon_cache::invalidate(trimmed);
     let new = new_path.to_string_lossy().into_owned();
     if let Ok(mut layout) = super::layout::load_layout(&app) {
         super::layout::migrate_path(&mut layout, trimmed, &new);
@@ -235,6 +236,7 @@ pub fn move_desktop_item_into_folder(
     })?;
 
     let new_path = dest.to_string_lossy().into_owned();
+    super::icon_cache::invalidate(src);
     if let Ok(mut layout) = super::layout::load_layout(&app) {
         // Item leaves the desktop root listing — drop from fence orders.
         super::layout::remove_path(&mut layout, src);
@@ -300,6 +302,7 @@ pub fn delete_desktop_item(app: AppHandle, path: String) -> Result<(), String> {
     #[cfg(windows)]
     {
         trash::delete(trimmed).map_err(|e| format!("删除失败: {e}"))?;
+        super::icon_cache::invalidate(trimmed);
         if let Ok(mut layout) = super::layout::load_layout(&app) {
             super::layout::remove_path(&mut layout, trimmed);
             let _ = super::layout::save_layout(&app, &layout);
