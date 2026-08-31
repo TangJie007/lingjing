@@ -1,9 +1,17 @@
 #[cfg(windows)]
 mod win {
+    use std::os::windows::process::CommandExt;
+    use std::path::PathBuf;
+    use std::process::Command;
     use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+    use windows::Win32::Foundation::{
+        CloseHandle, HWND, LPARAM, LRESULT, POINT, WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
+    };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, FindWindowExW, FindWindowW, GetClassNameW, GetParent, IsWindowVisible,
         SetWindowsHookExW, ShowWindow, UnhookWindowsHookEx, WindowFromPoint, HHOOK, MSLLHOOKSTRUCT,
@@ -12,6 +20,9 @@ mod win {
 
     static ENABLED: AtomicBool = AtomicBool::new(false);
     static HOOK: AtomicIsize = AtomicIsize::new(0);
+    const GUARD_ARG: &str = "--desktop-icons-guard";
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const GUARD_FILE: &str = "lingscape-desktop-icons.guard";
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -100,6 +111,112 @@ mod win {
         }
     }
 
+    fn guard_path() -> PathBuf {
+        std::env::temp_dir().join(GUARD_FILE)
+    }
+
+    fn guard_owner() -> Option<u32> {
+        std::fs::read_to_string(guard_path())
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+    }
+
+    fn process_running(pid: u32) -> bool {
+        let Ok(process) = (unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }) else {
+            return false;
+        };
+        let result = unsafe { WaitForSingleObject(process, 0) } == WAIT_TIMEOUT;
+        unsafe {
+            let _ = CloseHandle(process);
+        }
+        result
+    }
+
+    pub fn recover_icons_after_crash() {
+        let path = guard_path();
+        let stale = match guard_owner() {
+            Some(pid) => !process_running(pid),
+            None => path.exists(),
+        };
+        if stale {
+            set_icons_visible(true);
+            let _ = std::fs::remove_file(path);
+            tracing::info!("[desktop-organize] recovered icons after previous crash");
+        }
+    }
+
+    pub fn start_icons_restore_guard() -> Result<(), String> {
+        let pid = std::process::id();
+        if let Some(owner) = guard_owner() {
+            if owner == pid {
+                return Ok(());
+            }
+            if process_running(owner) {
+                return Err("另一个灵镜实例正在管理桌面图标".into());
+            }
+        }
+
+        let path = guard_path();
+        std::fs::write(&path, pid.to_string())
+            .map_err(|e| format!("创建桌面图标恢复标记失败: {e}"))?;
+        let exe = std::env::current_exe().map_err(|e| format!("获取程序路径失败: {e}"))?;
+        match Command::new(exe)
+            .arg(GUARD_ARG)
+            .arg(pid.to_string())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let _ = std::fs::remove_file(path);
+                Err(format!("启动桌面图标恢复守护失败: {e}"))
+            }
+        }
+    }
+
+    pub fn stop_icons_restore_guard() {
+        if guard_owner() == Some(std::process::id()) {
+            let _ = std::fs::remove_file(guard_path());
+        }
+    }
+
+    pub fn maybe_run_icons_restore_guard() -> bool {
+        let mut args = std::env::args().skip(1);
+        if args.next().as_deref() != Some(GUARD_ARG) {
+            return false;
+        }
+        let Some(pid) = args.next().and_then(|s| s.parse::<u32>().ok()) else {
+            return true;
+        };
+
+        let process = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) };
+        if let Ok(process) = process {
+            loop {
+                if guard_owner() != Some(pid) {
+                    unsafe {
+                        let _ = CloseHandle(process);
+                    }
+                    return true;
+                }
+                match unsafe { WaitForSingleObject(process, 250) } {
+                    WAIT_TIMEOUT => continue,
+                    WAIT_OBJECT_0 => break,
+                    _ => break,
+                }
+            }
+            unsafe {
+                let _ = CloseHandle(process);
+            }
+        }
+
+        // Only the guard that still owns the marker may restore/remove it.
+        if guard_owner() == Some(pid) {
+            set_icons_visible(true);
+            let _ = std::fs::remove_file(guard_path());
+        }
+        true
+    }
+
     fn toggle_icons_visible() {
         set_icons_visible(!icons_visible());
     }
@@ -168,7 +285,10 @@ mod win {
 }
 
 #[cfg(windows)]
-pub use win::{set_double_click_enabled, set_icons_visible};
+pub use win::{
+    maybe_run_icons_restore_guard, recover_icons_after_crash, set_double_click_enabled,
+    set_icons_visible, start_icons_restore_guard, stop_icons_restore_guard,
+};
 
 #[cfg(windows)]
 pub fn apply_frameless_dwm(hwnd_raw: isize) {
@@ -247,3 +367,19 @@ pub fn set_double_click_enabled(_enabled: bool) {}
 
 #[cfg(not(windows))]
 pub fn set_icons_visible(_visible: bool) {}
+
+#[cfg(not(windows))]
+pub fn start_icons_restore_guard() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn stop_icons_restore_guard() {}
+
+#[cfg(not(windows))]
+pub fn recover_icons_after_crash() {}
+
+#[cfg(not(windows))]
+pub fn maybe_run_icons_restore_guard() -> bool {
+    false
+}

@@ -12,6 +12,7 @@ use super::scan::desktop_scan_dirs;
 use super::shell_host::run_shell_menu_host;
 use super::state::FENCE_LABEL;
 use super::types::ShellMenuEntry;
+use super::util::run_on_ui;
 
 /// List Shell COM context menu entries (custom UI; includes icons when available).
 /// Folders always use the built-in Explorer-like menu (QueryContextMenu hangs on many folders).
@@ -112,6 +113,11 @@ pub async fn invoke_desktop_shell_context_command(
     #[cfg(windows)]
     {
         if crate::shell_menu::is_builtin_command(command_id) {
+            if command_id == crate::shell_menu::BUILTIN_SHARE {
+                let p = path_opt.unwrap_or_default();
+                // Share needs UI-thread HWND + message pump.
+                return run_on_ui(&app, move || crate::shell_menu::share_path_native(&p))?;
+            }
             return dispatch_builtin_shell_command(
                 &app,
                 path_opt.as_deref().unwrap_or(""),
@@ -161,7 +167,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_DISPLAY_SETTINGS, BUILTIN_NEW_FOLDER, BUILTIN_NEW_TXT, BUILTIN_OPEN,
         BUILTIN_OPEN_DESKTOP, BUILTIN_OPEN_NEW_WINDOW, BUILTIN_OPEN_TERMINAL, BUILTIN_OPEN_WITH,
         BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PIN_QUICK_ACCESS, BUILTIN_PROPERTIES,
-        BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
+        BUILTIN_REFRESH, BUILTIN_RENAME, BUILTIN_SHARE, BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
         BUILTIN_OPEN => open_desktop_item(path.to_string()),
@@ -175,6 +181,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_CREATE_SHORTCUT => create_desktop_shortcut(path),
         BUILTIN_DELETE => delete_desktop_item(app.clone(), path.to_string()),
         BUILTIN_RENAME => Err("重命名需由前端提供新名称".into()),
+        BUILTIN_SHARE => crate::shell_menu::share_path_native(path),
         BUILTIN_COMPRESS_ZIP => compress_path_to_zip(path),
         BUILTIN_REFRESH => refresh(app),
         BUILTIN_NEW_FOLDER => create_on_desktop("新建文件夹", true),

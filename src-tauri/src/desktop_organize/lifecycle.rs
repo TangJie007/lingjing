@@ -29,11 +29,13 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
 
     #[cfg(windows)]
     {
+        desktop::start_icons_restore_guard()?;
         desktop::set_icons_visible(false);
         let hwnd = match window.hwnd() {
             Ok(h) => h,
             Err(e) => {
                 desktop::set_icons_visible(true);
+                desktop::stop_icons_restore_guard();
                 return Err(format!("获取 HWND 失败: {e}"));
             }
         };
@@ -42,6 +44,7 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
         let _ = window.set_shadow(false);
         if let Err(e) = win::attach_fence_to_desktop(hwnd.0 as isize) {
             desktop::set_icons_visible(true);
+            desktop::stop_icons_restore_guard();
             return Err(e);
         }
         let _ = window.set_ignore_cursor_events(false);
@@ -54,7 +57,13 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
         return Err("桌面整理仅支持 Windows".into());
     }
 
-    let items = scan_desktop_items()?;
+    let items = match scan_desktop_items() {
+        Ok(items) => items,
+        Err(e) => {
+            let _ = disable_inner(app);
+            return Err(e);
+        }
+    };
     let _ = window.eval("location.reload()");
     // reload recreates WebView2 child HWNDs — debounced reinstall (coalesced).
     #[cfg(windows)]
@@ -62,7 +71,10 @@ fn enable_inner(app: &AppHandle) -> Result<(), String> {
         let hwnd_raw = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
         super::drop_target::schedule_install(app, hwnd_raw, &[600, 1800]);
     }
-    push_items_to_fence(app, &items)?;
+    if let Err(e) = push_items_to_fence(app, &items) {
+        let _ = disable_inner(app);
+        return Err(e);
+    }
     set_active(true);
     start_desktop_watch(app);
     tracing::info!("[desktop-organize] enabled items={}", items.len());
@@ -88,7 +100,10 @@ fn disable_inner(app: &AppHandle) -> Result<(), String> {
     }
 
     #[cfg(windows)]
-    desktop::set_icons_visible(true);
+    {
+        desktop::set_icons_visible(true);
+        desktop::stop_icons_restore_guard();
+    }
 
     tracing::info!("[desktop-organize] disabled");
     Ok(())

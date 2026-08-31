@@ -3,6 +3,9 @@
 
 fn main() {
     lingscape_lib::init_logging();
+    if lingscape_lib::maybe_run_desktop_icons_guard() {
+        return;
+    }
     if lingscape_lib::maybe_run_shell_menu_host() {
         return;
     }

@@ -3,7 +3,7 @@ import type { ShellMenuEntry } from "./types";
 import {
   BUILTIN_RENAME,
   friendlyError,
-  showFenceToast,
+  showFenceErrorToast,
 } from "./fenceUi";
 import { migrateFencePath } from "./fenceLayout";
 import { requestRename } from "./useRenameDialog";
@@ -189,13 +189,14 @@ export function useShellContextMenu() {
       // Delete uses the system Recycle Bin dialog — no extra toast.
     } catch (e) {
       const msg = String(e);
+      console.error("[shell-menu] command failed", e);
       if (/已取消|取消/.test(msg)) return;
       if (msg.includes("重命名") || msg.includes("BUILTIN_RENAME")) {
         if (!p) return;
         await renameAt(p);
         return;
       }
-      showFenceToast(friendlyError(e));
+      showFenceErrorToast(friendlyError(e));
     }
   }
 

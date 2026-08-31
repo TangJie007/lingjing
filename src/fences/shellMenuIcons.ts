@@ -12,6 +12,7 @@ export const BUILTIN_COPY = 0xf0000000 + 8;
 export const BUILTIN_DELETE = 0xf0000000 + 10;
 export const BUILTIN_RENAME = 0xf0000000 + 11;
 export const BUILTIN_REFRESH = 0xf0000000 + 13;
+export const BUILTIN_SHARE = 0xf0000000 + 21;
 
 export type ShellPinKind = "cut" | "copy" | "rename" | "share" | "delete" | "refresh";
 
@@ -31,6 +32,7 @@ export function shellPinKind(entry: ShellMenuEntry): ShellPinKind | null {
   if (id === BUILTIN_RENAME) return "rename";
   if (id === BUILTIN_DELETE) return "delete";
   if (id === BUILTIN_REFRESH) return "refresh";
+  if (id === BUILTIN_SHARE) return "share";
 
   const label = (entry.label || "").trim();
   if (label.includes("剪切") || /^cut$/i.test(label)) return "cut";

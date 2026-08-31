@@ -27,6 +27,11 @@ tauri-plugin-autostart = "2"
 tauri-plugin-os = "2"
 uuid = { version = "1.24.1", features = ["v4"] }
 windows = { version = "0.61", features = [
+  "ApplicationModel_DataTransfer",
+  "Foundation",
+  "Storage",
+  "Storage_Search",
+  "Storage_Streams",
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
@@ -40,6 +45,7 @@ windows = { version = "0.61", features = [
   "Win32_System_Registry",
   "Win32_System_SystemInformation",
   "Win32_System_SystemServices",
+  "Win32_System_Threading",
   "Win32_UI_Controls",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
@@ -47,6 +53,7 @@ windows = { version = "0.61", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 windows-core = "0.61"
+windows-collections = "0.2"
 tokio = { version = "1.53.1", features = ["time", "rt-multi-thread", "macros", "sync"] }
 png = "0.17"
 drag = "2.1.1"

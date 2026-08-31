@@ -12,6 +12,7 @@ mod util;
 mod wallpaper;
 
 pub use desktop_organize::maybe_run_shell_menu_host;
+pub use desktop::maybe_run_icons_restore_guard as maybe_run_desktop_icons_guard;
 pub use util::init_logging;
 
 use std::path::{Path, PathBuf};
@@ -329,6 +330,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            desktop::recover_icons_after_crash();
             let low_power = system::detect_low_power_mode();
             if low_power {
                 tracing::info!("[system] low power mode enabled (< 6GB RAM)");
