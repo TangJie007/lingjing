@@ -95,7 +95,9 @@ pub(crate) fn run_shell_menu_host(
     path: Option<&str>,
     menu_path: &[u32],
 ) -> Result<Vec<ShellMenuEntry>, String> {
-    if mode == "root" {
+    // Root + submenu share the persistent host so blank-desktop cascade
+    // preloads do not spawn one process per submenu.
+    if mode == "root" || mode == "submenu" {
         return run_persistent_shell_menu_host(mode, path, menu_path);
     }
     run_one_shot_shell_menu_host(mode, path, menu_path)
@@ -322,6 +324,11 @@ fn handle_shell_menu_server_line(
         serde_json::from_str(line).map_err(|e| format!("解析常驻 Shell 菜单请求失败: {e}"))?;
     match request.mode.as_str() {
         "root" => crate::shell_menu::list_shell_context_menu(hwnd, request.path.as_deref()),
+        "submenu" => crate::shell_menu::list_shell_context_submenu(
+            hwnd,
+            request.path.as_deref(),
+            &request.menu_path,
+        ),
         _ => Err("常驻 Shell 菜单进程不支持该模式".into()),
     }
 }

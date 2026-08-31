@@ -10,7 +10,6 @@ import { migrateFencePath } from "./fenceLayout";
 import { requestRename } from "./useRenameDialog";
 
 const FILE_MENU_CACHE_TTL_MS = 8000;
-const BLANK_MENU_CACHE_TTL_MS = 1500;
 const MAX_MENU_CACHE = 64;
 
 type MenuCacheEntry = {
@@ -63,10 +62,12 @@ export function useShellContextMenu() {
   }
 
   function cachedEntries(key: string): ShellMenuEntry[] | null {
+    // Blank desktop menu never uses the root cache — always fetch fresh
+    // so Paste / clipboard-sensitive items stay current; only submenu preload applies.
+    if (!key) return null;
     const hit = menuCache.get(key);
     if (!hit) return null;
-    const ttl = key ? FILE_MENU_CACHE_TTL_MS : BLANK_MENU_CACHE_TTL_MS;
-    if (Date.now() - hit.at > ttl) {
+    if (Date.now() - hit.at > FILE_MENU_CACHE_TTL_MS) {
       menuCache.delete(key);
       return null;
     }
@@ -74,6 +75,7 @@ export function useShellContextMenu() {
   }
 
   function rememberEntries(key: string, list: ShellMenuEntry[]) {
+    if (!key) return;
     menuCache.set(key, { at: Date.now(), entries: cloneEntries(list) });
     while (menuCache.size > MAX_MENU_CACHE) {
       const oldest = menuCache.keys().next().value;
@@ -90,7 +92,6 @@ export function useShellContextMenu() {
     }
     const key = cacheKey(targetPath);
     menuCache.delete(key);
-    menuCache.delete("");
     for (const loadKey of [...pendingSubmenuLoads.keys()]) {
       if (loadKey.startsWith(`${key}|`) || loadKey.startsWith("|")) {
         pendingSubmenuLoads.delete(loadKey);
@@ -99,6 +100,7 @@ export function useShellContextMenu() {
   }
 
   function writeSubmenuToCache(key: string, menuPath: number[], list: ShellMenuEntry[]) {
+    if (!key) return;
     const cached = menuCache.get(key);
     if (!cached) return;
     const entry = findSubmenu(cached.entries, menuPath);
@@ -314,53 +316,92 @@ export function useShellContextMenu() {
     }
   }
 
-  async function loadSubmenu(menuPath: number[]) {
-    const entry = findSubmenu(entries.value, menuPath);
-    if (!entry || entry.loading) return;
-    if (entry.children && entry.children.length > 0) {
-      const onlyPlaceholder =
-        entry.children.length === 1 &&
-        (!!entry.children[0]?.disabled ||
-          entry.children[0]?.label === "加载超时" ||
-          entry.children[0]?.label === "加载失败" ||
-          entry.children[0]?.label === "无可用命令");
-      if (!onlyPlaceholder) return;
-    }
-    const myGen = generation;
-    const key = cacheKey(path.value);
-    const loadKey = `${key}|${menuPath.join("/")}`;
-    entry.loading = true;
-    try {
-      let load = pendingSubmenuLoads.get(loadKey);
-      if (!load) {
-        load = window.__TAURI__!.core.invoke<ShellMenuEntry[]>(
-          "list_desktop_shell_context_submenu",
-          { path: path.value, menuPath },
-        );
-        pendingSubmenuLoads.set(loadKey, load);
-      }
-      const list = await load;
-      pendingSubmenuLoads.delete(loadKey);
-      const next = list || [];
-      writeSubmenuToCache(key, menuPath, next);
-      if (myGen === generation) entry.children = next;
-    } catch (e) {
-      pendingSubmenuLoads.delete(loadKey);
-      if (myGen === generation) {
-        entry.children = [{ label: friendlyError(e), disabled: true }];
-      }
-    } finally {
-      if (myGen === generation) entry.loading = false;
-    }
+  /** Serialize submenu loads so immutable entry patches cannot clobber each other. */
+  let submenuLoadChain: Promise<void> = Promise.resolve();
+
+  /** Replace a submenu node immutably so Vue / reka-ui re-render SubContent. */
+  function patchSubmenu(
+    menuPath: number[],
+    patch: (entry: ShellMenuEntry) => void,
+  ): boolean {
+    const next = cloneEntries(entries.value);
+    const entry = findSubmenu(next, menuPath);
+    if (!entry) return false;
+    patch(entry);
+    entries.value = next;
+    return true;
   }
 
-  function preloadSubmenus(myGen: number) {
+  async function loadSubmenu(menuPath: number[]) {
+    const run = async () => {
+      const entry = findSubmenu(entries.value, menuPath);
+      if (!entry || entry.loading) return;
+      if (entry.children && entry.children.length > 0) {
+        const onlyPlaceholder =
+          entry.children.length === 1 &&
+          (!!entry.children[0]?.disabled ||
+            entry.children[0]?.label === "加载超时" ||
+            entry.children[0]?.label === "加载失败" ||
+            entry.children[0]?.label === "无可用命令");
+        if (!onlyPlaceholder) return;
+      }
+      // Builtin blank "新建" ships real children with an empty menuPath —
+      // never round-trip those through the Shell submenu host.
+      if (!menuPath.length) return;
+
+      const myGen = generation;
+      const key = cacheKey(path.value);
+      const loadKey = `${key}|${menuPath.join("/")}`;
+      if (
+        !patchSubmenu(menuPath, (e) => {
+          e.loading = true;
+        })
+      ) {
+        return;
+      }
+      try {
+        let load = pendingSubmenuLoads.get(loadKey);
+        if (!load) {
+          load = window.__TAURI__!.core.invoke<ShellMenuEntry[]>(
+            "list_desktop_shell_context_submenu",
+            { path: path.value, menuPath },
+          );
+          pendingSubmenuLoads.set(loadKey, load);
+        }
+        const list = await load;
+        pendingSubmenuLoads.delete(loadKey);
+        const next = list || [];
+        writeSubmenuToCache(key, menuPath, next);
+        if (myGen !== generation) return;
+        patchSubmenu(menuPath, (e) => {
+          e.children = cloneEntries(next);
+          e.loading = false;
+        });
+      } catch (e) {
+        pendingSubmenuLoads.delete(loadKey);
+        if (myGen !== generation) return;
+        patchSubmenu(menuPath, (entry) => {
+          entry.children = [{ label: friendlyError(e), disabled: true }];
+          entry.loading = false;
+        });
+      }
+    };
+
+    const done = submenuLoadChain.then(run, run);
+    submenuLoadChain = done.then(
+      () => undefined,
+      () => undefined,
+    );
+    await done;
+  }
+
+  async function preloadSubmenus(myGen: number) {
     const submenuPaths = entries.value
       .filter((entry) => entry.children)
       .map((entry) => entry.menuPath || []);
     for (const menuPath of submenuPaths) {
       if (myGen !== generation) return;
-      void loadSubmenu(menuPath);
+      await loadSubmenu(menuPath);
     }
   }
 
