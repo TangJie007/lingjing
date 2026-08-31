@@ -30,6 +30,7 @@ const emit = defineEmits<{
   added: [evt: SortableEvent];
   start: [evt: SortableEvent];
   end: [evt: SortableEvent];
+  preload: [path: string];
 }>();
 
 function onUpdate(list: DesktopItem[]) {
@@ -75,6 +76,7 @@ function onMove(evt: MoveEvent, originalEvent: Event) {
       :native="native"
       :drag-delay="dragDelay"
       @open="emit('open', item.path)"
+      @preload="emit('preload', item.path)"
     />
     <div v-if="!items.length && emptyText" class="fence-empty no-drag">
       {{ emptyText }}

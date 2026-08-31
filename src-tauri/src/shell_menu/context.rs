@@ -7,15 +7,15 @@ use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{
-    BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, IShellFolder, IShellItem, ILFree,
+    BHID_SFUIObject, IContextMenu, IContextMenu2, IContextMenu3, ILFree, IShellFolder, IShellItem,
     SHBindToParent, SHCreateItemFromParsingName, SHGetDesktopFolder, SHParseDisplayName,
-    CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, SEE_MASK_UNICODE,
+    CMIC_MASK_PTINVOKE, CMINVOKECOMMANDINFOEX, SEE_MASK_UNICODE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, DestroyMenu, GetCursorPos, GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW,
-    GetSubMenu, SetForegroundWindow, TrackPopupMenuEx, HMENU,
-    MENUITEMINFOW, MF_BYPOSITION, MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE,
-    MIIM_STRING, MIIM_SUBMENU, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_INITMENUPOPUP,
+    GetSubMenu, SetForegroundWindow, TrackPopupMenuEx, HMENU, MENUITEMINFOW, MFT_SEPARATOR,
+    MF_BYPOSITION, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU,
+    SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_INITMENUPOPUP,
 };
 
 use crate::desktop_organize::ShellMenuEntry;
@@ -23,10 +23,10 @@ use crate::desktop_organize::ShellMenuEntry;
 use super::builtin::{desktop_blank_builtin_menu, fallback_menu};
 use super::host::{pump_for, pump_messages};
 use super::icons::hbitmap_to_data_url;
+use super::ids::is_builtin_command;
 use super::ids::{BUILTIN_DELETE, CMD_FIRST, CMD_LAST};
 use super::pin::apply_win11_pin_row;
 use super::util::{clean_menu_label, invoke_working_directory, menu_flags, stage, wide};
-use super::ids::is_builtin_command;
 use super::verbs::{command_verb, shell_execute_verb};
 
 const QUERY_MENU_TIMEOUT: Duration = Duration::from_secs(5);
@@ -47,11 +47,10 @@ unsafe fn acquire_item_menu(hwnd: HWND, path: &str) -> Result<IContextMenu, Stri
     let wpath = wide(path);
 
     // Modern Shell Item path — preferred over hand-rolled DEFCONTEXTMENU.
-    if let Ok(item) =
-        SHCreateItemFromParsingName::<_, _, IShellItem>(PCWSTR(wpath.as_ptr()), None)
+    if let Ok(item) = SHCreateItemFromParsingName::<_, _, IShellItem>(PCWSTR(wpath.as_ptr()), None)
     {
-        if let Ok(menu) =
-            item.BindToHandler::<Option<&windows::Win32::System::Com::IBindCtx>, IContextMenu>(
+        if let Ok(menu) = item
+            .BindToHandler::<Option<&windows::Win32::System::Com::IBindCtx>, IContextMenu>(
                 None,
                 &BHID_SFUIObject,
             )
@@ -63,8 +62,14 @@ unsafe fn acquire_item_menu(hwnd: HWND, path: &str) -> Result<IContextMenu, Stri
     // Fallback: parent IShellFolder::GetUIObjectOf.
     let mut pidl_abs: *mut ITEMIDLIST = std::ptr::null_mut();
     let mut sfgao = 0u32;
-    SHParseDisplayName(PCWSTR(wpath.as_ptr()), None, &mut pidl_abs, 0, Some(&mut sfgao))
-        .map_err(|e| format!("SHParseDisplayName: {e}"))?;
+    SHParseDisplayName(
+        PCWSTR(wpath.as_ptr()),
+        None,
+        &mut pidl_abs,
+        0,
+        Some(&mut sfgao),
+    )
+    .map_err(|e| format!("SHParseDisplayName: {e}"))?;
     if pidl_abs.is_null() {
         return Err("解析路径失败".into());
     }
@@ -89,9 +94,7 @@ unsafe fn find_shell_defview() -> HWND {
 
     let progman = FindWindowW(w!("Progman"), PCWSTR::null()).unwrap_or_default();
     if !progman.0.is_null() {
-        if let Ok(dv) =
-            FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), PCWSTR::null())
-        {
+        if let Ok(dv) = FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), PCWSTR::null()) {
             if !dv.0.is_null() {
                 return dv;
             }
@@ -102,11 +105,12 @@ unsafe fn find_shell_defview() -> HWND {
     struct Search {
         found: HWND,
     }
-    unsafe extern "system" fn enum_cb(hwnd: HWND, lparam: windows::Win32::Foundation::LPARAM) -> windows::core::BOOL {
+    unsafe extern "system" fn enum_cb(
+        hwnd: HWND,
+        lparam: windows::Win32::Foundation::LPARAM,
+    ) -> windows::core::BOOL {
         let search = &mut *(lparam.0 as *mut Search);
-        if let Ok(dv) =
-            FindWindowExW(Some(hwnd), None, w!("SHELLDLL_DefView"), PCWSTR::null())
-        {
+        if let Ok(dv) = FindWindowExW(Some(hwnd), None, w!("SHELLDLL_DefView"), PCWSTR::null()) {
             if !dv.0.is_null() {
                 search.found = dv;
                 return false.into();
@@ -117,7 +121,10 @@ unsafe fn find_shell_defview() -> HWND {
     let mut search = Search {
         found: HWND::default(),
     };
-    let _ = EnumWindows(Some(enum_cb), windows::Win32::Foundation::LPARAM(&mut search as *mut _ as isize));
+    let _ = EnumWindows(
+        Some(enum_cb),
+        windows::Win32::Foundation::LPARAM(&mut search as *mut _ as isize),
+    );
     search.found
 }
 
@@ -170,7 +177,6 @@ unsafe fn enumerate_hmenu(
     hmenu: HMENU,
     parent_path: &[u32],
     _depth: u32,
-    include_icons: bool,
 ) -> Vec<ShellMenuEntry> {
     if hmenu.is_invalid() {
         return Vec::new();
@@ -185,14 +191,11 @@ unsafe fn enumerate_hmenu(
         let mut text_buf = [0u16; 512];
         let mut mii = MENUITEMINFOW {
             cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
-            fMask: MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU,
+            fMask: MIIM_BITMAP | MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU,
             dwTypeData: windows::core::PWSTR(text_buf.as_mut_ptr()),
             cch: text_buf.len() as u32 - 1,
             ..Default::default()
         };
-        if include_icons {
-            mii.fMask |= MIIM_BITMAP;
-        }
         if GetMenuItemInfoW(hmenu, i as u32, true, &mut mii).is_err() {
             continue;
         }
@@ -243,7 +246,7 @@ unsafe fn enumerate_hmenu(
             label: label.clone(),
             disabled,
             separator: false,
-            icon: include_icons.then(|| unsafe { hbitmap_to_data_url(mii.hbmpItem) }).flatten(),
+            icon: unsafe { hbitmap_to_data_url(mii.hbmpItem) },
             children,
             menu_path,
             pin: false,
@@ -279,7 +282,6 @@ unsafe fn initialize_submenu_path(
 fn list_shell_context_menu_inner(
     hwnd: HWND,
     path: Option<&str>,
-    include_icons: bool,
 ) -> Result<Vec<ShellMenuEntry>, String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -294,7 +296,7 @@ fn list_shell_context_menu_inner(
             return Err(format!("QueryContextMenu: {hr:?}"));
         }
         stage("读取菜单项");
-        let items = enumerate_hmenu(&pcm, hmenu, &[], 0, include_icons);
+        let items = enumerate_hmenu(&pcm, hmenu, &[], 0);
         let items = apply_win11_pin_row(Some(&pcm), items);
         stage("完成");
         let _ = DestroyMenu(hmenu);
@@ -311,7 +313,7 @@ pub fn list_shell_context_menu(
     let (tx, rx) = mpsc::sync_channel(1);
     thread::spawn(move || {
         let hwnd = HWND(hwnd_raw as *mut _);
-        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref(), false);
+        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref());
         let _ = tx.send(result);
     });
     match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
@@ -336,28 +338,6 @@ pub fn list_shell_context_menu(
     }
 }
 
-pub fn list_shell_context_menu_icons(
-    hwnd: HWND,
-    path: Option<&str>,
-) -> Result<Vec<ShellMenuEntry>, String> {
-    let path_owned = path.map(|s| s.to_string());
-    let hwnd_raw = hwnd.0 as isize;
-    let (tx, rx) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let hwnd = HWND(hwnd_raw as *mut _);
-        let result = list_shell_context_menu_inner(hwnd, path_owned.as_deref(), true);
-        let _ = tx.send(result);
-    });
-    match rx.recv_timeout(QUERY_MENU_TIMEOUT) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            stage("菜单图标加载超时");
-            Err("菜单图标加载超时".into())
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err("菜单图标加载线程异常退出".into()),
-    }
-}
-
 pub fn list_shell_context_submenu(
     hwnd: HWND,
     path: Option<&str>,
@@ -378,7 +358,7 @@ pub fn list_shell_context_submenu(
         let result = (|| {
             let submenu = initialize_submenu_path(&pcm, hmenu, menu_path)?;
             stage("二级菜单：读取菜单项");
-            Ok(enumerate_hmenu(&pcm, submenu, menu_path, 0, false))
+            Ok(enumerate_hmenu(&pcm, submenu, menu_path, 0))
         })();
         let _ = DestroyMenu(hmenu);
         result
@@ -467,10 +447,7 @@ pub fn invoke_shell_context_command(
     }
 }
 
-pub fn show_native_shell_context_menu(
-    hwnd: HWND,
-    path: Option<&str>,
-) -> Result<(), String> {
+pub fn show_native_shell_context_menu(hwnd: HWND, path: Option<&str>) -> Result<(), String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let pcm = acquire_menu(hwnd, path)?;

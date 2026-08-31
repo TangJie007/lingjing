@@ -16,8 +16,8 @@ mod verbs;
 
 pub use builtin::{ensure_blank_refresh_pin, ensure_paste_entry, folder_builtin_menu};
 pub use context::{
-    invoke_shell_context_command, list_shell_context_menu, list_shell_context_menu_icons,
-    list_shell_context_submenu, show_native_shell_context_menu,
+    invoke_shell_context_command, list_shell_context_menu, list_shell_context_submenu,
+    show_native_shell_context_menu,
 };
 pub use host::{create_host_window, destroy_host_window, pump_messages};
 pub use ids::{

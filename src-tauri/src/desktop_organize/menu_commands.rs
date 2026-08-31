@@ -91,36 +91,6 @@ pub async fn list_desktop_shell_context_submenu(
     }
 }
 
-#[tauri::command]
-pub async fn load_desktop_shell_context_menu_icons(
-    app: AppHandle,
-    path: String,
-) -> Result<Vec<ShellMenuEntry>, String> {
-    let trimmed = path.trim();
-    let path_opt = if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    };
-    let _window = app
-        .get_webview_window(FENCE_LABEL)
-        .ok_or_else(|| "格子窗口未就绪".to_string())?;
-
-    #[cfg(windows)]
-    {
-        return tauri::async_runtime::spawn_blocking(move || {
-            run_shell_menu_host("root-icons", path_opt.as_deref(), &[])
-        })
-        .await
-        .map_err(|e| format!("加载右键菜单图标任务失败: {e}"))?;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (_window, path_opt);
-        Err("桌面整理仅支持 Windows".into())
-    }
-}
-
 /// Invoke a Shell COM context menu command previously listed for path/blank desktop.
 #[tauri::command]
 pub async fn invoke_desktop_shell_context_command(
@@ -233,10 +203,7 @@ fn unique_path_in(dir: &Path, name: &str) -> PathBuf {
         return candidate;
     }
     let path = Path::new(name);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("新建");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("新建");
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -334,9 +301,7 @@ fn create_desktop_shortcut(path: &str) -> Result<(), String> {
     if !src.exists() {
         return Err("目标不存在".into());
     }
-    let parent = src
-        .parent()
-        .ok_or_else(|| "无法解析父目录".to_string())?;
+    let parent = src.parent().ok_or_else(|| "无法解析父目录".to_string())?;
     let stem = src
         .file_name()
         .and_then(|s| s.to_str())
@@ -371,9 +336,7 @@ fn compress_path_to_zip(path: &str) -> Result<(), String> {
     if !src.exists() {
         return Err("目标不存在".into());
     }
-    let parent = src
-        .parent()
-        .ok_or_else(|| "无法解析父目录".to_string())?;
+    let parent = src.parent().ok_or_else(|| "无法解析父目录".to_string())?;
     let stem = src
         .file_stem()
         .and_then(|s| s.to_str())
@@ -435,8 +398,7 @@ fn clipboard_set_files(paths: &[&str], cut: bool) -> Result<(), String> {
     let total = header_size + path_bytes;
 
     unsafe {
-        let hmem = GlobalAlloc(GMEM_MOVEABLE, total)
-            .map_err(|e| format!("剪贴板分配失败: {e}"))?;
+        let hmem = GlobalAlloc(GMEM_MOVEABLE, total).map_err(|e| format!("剪贴板分配失败: {e}"))?;
         let ptr = GlobalLock(hmem) as *mut u8;
         if ptr.is_null() {
             return Err("剪贴板锁定失败".into());
@@ -507,7 +469,8 @@ fn clipboard_paste_to_desktop(app: &AppHandle) -> Result<(), String> {
         let fmt = RegisterClipboardFormatW(w!("Preferred DropEffect"));
         if fmt != 0 {
             if let Ok(heffect) = GetClipboardData(fmt) {
-                let ep = GlobalLock(windows::Win32::Foundation::HGLOBAL(heffect.0 as _)) as *const u32;
+                let ep =
+                    GlobalLock(windows::Win32::Foundation::HGLOBAL(heffect.0 as _)) as *const u32;
                 if !ep.is_null() {
                     cut = *ep == 2;
                     let _ = GlobalUnlock(windows::Win32::Foundation::HGLOBAL(heffect.0 as _));
@@ -680,10 +643,7 @@ pub async fn drop_files_to_desktop(
 /// Show the real Windows Shell menu and execute the selected command before
 /// releasing its COM objects, preserving dynamic/owner-drawn menu behavior.
 #[tauri::command]
-pub async fn show_desktop_native_context_menu(
-    app: AppHandle,
-    path: String,
-) -> Result<(), String> {
+pub async fn show_desktop_native_context_menu(app: AppHandle, path: String) -> Result<(), String> {
     let trimmed = path.trim();
     let path_opt = if trimmed.is_empty() {
         None
@@ -708,4 +668,3 @@ pub async fn show_desktop_native_context_menu(
         Err("桌面整理仅支持 Windows".into())
     }
 }
-

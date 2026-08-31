@@ -420,6 +420,11 @@ function onStagePointerDown(e: PointerEvent) {
   void prepareShellMenu(pathFromEvent(e));
 }
 
+function preloadShellMenu(path: string) {
+  if (!path || dragging.value || shellDrag.isPending()) return;
+  void prepareShellMenu(path);
+}
+
 onMounted(async () => {
   window.__fenceApply = applyFenceItems;
   await initFenceLayout();
@@ -484,6 +489,7 @@ onUnmounted(() => {
           :drag-group="appDragGroup"
           :folder-move-guard="onDragMove"
           @open="openItem"
+          @preload="preloadShellMenu"
           @sorted="onSorted('app')"
           @added="onAdded('app', $event)"
           @start="onDragStart('app', $event)"
@@ -511,6 +517,7 @@ onUnmounted(() => {
               :drag-delay="FILE_DRAG_DELAY_MS"
               :folder-move-guard="onDragMove"
               @open="openItem"
+              @preload="preloadShellMenu"
               @sorted="onSorted(key)"
               @added="onAdded(key, $event)"
               @start="onDragStart(key, $event)"

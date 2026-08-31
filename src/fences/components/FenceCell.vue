@@ -14,6 +14,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   open: [];
+  preload: [];
 }>();
 
 const canDrag = computed(() => !props.item.builtin);
@@ -47,6 +48,7 @@ function onPointerUp() {
     :data-is-dir="item.isDir && !item.builtin ? '1' : '0'"
     :title="item.path"
     @click="onActivate"
+    @pointerenter="emit('preload')"
     @pointerdown="onPointerDown"
     @pointerup="onPointerUp"
     @pointercancel="onPointerUp"

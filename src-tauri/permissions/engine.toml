@@ -30,7 +30,6 @@ commands.allow = [
   "open_desktop_item",
   "list_desktop_shell_context_menu",
   "list_desktop_shell_context_submenu",
-  "load_desktop_shell_context_menu_icons",
   "invoke_desktop_shell_context_command",
   "show_desktop_item_in_folder",
   "open_desktop_item_with",

@@ -1,22 +1,22 @@
 mod desktop;
 mod desktop_organize;
-#[cfg(windows)]
-mod shell_menu;
 mod favorites;
 mod library;
 mod paths;
 mod power;
 pub mod settings;
+#[cfg(windows)]
+mod shell_menu;
 mod system;
 mod util;
 mod wallpaper;
 
-pub use desktop_organize::maybe_run_shell_menu_host;
 pub use desktop::maybe_run_icons_restore_guard as maybe_run_desktop_icons_guard;
+pub use desktop_organize::maybe_run_shell_menu_host;
 pub use util::init_logging;
 
-use std::path::{Path, PathBuf};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -185,10 +185,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let pause_item = MenuItem::with_id(app, "pause", "暂停壁纸", true, None::<&str>)?;
     let play_item = MenuItem::with_id(app, "play", "恢复壁纸", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[&show_item, &pause_item, &play_item, &quit_item],
-    )?;
+    let menu = Menu::with_items(app, &[&show_item, &pause_item, &play_item, &quit_item])?;
     let icon: Image = app
         .default_window_icon()
         .cloned()
@@ -291,9 +288,13 @@ fn resolve_export_source(app: &AppHandle, uri: &str) -> Option<PathBuf> {
 }
 
 #[tauri::command]
-fn export_wallpaper(app: AppHandle, uri: String, file_name: String) -> Result<Option<String>, String> {
-    let src = resolve_export_source(&app, &uri)
-        .ok_or_else(|| "找不到可导出的源文件".to_string())?;
+fn export_wallpaper(
+    app: AppHandle,
+    uri: String,
+    file_name: String,
+) -> Result<Option<String>, String> {
+    let src =
+        resolve_export_source(&app, &uri).ok_or_else(|| "找不到可导出的源文件".to_string())?;
     let dest = app
         .dialog()
         .file()
@@ -392,7 +393,9 @@ pub fn run() {
             power::start_watcher(app_for_power);
 
             let app_for_restore = handle.clone();
-            std::thread::spawn(move || wallpaper::commands::restore_last_wallpaper(&app_for_restore));
+            std::thread::spawn(move || {
+                wallpaper::commands::restore_last_wallpaper(&app_for_restore)
+            });
 
             Ok(())
         })
@@ -425,7 +428,6 @@ pub fn run() {
             desktop_organize::item_commands::open_desktop_item,
             desktop_organize::menu_commands::list_desktop_shell_context_menu,
             desktop_organize::menu_commands::list_desktop_shell_context_submenu,
-            desktop_organize::menu_commands::load_desktop_shell_context_menu_icons,
             desktop_organize::menu_commands::invoke_desktop_shell_context_command,
             desktop_organize::menu_commands::show_desktop_native_context_menu,
             desktop_organize::item_commands::show_desktop_item_in_folder,
@@ -445,14 +447,12 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|app_handle, event| {
-            match event {
-                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
-                    desktop_organize::cleanup(app_handle);
-                    wallpaper::cleanup(app_handle);
-                }
-                _ => {}
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                desktop_organize::cleanup(app_handle);
+                wallpaper::cleanup(app_handle);
             }
+            _ => {}
         });
 }
 

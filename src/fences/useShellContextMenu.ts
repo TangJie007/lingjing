@@ -33,8 +33,7 @@ export function useShellContextMenu() {
   let lastPreparePath = "\0";
   const menuCache = new Map<string, MenuCacheEntry>();
   const pendingLoads = new Map<string, Promise<ShellMenuEntry[]>>();
-  const pendingIconLoads = new Set<string>();
-  const iconHydratedKeys = new Set<string>();
+  const pendingSubmenuLoads = new Map<string, Promise<ShellMenuEntry[]>>();
 
   function cacheKey(targetPath: string): string {
     return targetPath.trim();
@@ -71,60 +70,26 @@ export function useShellContextMenu() {
   function invalidateMenuCache(targetPath?: string) {
     if (targetPath == null) {
       menuCache.clear();
-      pendingIconLoads.clear();
-      iconHydratedKeys.clear();
+      pendingSubmenuLoads.clear();
       return;
     }
     const key = cacheKey(targetPath);
     menuCache.delete(key);
     menuCache.delete("");
-    pendingIconLoads.delete(key);
-    pendingIconLoads.delete("");
-    iconHydratedKeys.delete(key);
-    iconHydratedKeys.delete("");
-  }
-
-  function sameEntry(a: ShellMenuEntry, b: ShellMenuEntry): boolean {
-    return (
-      a.id === b.id &&
-      a.label === b.label &&
-      samePath(a.menuPath, b.menuPath || [])
-    );
-  }
-
-  function mergeIcons(target: ShellMenuEntry[], source: ShellMenuEntry[]) {
-    for (const entry of target) {
-      const hit = source.find((candidate) => sameEntry(entry, candidate));
-      if (!hit) continue;
-      if (hit.icon) entry.icon = hit.icon;
-      if (entry.children && hit.children) {
-        mergeIcons(entry.children, hit.children);
+    for (const loadKey of [...pendingSubmenuLoads.keys()]) {
+      if (loadKey.startsWith(`${key}|`) || loadKey.startsWith("|")) {
+        pendingSubmenuLoads.delete(loadKey);
       }
     }
   }
 
-  async function hydrateMenuIcons(targetPath: string, key: string, myGen: number) {
-    if (pendingIconLoads.has(key) || iconHydratedKeys.has(key) || !window.__TAURI__) return;
-    pendingIconLoads.add(key);
-    try {
-      const withIcons = await window.__TAURI__.core.invoke<ShellMenuEntry[]>(
-        "load_desktop_shell_context_menu_icons",
-        { path: targetPath },
-      );
-      const cached = menuCache.get(key);
-      if (cached) {
-        mergeIcons(cached.entries, withIcons || []);
-      }
-      if (myGen === generation && path.value === targetPath) {
-        const next = cloneEntries(entries.value);
-        mergeIcons(next, withIcons || []);
-        entries.value = next;
-      }
-      iconHydratedKeys.add(key);
-    } catch (e) {
-      console.info("[shell-menu] lazy icon load failed", e);
-    } finally {
-      pendingIconLoads.delete(key);
+  function writeSubmenuToCache(key: string, menuPath: number[], list: ShellMenuEntry[]) {
+    const cached = menuCache.get(key);
+    if (!cached) return;
+    const entry = findSubmenu(cached.entries, menuPath);
+    if (entry) {
+      entry.children = cloneEntries(list);
+      cached.at = Date.now();
     }
   }
 
@@ -178,10 +143,10 @@ export function useShellContextMenu() {
     if (cached) {
       loading.value = false;
       entries.value = cached;
-      void hydrateMenuIcons(targetPath, key, myGen);
       if (!entries.value.length) {
         error.value = "暂无可用菜单项";
       }
+      void preloadSubmenus(myGen);
       return;
     }
 
@@ -204,10 +169,10 @@ export function useShellContextMenu() {
       const next = list || [];
       rememberEntries(key, next);
       entries.value = cloneEntries(next);
-      void hydrateMenuIcons(targetPath, key, myGen);
       if (!entries.value.length) {
         error.value = "暂无可用菜单项";
       }
+      void preloadSubmenus(myGen);
     } catch (e) {
       pendingLoads.delete(key);
       if (myGen === generation) {
@@ -247,19 +212,40 @@ export function useShellContextMenu() {
       if (!onlyPlaceholder) return;
     }
     const myGen = generation;
+    const key = cacheKey(path.value);
+    const loadKey = `${key}|${menuPath.join("/")}`;
     entry.loading = true;
     try {
-      const list = await window.__TAURI__?.core.invoke<ShellMenuEntry[]>(
-        "list_desktop_shell_context_submenu",
-        { path: path.value, menuPath },
-      );
-      if (myGen === generation) entry.children = list || [];
+      let load = pendingSubmenuLoads.get(loadKey);
+      if (!load) {
+        load = window.__TAURI__!.core.invoke<ShellMenuEntry[]>(
+          "list_desktop_shell_context_submenu",
+          { path: path.value, menuPath },
+        );
+        pendingSubmenuLoads.set(loadKey, load);
+      }
+      const list = await load;
+      pendingSubmenuLoads.delete(loadKey);
+      const next = list || [];
+      writeSubmenuToCache(key, menuPath, next);
+      if (myGen === generation) entry.children = next;
     } catch (e) {
+      pendingSubmenuLoads.delete(loadKey);
       if (myGen === generation) {
         entry.children = [{ label: friendlyError(e), disabled: true }];
       }
     } finally {
       if (myGen === generation) entry.loading = false;
+    }
+  }
+
+  function preloadSubmenus(myGen: number) {
+    const submenuPaths = entries.value
+      .filter((entry) => entry.children)
+      .map((entry) => entry.menuPath || []);
+    for (const menuPath of submenuPaths) {
+      if (myGen !== generation) return;
+      void loadSubmenu(menuPath);
     }
   }
 

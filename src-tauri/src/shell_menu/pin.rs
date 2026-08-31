@@ -45,7 +45,10 @@ pub(crate) fn pin_kind_from_verb_or_label(verb: &str, label: &str) -> Option<&'s
 }
 
 /// Pull Win11 common actions into a pinned top strip; keep the rest below.
-pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
+pub(crate) fn apply_win11_pin_row(
+    pcm: Option<&IContextMenu>,
+    entries: Vec<ShellMenuEntry>,
+) -> Vec<ShellMenuEntry> {
     use super::entry::item;
     use super::ids::BUILTIN_RENAME;
 
@@ -95,7 +98,10 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
 
     // Always keep 重命名 in the pin strip when any file action is present.
     let rename_idx = 2;
-    let has_file_pins = slots.iter().enumerate().any(|(i, s)| i != rename_idx && s.is_some());
+    let has_file_pins = slots
+        .iter()
+        .enumerate()
+        .any(|(i, s)| i != rename_idx && s.is_some());
     if has_file_pins && slots[rename_idx].is_none() {
         let mut rename = item(BUILTIN_RENAME, "重命名");
         rename.pin = true;
@@ -141,4 +147,3 @@ pub(crate) fn apply_win11_pin_row(pcm: Option<&IContextMenu>, entries: Vec<Shell
     }
     out
 }
-
