@@ -2,18 +2,16 @@
   box-sizing: border-box;
 }
 
-.stage {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(60, 60, 67, 0.28) transparent;
-}
+/* Glass-panel scrollbars: soft light thumb on translucent dark fences */
+.stage,
 .stage * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(60, 60, 67, 0.28) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 .stage::-webkit-scrollbar,
 .stage *::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   background: transparent;
 }
 .stage::-webkit-scrollbar-track,
@@ -24,37 +22,44 @@
 }
 .stage::-webkit-scrollbar-thumb,
 .stage *::-webkit-scrollbar-thumb {
-  background-color: rgba(60, 60, 67, 0.22);
+  background-color: rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   border: 1px solid transparent;
   background-clip: padding-box;
-  min-height: 24px;
+  min-height: 28px;
   transition: background-color 160ms ease;
 }
 .stage::-webkit-scrollbar-thumb:hover,
 .stage *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(60, 60, 67, 0.4);
+  background-color: rgba(255, 255, 255, 0.32);
 }
 .stage::-webkit-scrollbar-thumb:active,
 .stage *::-webkit-scrollbar-thumb:active {
-  background-color: rgba(60, 60, 67, 0.55);
+  background-color: rgba(255, 255, 255, 0.44);
 }
 
-:root[data-theme="dark"] .stage,
-:root[data-theme="dark"] .stage * {
-  scrollbar-color: rgba(235, 235, 245, 0.28) transparent;
+/* Fence / files column: softer glass thumb */
+.fence,
+#files {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
-:root[data-theme="dark"] .stage::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .stage *::-webkit-scrollbar-thumb {
-  background-color: rgba(235, 235, 245, 0.22);
+.fence > .drag-host::-webkit-scrollbar,
+#files::-webkit-scrollbar {
+  width: 5px;
 }
-:root[data-theme="dark"] .stage::-webkit-scrollbar-thumb:hover,
-:root[data-theme="dark"] .stage *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(235, 235, 245, 0.4);
+.fence > .drag-host::-webkit-scrollbar-thumb,
+#files::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background-clip: padding-box;
 }
-:root[data-theme="dark"] .stage::-webkit-scrollbar-thumb:active,
-:root[data-theme="dark"] .stage *::-webkit-scrollbar-thumb:active {
-  background-color: rgba(235, 235, 245, 0.55);
+.fence > .drag-host::-webkit-scrollbar-thumb:hover,
+#files::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+.fence > .drag-host::-webkit-scrollbar-thumb:active,
+#files::-webkit-scrollbar-thumb:active {
+  background-color: rgba(255, 255, 255, 0.4);
 }
 
 html,
@@ -124,17 +129,27 @@ body,
   flex: 1 1 0;
   min-height: 160px;
   padding: 12px 12px 14px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(16, 18, 24, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
-.fence.fence-dragging {
+.fence > .drag-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.fence.fence-dragging > .drag-host {
   overflow: hidden;
 }
 
@@ -147,11 +162,12 @@ body,
 .drag-host.drag-over {
   outline: 2px dashed rgba(120, 180, 255, 0.75);
   outline-offset: -4px;
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(80, 140, 220, 0.08);
 }
 
 .fence-title {
+  flex: 0 0 auto;
   font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.06em;
