@@ -141,17 +141,11 @@ export function useShellContextMenu() {
     clear();
     if (!window.__TAURI__) return;
     try {
-      await window.__TAURI__.core.invoke("show_desktop_explorer_context_menu", {
+      await window.__TAURI__.core.invoke("show_desktop_native_context_menu", {
         path: targetPath || "",
       });
     } catch (e) {
-      try {
-        await window.__TAURI__.core.invoke("show_desktop_native_context_menu", {
-          path: targetPath || "",
-        });
-      } catch {
-        showFenceErrorToast(friendlyError(e));
-      }
+      showFenceErrorToast(friendlyError(e));
     }
   }
 

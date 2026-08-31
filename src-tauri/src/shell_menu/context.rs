@@ -19,9 +19,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreatePopupMenu, DestroyMenu, GetCursorPos, GetMenuItemCount, GetMenuItemInfoW, GetMenuStringW,
-    GetSubMenu, PostMessageW, SetForegroundWindow, TrackPopupMenuEx, HMENU, MENUITEMINFOW,
-    MF_BYPOSITION, MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING,
-    MIIM_SUBMENU, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_CONTEXTMENU,
+    GetSubMenu, PostMessageW, SendMessageW, SetForegroundWindow, TrackPopupMenuEx, HMENU,
+    MENUITEMINFOW, MF_BYPOSITION, MFT_SEPARATOR, MIIM_BITMAP, MIIM_FTYPE, MIIM_ID, MIIM_STATE,
+    MIIM_STRING, MIIM_SUBMENU, SW_SHOWNORMAL, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_CONTEXTMENU,
     WM_INITMENUPOPUP,
 };
 
@@ -234,9 +234,13 @@ unsafe fn select_desktop_item_for_path(path: &str) -> Result<bool, String> {
 pub fn show_explorer_desktop_context_menu(path: Option<&str>) -> Result<(), String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let mut selected_item = false;
         if let Some(path) = path.filter(|p| !p.trim().is_empty()) {
             match select_desktop_item_for_path(path) {
-                Ok(true) => tracing::info!("[shell-menu] Explorer desktop item selected path={path}"),
+                Ok(true) => {
+                    selected_item = true;
+                    tracing::info!("[shell-menu] Explorer desktop item selected path={path}");
+                }
                 Ok(false) => tracing::warn!("[shell-menu] Explorer desktop item not found path={path}"),
                 Err(e) => tracing::warn!("[shell-menu] Explorer desktop item select failed: {e}"),
             }
@@ -249,14 +253,36 @@ pub fn show_explorer_desktop_context_menu(path: Option<&str>) -> Result<(), Stri
         let target = if !listview.0.is_null() { listview } else { defview };
         let mut pt = POINT::default();
         let _ = GetCursorPos(&mut pt);
-        let _ = SetForegroundWindow(defview);
-        PostMessageW(
-            Some(target),
-            WM_CONTEXTMENU,
-            WPARAM(target.0 as usize),
-            point_lparam(pt),
-        )
-        .map_err(|e| format!("转发 Explorer 右键菜单失败: {e}"))
+        let pos = if selected_item {
+            // Keyboard-style context menu: Explorer uses the current selection
+            // instead of hit-testing the Fence mouse coordinate.
+            LPARAM(-1)
+        } else {
+            point_lparam(pt)
+        };
+
+        if selected_item && !listview.0.is_null() {
+            // Keep the native desktop icon layer hidden. This asks Explorer to
+            // open the keyboard context menu for its current selection, avoiding
+            // both coordinate hit-testing and ListView flicker.
+            let _ = SetForegroundWindow(defview);
+            let _ = SendMessageW(
+                target,
+                WM_CONTEXTMENU,
+                Some(WPARAM(target.0 as usize)),
+                Some(pos),
+            );
+            Ok(())
+        } else {
+            let _ = SetForegroundWindow(defview);
+            PostMessageW(
+                Some(target),
+                WM_CONTEXTMENU,
+                WPARAM(target.0 as usize),
+                pos,
+            )
+            .map_err(|e| format!("转发 Explorer 右键菜单失败: {e}"))
+        }
     }
 }
 

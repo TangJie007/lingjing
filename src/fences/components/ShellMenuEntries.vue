@@ -14,11 +14,13 @@ import ShellMenuLoading from "./ShellMenuLoading.vue";
 
 const props = defineProps<{
   entries: ShellMenuEntry[];
+  showMoreOptions?: boolean;
 }>();
 
 const emit = defineEmits<{
   command: [entry: ShellMenuEntry];
   submenu: [menuPath: number[]];
+  moreOptions: [];
 }>();
 
 const pinEntries = computed(() => props.entries.filter((e) => e.pin));
@@ -91,6 +93,13 @@ function iconOf(entry: ShellMenuEntry) {
             <img v-if="iconOf(entry)" :src="iconOf(entry)!" alt="" />
           </span>
           <span class="lbl">{{ entry.label || "" }}</span>
+        </ContextMenuItem>
+      </template>
+      <template v-if="props.showMoreOptions">
+        <ContextMenuSeparator class="sep" />
+        <ContextMenuItem class="item" @select="emit('moreOptions')">
+          <span class="ico"></span>
+          <span class="lbl">显示更多选项</span>
         </ContextMenuItem>
       </template>
     </div>

@@ -151,6 +151,7 @@ async function disableDesktopOrganize() {
 
 const {
   entries: shellEntries,
+  path: shellPath,
   loading: shellLoading,
   error: shellError,
   menuOpen: shellMenuOpen,
@@ -411,12 +412,6 @@ function pathFromEvent(e: Event): string {
  */
 function onStageContextMenu(e: MouseEvent) {
   const path = pathFromEvent(e);
-  if (path) {
-    e.preventDefault();
-    e.stopPropagation();
-    void showNativeShellMenu(path);
-    return;
-  }
   // Do not preventDefault — ContextMenuTrigger needs the event to open.
   void prepareShellMenu(path);
 }
@@ -533,8 +528,10 @@ onUnmounted(() => {
         <ShellMenuEntries
           v-else-if="shellEntries.length"
           :entries="shellEntries"
+          show-more-options
           @command="runShellCommand"
           @submenu="loadShellSubmenu"
+          @more-options="showNativeShellMenu(shellPath)"
         />
       </ContextMenuContent>
     </ContextMenuPortal>
