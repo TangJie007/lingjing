@@ -19,21 +19,49 @@ const paths = ref<AppPaths | null>(null);
 const migration = ref<MigrationPlan | null>(null);
 
 const volPct = computed(() => Math.round(settings.value.defaultVolume * 100));
+const wallpaperSoundOn = computed(() => settings.value.defaultVolume > 0);
+
+const loopLabels: Record<"list" | "single" | "random", string> = {
+  list: "列表循环",
+  single: "单曲循环",
+  random: "随机播放",
+};
 
 let suppressVol = false;
+
+function toggleWallpaperSound() {
+  if (settings.value.defaultVolume > 0) {
+    settings.value.defaultVolume = 0;
+  } else {
+    settings.value.defaultVolume = 0.8;
+  }
+  void applyWallpaperVolume();
+}
+
+function cycleLoopMode() {
+  const order: Array<"list" | "single" | "random"> = ["list", "single", "random"];
+  const i = order.indexOf(settings.value.loopMode);
+  settings.value.loopMode = order[(i + 1) % order.length]!;
+  showToast(loopLabels[settings.value.loopMode]);
+}
+
+async function applyWallpaperVolume() {
+  const vol = settings.value.defaultVolume;
+  try {
+    await engineSetVolume(vol > 0 ? vol : 0.8, vol <= 0);
+  } catch {
+    /* ignore */
+  }
+}
 
 onMounted(async () => {
   await loadSettings();
   paths.value = await getAppPaths();
 });
 
-watch(volPct, async (v) => {
+watch(volPct, async () => {
   if (suppressVol) return;
-  try {
-    await engineSetVolume(v / 100, settings.value.defaultVolume <= 0);
-  } catch {
-    /* ignore */
-  }
+  await applyWallpaperVolume();
 });
 
 const organizeBusy = ref(false);
@@ -294,13 +322,29 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
     </div>
 
     <div class="set-group">
-      <h3>控件设置</h3>
+      <h3>壁纸播放</h3>
       <div class="set-row">
         <div class="lead">
-          <div class="t">默认播放音量</div>
+          <div class="t">壁纸声音</div>
+          <div class="d">动态壁纸的视频音效，默认关闭</div>
+        </div>
+        <div
+          class="toggle"
+          :class="{ on: wallpaperSoundOn }"
+          role="switch"
+          tabindex="0"
+          :aria-checked="wallpaperSoundOn"
+          aria-label="壁纸声音"
+          @click="toggleWallpaperSound"
+          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleWallpaperSound(); } }"
+        />
+      </div>
+      <div v-if="wallpaperSoundOn" class="set-row">
+        <div class="lead">
+          <div class="t">播放音量</div>
           <div class="d">仅对带声音的动态壁纸生效</div>
         </div>
-        <div class="slider" :style="{ '--vol': `${volPct}%` }" aria-label="默认播放音量">
+        <div class="slider" :style="{ '--vol': `${volPct}%` }" aria-label="播放音量">
           <i :style="{ width: `${volPct}%` }" />
           <input
             type="range"
@@ -308,10 +352,19 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
             max="100"
             step="1"
             :value="volPct"
-            aria-label="默认播放音量滑块"
+            aria-label="播放音量滑块"
             @input="onVolInput"
           />
         </div>
+      </div>
+      <div class="set-row">
+        <div class="lead">
+          <div class="t">循环模式</div>
+          <div class="d">当前：{{ loopLabels[settings.loopMode] }}</div>
+        </div>
+        <button type="button" class="mini-btn" @click="cycleLoopMode">
+          切换
+        </button>
       </div>
     </div>
 

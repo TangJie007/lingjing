@@ -5,6 +5,7 @@ import FavoritesView from "../views/FavoritesView.vue";
 import PetView from "../views/PetView.vue";
 import SettingsView from "../views/SettingsView.vue";
 import AboutView from "../views/AboutView.vue";
+import WallpaperDetailView from "../views/WallpaperDetailView.vue";
 import { useSettings } from "../composables/useSettings";
 
 declare module "vue-router" {
@@ -54,6 +55,12 @@ const routes: RouteRecordRaw[] = [
     path: "/settings",
     name: "settings",
     component: SettingsView,
+  },
+  {
+    path: "/wallpaper/:id",
+    name: "wallpaper-detail",
+    component: WallpaperDetailView,
+    meta: { showDrawer: false },
   },
   {
     path: "/about",

@@ -16,6 +16,7 @@ withDefaults(
 
 const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
+  (e: "preview", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
 }>();
 </script>
@@ -42,7 +43,7 @@ const emit = defineEmits<{
         <span class="vol">{{ item.size }}</span>
         <slot name="overlay" :item="item" />
         <div class="hover-acts">
-          <span class="ha-btn preview" @click.stop="emit('select', item)">▶ 预览</span>
+          <span class="ha-btn preview" @click.stop="emit('preview', item)">▶ 预览</span>
           <slot name="apply" :item="item">
             <span
               v-if="!item.missing"

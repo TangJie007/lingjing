@@ -38,7 +38,9 @@ pub fn set_wallpaper(
     }
     let default_volume = settings::load_settings(&app)
         .map(|s| s.default_volume.clamp(0.0, 1.0))
-        .unwrap_or(0.8);
+        .unwrap_or(0.0);
+    let muted = default_volume < 0.01;
+    let volume = if muted { 0.8 } else { default_volume };
     let mut state = engine
         .state
         .lock()
@@ -48,8 +50,8 @@ pub fn set_wallpaper(
     state.media_type = Some(payload.media_type.clone());
     state.uri = Some(payload.uri.clone());
     state.playing = true;
-    state.volume = default_volume;
-    state.muted = false;
+    state.volume = volume;
+    state.muted = muted;
     state.user_paused = false;
     state.error = None;
     state.current_time = 0.0;

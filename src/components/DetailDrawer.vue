@@ -6,12 +6,13 @@ import type { WallpaperItem } from "../data/catalog";
 const props = defineProps<{ item: WallpaperItem | null; open: boolean }>();
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "open-detail", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
   (e: "favorite", item: WallpaperItem): void;
   (e: "download", item: WallpaperItem): void;
 }>();
 
-const COUNTDOWN = 60;
+const COUNTDOWN = 30;
 const remain = ref(COUNTDOWN);
 const wheelRun = ref(false);
 let timer: number | null = null;
@@ -54,7 +55,14 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
 <template>
   <div class="detail" :class="{ open: open && item, closed: !(open && item) }">
     <div v-if="item" class="detail-inner">
-      <div class="d-prev">
+      <div
+        class="d-prev"
+        role="button"
+        tabindex="0"
+        title="查看详情"
+        @click="item && emit('open-detail', item)"
+        @keydown="(e) => { if ((e.key === 'Enter' || e.key === ' ') && item) { e.preventDefault(); emit('open-detail', item); } }"
+      >
         <MediaThumb :item="item" mode="preview" />
         <div class="wheel" :class="{ run: wheelRun }">
           <svg class="wheel-svg" viewBox="0 0 50 50" aria-hidden="true">
@@ -99,7 +107,7 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
           <div class="btn-ghost" role="button" tabindex="0" aria-label="下载" @click="emit('download', item)">↓ 下载</div>
         </div>
         <div class="btn-apply" role="button" tabindex="0" aria-label="设为壁纸" @click="emit('set', item)">设为壁纸</div>
-        <div class="d-note">60 秒未操作将自动收起预览</div>
+        <div class="d-note">30 秒未操作将自动收起 · 点击预览查看详情</div>
       </div>
     </div>
   </div>

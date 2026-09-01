@@ -54,7 +54,7 @@ impl Default for AppSettings {
             pause_on_battery: true,
             pause_on_rdp: true,
             sound_on: true,
-            default_volume: 0.8,
+            default_volume: 0.0,
             import_copy_to_data: true,
             library_dir_override: None,
             loop_mode: default_loop_mode(),
@@ -69,7 +69,7 @@ fn default_true() -> bool {
     true
 }
 fn default_volume() -> f64 {
-    0.8
+    0.0
 }
 fn default_loop_mode() -> String {
     "list".into()

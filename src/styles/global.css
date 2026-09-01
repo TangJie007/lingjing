@@ -5,9 +5,10 @@
    ============================================================ */
 
 :root {
-  --bg: #F4F5F7;
+  --bg: #F5F6F9;
+  --shell-bg: #F5F6F9;
   --surface: #FFFFFF;
-  --surface-2: #F9FAFB;
+  --surface-2: #F5F6F9;
   --border: #E5E7EB;
   --border-strong: #D1D5DB;
 
@@ -37,7 +38,7 @@
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px;
   --s6: 24px; --s8: 32px; --s10: 40px; --s12: 48px;
 
-  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-xl: 20px; --r-pill: 999px;
+  --r-sm: 4px; --r-md: 8px; --r-lg: 8px; --r-xl: 8px; --r-pill: 999px;
 
   --sh-sm: 0 1px 3px rgba(17, 24, 39, 0.06);
   --sh-md: 0 4px 14px rgba(17, 24, 39, 0.08);
@@ -275,11 +276,11 @@ input, textarea {
   width: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--shell-bg);
+  border: none;
   border-radius: var(--r-xl);
   overflow: hidden;
-  transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+  transition: background var(--dur-base) var(--ease);
   animation: fadeIn var(--dur-slow) var(--ease) both;
 }
 
@@ -288,11 +289,11 @@ input, textarea {
   align-items: center;
   gap: 8px;
   padding: 13px 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
+  border-bottom: none;
+  background: var(--shell-bg);
   flex-shrink: 0;
       app-region: no-drag;
-  transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+  transition: background var(--dur-base) var(--ease);
 }
 .win-dots { display: flex; gap: 6px; app-region: no-drag; }
 .win-dots span {
@@ -337,20 +338,27 @@ input, textarea {
   border-color: var(--primary);
 }
 
-.app-body { display: flex; flex: 1; min-height: 0; }
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: var(--shell-bg);
+  gap: 8px;
+  padding: 0 8px 8px;
+}
 
 /* ---- 侧栏 ---- */
 .sidebar {
   width: 80px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
+  border-right: none;
   padding: 16px 8px;
-  background: var(--surface);
+  background: var(--shell-bg);
   display: flex;
   flex-direction: column;
   gap: 4px;
   position: relative;
-  transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+  transition: background var(--dur-base) var(--ease);
 }
 .nav-sep { height: 8px; }
 .nav-item {
@@ -422,6 +430,8 @@ input, textarea {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--r-md);
 }
 .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-shrink: 0; }
 .search {
@@ -641,18 +651,18 @@ input, textarea {
 .detail {
   width: 320px;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
+  border-left: none;
   background: var(--surface);
+  border-radius: var(--r-md);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   transition: width var(--dur-base) var(--ease), opacity var(--dur-base) var(--ease),
-    transform var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+    transform var(--dur-base) var(--ease);
 }
 .detail.closed {
   width: 0; opacity: 0;
   transform: translateX(24px);
-  border-left-color: transparent;
 }
 .detail-inner { width: 320px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .d-prev {
@@ -660,6 +670,7 @@ input, textarea {
   position: relative;
   flex-shrink: 0;
   overflow: hidden;
+  cursor: pointer;
 }
 .d-prev .thumb-bg {
   position: absolute; inset: 0;
@@ -686,7 +697,7 @@ input, textarea {
   stroke-dasharray: 138.23;
   stroke-dashoffset: 0;
 }
-.wheel.run .wheel-ring { animation: countdown 60s linear forwards; }
+.wheel.run .wheel-ring { animation: countdown 30s linear forwards; }
 .wheel-num {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
@@ -738,6 +749,45 @@ input, textarea {
 }
 .btn-apply:active { transform: scale(0.97); }
 .d-note { font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center; }
+
+/* ---- 壁纸详情页 ---- */
+.detail-page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+.detail-page-head h2 {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.detail-back {
+  font-size: 13px;
+  color: var(--text-2);
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.detail-back:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.detail-page-body {
+  margin-top: 20px;
+  flex-shrink: 0;
+}
+.detail-page-body .by {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
 
 /* ---- 播放条 ---- */
 .playbar {

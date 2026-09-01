@@ -6,7 +6,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import WinBar from "./components/WinBar.vue";
 import IconRail from "./components/IconRail.vue";
 import DetailDrawer from "./components/DetailDrawer.vue";
-import PlaybackBar, { type LoopMode } from "./components/PlaybackBar.vue";
 import Toast from "./components/Toast.vue";
 import LoginModal from "./components/LoginModal.vue";
 import FirstRunAutostartModal from "./components/FirstRunAutostartModal.vue";
@@ -16,7 +15,6 @@ import { CATALOG, type WallpaperItem } from "./data/catalog";
 import {
   enginePause,
   enginePlay,
-  engineSetVolume,
   importMedia,
   listLibrary,
   loadFavoriteIds,
@@ -36,12 +34,13 @@ import { fetchOnlineWallpapers } from "./composables/useLingjingApi";
 const route = useRoute();
 const router = useRouter();
 
-const drawerItem = ref<WallpaperItem | null>(CATALOG[0] ?? null);
-const drawerOpen = ref(true);
-const selectedId = ref<string | null>(CATALOG[0]?.id ?? null);
-const current = ref<WallpaperItem | null>(CATALOG[0] ?? null);
+const drawerItem = ref<WallpaperItem | null>(null);
+const drawerOpen = ref(false);
+const selectedId = ref<string | null>(null);
+const current = ref<WallpaperItem | null>(null);
 const localItems = ref<WallpaperItem[]>([]);
 const engine = ref<EngineState | null>(null);
+type LoopMode = "list" | "single" | "random";
 const loopMode = ref<LoopMode>("list");
 
 const search = ref("");
@@ -129,13 +128,23 @@ const routeViewProps = computed(() => {
   }
 });
 
+function allWallpapers(): WallpaperItem[] {
+  const samples = settings.value.onlineEnabled
+    ? onlineItems.value.filter((i) => !!i.mediaSrc)
+    : CATALOG.filter((i) => !!i.mediaSrc);
+  return [...samples, ...localItems.value];
+}
+
+function findWallpaper(id: string): WallpaperItem | null {
+  return allWallpapers().find((i) => i.id === id) ?? null;
+}
+
+provide("findWallpaper", findWallpaper);
+
 function syncRouteSideEffects(name: typeof route.name) {
   if (name === "online") void refreshOnline();
-  if (name === "online" || name === "favorite" || name === "local") {
-    if (drawerItem.value) drawerOpen.value = true;
-  } else {
-    drawerOpen.value = false;
-  }
+  const keepDrawer = name === "online" || name === "favorite" || name === "local";
+  if (!keepDrawer) drawerOpen.value = false;
 }
 
 function syncLoopModeFromSettings() {
@@ -244,7 +253,21 @@ function onSelect(item: WallpaperItem) {
   selectedId.value = item.id;
   drawerItem.value = item;
   drawerOpen.value = true;
-  current.value = item;
+}
+
+function openWallpaperDetail(item: WallpaperItem) {
+  selectedId.value = item.id;
+  drawerItem.value = item;
+  drawerOpen.value = false;
+  void router.push({ name: "wallpaper-detail", params: { id: item.id } });
+}
+
+function onPreview(item: WallpaperItem) {
+  openWallpaperDetail(item);
+}
+
+function onOpenDetail(item: WallpaperItem) {
+  openWallpaperDetail(item);
 }
 
 async function onSet(item: WallpaperItem) {
@@ -394,48 +417,9 @@ function pickNext(dir: 1 | -1) {
   return q[nextIdx]!;
 }
 
-async function onPrev() {
-  const item = pickNext(-1);
-  if (item) await onSet(item);
-}
 async function onNext() {
   const item = pickNext(1);
   if (item) await onSet(item);
-}
-
-async function onPlay() {
-  lastUserAction = Date.now();
-  try {
-    engine.value = await enginePlay();
-  } catch (e) {
-    showToast(e instanceof Error ? e.message : String(e));
-  }
-}
-async function onPause() {
-  lastUserAction = Date.now();
-  try {
-    engine.value = await enginePause();
-  } catch (e) {
-    showToast(e instanceof Error ? e.message : String(e));
-  }
-}
-async function onVolume(v: number, muted: boolean) {
-  try {
-    engine.value = await engineSetVolume(v, muted);
-  } catch {
-    /* ignore for silent media */
-  }
-}
-
-function onLoop(mode: LoopMode) {
-  loopMode.value = mode;
-}
-
-function openDetail() {
-  if (!current.value) return;
-  drawerItem.value = current.value;
-  drawerOpen.value = true;
-  selectedId.value = current.value.id;
 }
 
 let unlisten: (() => void) | undefined;
@@ -562,15 +546,6 @@ onUnmounted(() => {
   unlistenNavigateSettings?.();
 });
 
-function onPlayWrapped() {
-  lastUserAction = Date.now();
-  return onPlay();
-}
-function onPauseWrapped() {
-  lastUserAction = Date.now();
-  return onPause();
-}
-
 async function onFirstRunConfirm(autostart: boolean) {
   if (firstRunSaving.value) return;
   firstRunSaving.value = true;
@@ -608,7 +583,10 @@ async function onFirstRunConfirm(autostart: boolean) {
           :is="Component"
           v-bind="routeViewProps"
           @select="onSelect"
+          @preview="onPreview"
           @set="onSet"
+          @favorite="onFavorite"
+          @download="onDownload"
           @import="runImport()"
           @remove="onRemoveLocal"
         />
@@ -618,26 +596,12 @@ async function onFirstRunConfirm(autostart: boolean) {
         :item="drawerItem"
         :open="drawerVisible"
         @close="drawerOpen = false"
+        @open-detail="onOpenDetail"
         @set="onSet"
         @favorite="onFavorite"
         @download="onDownload"
       />
     </div>
-
-    <PlaybackBar
-      :current="current"
-      :engine="engine"
-      :queue="playQueue"
-      :loop-mode="loopMode"
-      @import="runImport()"
-      @open-detail="openDetail"
-      @play="onPlayWrapped"
-      @pause="onPauseWrapped"
-      @prev="onPrev"
-      @next="onNext"
-      @volume="onVolume"
-      @loop="onLoop"
-    />
   </div>
 
   <Toast />

@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pauseOnBattery: true,
   pauseOnRdp: true,
   soundOn: true,
-  defaultVolume: 0.8,
+  defaultVolume: 0,
   importCopyToData: true,
   libraryDirOverride: null,
   loopMode: "list",

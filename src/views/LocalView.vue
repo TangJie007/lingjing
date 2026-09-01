@@ -9,6 +9,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
+  (e: "preview", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
   (e: "import"): void;
   (e: "remove", item: WallpaperItem): void;
@@ -41,6 +42,7 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
       :items="items"
       :selected-id="selectedId"
       @select="emit('select', $event)"
+      @preview="emit('preview', $event)"
       @set="emit('set', $event)"
     >
       <template #badge="{ item }">
