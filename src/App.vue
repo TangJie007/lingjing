@@ -41,7 +41,7 @@ const current = ref<WallpaperItem | null>(null);
 const localItems = ref<WallpaperItem[]>([]);
 const engine = ref<EngineState | null>(null);
 type LoopMode = "list" | "single" | "random";
-const loopMode = ref<LoopMode>("list");
+const loopMode = ref<LoopMode>("single");
 
 const search = ref("");
 const sort = ref("最热");

@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultVolume: 0,
   importCopyToData: true,
   libraryDirOverride: null,
-  loopMode: "list",
+  loopMode: "single",
   onlineEnabled: false,
   desktopOrganizeEnabled: false,
   apiBaseUrl: DEFAULT_API_BASE_URL,
@@ -62,6 +62,8 @@ export async function loadSettings(): Promise<AppSettings> {
       ...DEFAULT_SETTINGS,
       ...remote,
       apiBaseUrl: normalizeApiBaseUrl(remote.apiBaseUrl),
+      // 循环模式 UI 暂时隐藏，统一使用单曲循环
+      loopMode: "single",
     };
   } catch {
     settings.value = { ...DEFAULT_SETTINGS };

@@ -21,12 +21,6 @@ const migration = ref<MigrationPlan | null>(null);
 const volPct = computed(() => Math.round(settings.value.defaultVolume * 100));
 const wallpaperSoundOn = computed(() => settings.value.defaultVolume > 0);
 
-const loopLabels: Record<"list" | "single" | "random", string> = {
-  list: "列表循环",
-  single: "单曲循环",
-  random: "随机播放",
-};
-
 let suppressVol = false;
 
 function toggleWallpaperSound() {
@@ -36,13 +30,6 @@ function toggleWallpaperSound() {
     settings.value.defaultVolume = 0.8;
   }
   void applyWallpaperVolume();
-}
-
-function cycleLoopMode() {
-  const order: Array<"list" | "single" | "random"> = ["list", "single", "random"];
-  const i = order.indexOf(settings.value.loopMode);
-  settings.value.loopMode = order[(i + 1) % order.length]!;
-  showToast(loopLabels[settings.value.loopMode]);
 }
 
 async function applyWallpaperVolume() {
@@ -155,220 +142,219 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
 </script>
 
 <template>
-  <div class="main" style="overflow-y: auto;">
-    <div class="set-group">
-      <h3>基本设置</h3>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">开机启动动态壁纸</div>
-          <div class="d">系统启动时自动加载上一次壁纸</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.autostart }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.autostart"
-          aria-label="开机启动动态壁纸"
-          @click="flip('autostart')"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('autostart'); } }"
-        />
-      </div>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">鼠标双击隐藏桌面图标</div>
-          <div class="d">双击桌面空白处隐藏 / 显示图标</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.hideIconsOnDoubleClick }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.hideIconsOnDoubleClick"
-          aria-label="鼠标双击隐藏桌面图标"
-          @click="flip('hideIconsOnDoubleClick')"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('hideIconsOnDoubleClick'); } }"
-        />
-      </div>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">桌面整理</div>
-          <div class="d">隐藏系统桌面图标，用格子窗口整理桌面文件；布局与分类会自动保存</div>
-        </div>
-        <button
-          type="button"
-          class="mini-btn"
-          :class="{ on: settings.desktopOrganizeEnabled }"
-          :disabled="organizeBusy"
-          @click="flipDesktopOrganize"
-        >
-          {{ organizeBusy ? "处理中" : settings.desktopOrganizeEnabled ? "已开启" : "开启" }}
-        </button>
-      </div>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">其他程序全屏时变为静态</div>
-          <div class="d">仅在游戏/观影等真正全屏时暂停；与下方「电池 / 远程桌面」开关相互独立</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.pauseOnFullscreen }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.pauseOnFullscreen"
-          aria-label="其他程序全屏时变为静态"
-          @click="flip('pauseOnFullscreen')"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('pauseOnFullscreen'); } }"
-        />
-      </div>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">界面点击音效</div>
-          <div class="d">点击导航与操作时的轻量反馈音</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.soundOn }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.soundOn"
-          aria-label="界面点击音效"
-          @click="flip('sound')"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('sound'); } }"
-        />
-      </div>
-    </div>
-
-    <div class="set-group">
-      <h3>在线功能</h3>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">启用在线壁纸</div>
-          <div class="d">开启后可在「在线 → 发现」浏览社区壁纸；登录后同步点赞</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.onlineEnabled }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.onlineEnabled"
-          aria-label="启用在线壁纸"
-          @click="flipOnline"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipOnline(); } }"
-        />
-      </div>
-    </div>
-
-    <div class="set-group">
-      <h3>自动暂停</h3>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">切到电池时暂停</div>
-          <div class="d">笔记本断电时自动暂停桌面壁纸</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.pauseOnBattery }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.pauseOnBattery"
-          aria-label="切到电池时暂停"
-          @click="flipPauseReason('pauseOnBattery')"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipPauseReason('pauseOnBattery'); } }"
-        />
-      </div>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">远程桌面时暂停</div>
-          <div class="d">RDP / 远程会话期间自动暂停</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: settings.pauseOnRdp }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="settings.pauseOnRdp"
-          aria-label="远程桌面时暂停"
-          @click="flipPauseReason('pauseOnRdp')"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipPauseReason('pauseOnRdp'); } }"
-        />
-      </div>
-    </div>
-
-    <div class="set-group">
-      <h3>壁纸路径</h3>
-      <p class="path-note">
-        更改路径后，<strong>library.json 与媒体文件</strong>会迁移到新目录。
-        <strong>settings / favorites / last_wallpaper</strong> 仍保存在系统应用数据目录，不会被迁移。
-      </p>
-      <div class="path-ctrl">
-        <input
-          :value="paths?.libraryDir ?? '加载中…'"
-          readonly
-          aria-label="壁纸路径"
-        />
-        <div
-          class="btn"
-          role="button"
-          tabindex="0"
-          @click="pickLibraryDir"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickLibraryDir(); } }"
-        >更改路径</div>
-      </div>
-      <div class="path-ctrl" style="margin-top: 10px;">
-        <label class="toggle" :class="{ on: settings.importCopyToData }" role="switch" tabindex="0" :aria-checked="settings.importCopyToData" aria-label="复制到应用数据目录" @click="settings.importCopyToData = !settings.importCopyToData" @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); settings.importCopyToData = !settings.importCopyToData; } }" />
-        <span style="font-size: 13px;">导入时复制到应用数据目录（关闭后仅记录原始路径）</span>
-      </div>
-    </div>
-
-    <div class="set-group">
-      <h3>壁纸播放</h3>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">壁纸声音</div>
-          <div class="d">动态壁纸的视频音效，默认关闭</div>
-        </div>
-        <div
-          class="toggle"
-          :class="{ on: wallpaperSoundOn }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="wallpaperSoundOn"
-          aria-label="壁纸声音"
-          @click="toggleWallpaperSound"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleWallpaperSound(); } }"
-        />
-      </div>
-      <div v-if="wallpaperSoundOn" class="set-row">
-        <div class="lead">
-          <div class="t">播放音量</div>
-          <div class="d">仅对带声音的动态壁纸生效</div>
-        </div>
-        <div class="slider" :style="{ '--vol': `${volPct}%` }" aria-label="播放音量">
-          <i :style="{ width: `${volPct}%` }" />
+  <div class="main settings-page">
+    <div class="settings-body">
+      <!-- 1. 壁纸路径（顶栏全宽） -->
+      <section class="set-card set-card-top">
+        <h3>壁纸路径</h3>
+        <p class="path-note">
+          更改路径后，<strong>library.json 与媒体文件</strong>会迁移到新目录。
+          <strong>settings / favorites / last_wallpaper</strong> 仍保存在系统应用数据目录，不会被迁移。
+        </p>
+        <div class="path-ctrl">
           <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            :value="volPct"
-            aria-label="播放音量滑块"
-            @input="onVolInput"
+            :value="paths?.libraryDir ?? '加载中…'"
+            readonly
+            aria-label="壁纸路径"
+          />
+          <div
+            class="btn"
+            role="button"
+            tabindex="0"
+            @click="pickLibraryDir"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickLibraryDir(); } }"
+          >更改路径</div>
+        </div>
+        <div class="path-ctrl path-ctrl-import">
+          <label
+            class="toggle"
+            :class="{ on: settings.importCopyToData }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.importCopyToData"
+            aria-label="复制到应用数据目录"
+            @click="settings.importCopyToData = !settings.importCopyToData"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); settings.importCopyToData = !settings.importCopyToData; } }"
+          />
+          <span class="import-label">导入时复制到应用数据目录（关闭后仅记录原始路径）</span>
+        </div>
+      </section>
+
+      <div class="settings-row">
+      <!-- 2. 基本设置 -->
+      <section class="set-card">
+        <h3>基本设置</h3>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">开机启动动态壁纸</div>
+            <div class="d">系统启动时自动加载上一次壁纸</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.autostart }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.autostart"
+            aria-label="开机启动动态壁纸"
+            @click="flip('autostart')"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('autostart'); } }"
           />
         </div>
-      </div>
-      <div class="set-row">
-        <div class="lead">
-          <div class="t">循环模式</div>
-          <div class="d">当前：{{ loopLabels[settings.loopMode] }}</div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">鼠标双击隐藏桌面图标</div>
+            <div class="d">双击桌面空白处隐藏 / 显示图标</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.hideIconsOnDoubleClick }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.hideIconsOnDoubleClick"
+            aria-label="鼠标双击隐藏桌面图标"
+            @click="flip('hideIconsOnDoubleClick')"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('hideIconsOnDoubleClick'); } }"
+          />
         </div>
-        <button type="button" class="mini-btn" @click="cycleLoopMode">
-          切换
-        </button>
-      </div>
-    </div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">桌面整理</div>
+            <div class="d">隐藏系统桌面图标，用格子窗口整理桌面文件；布局与分类会自动保存</div>
+          </div>
+          <button
+            type="button"
+            class="mini-btn"
+            :class="{ on: settings.desktopOrganizeEnabled }"
+            :disabled="organizeBusy"
+            @click="flipDesktopOrganize"
+          >
+            {{ organizeBusy ? "处理中" : settings.desktopOrganizeEnabled ? "已开启" : "开启" }}
+          </button>
+        </div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">其他程序全屏时变为静态</div>
+            <div class="d">仅在游戏/观影等真正全屏时暂停；与下方「电池 / 远程桌面」开关相互独立</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.pauseOnFullscreen }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.pauseOnFullscreen"
+            aria-label="其他程序全屏时变为静态"
+            @click="flip('pauseOnFullscreen')"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('pauseOnFullscreen'); } }"
+          />
+        </div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">界面点击音效</div>
+            <div class="d">点击导航与操作时的轻量反馈音</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.soundOn }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.soundOn"
+            aria-label="界面点击音效"
+            @click="flip('sound')"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip('sound'); } }"
+          />
+        </div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">启用在线壁纸</div>
+            <div class="d">开启后可在「在线 → 发现」浏览社区壁纸；登录后同步点赞</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.onlineEnabled }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.onlineEnabled"
+            aria-label="启用在线壁纸"
+            @click="flipOnline"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipOnline(); } }"
+          />
+        </div>
+      </section>
 
-    <footer-note>设置项已接入真实系统设置（部分依赖系统策略）</footer-note>
+      <!-- 3. 播放与暂停 -->
+      <section class="set-card">
+        <h3>播放与暂停</h3>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">切到电池时暂停</div>
+            <div class="d">笔记本断电时自动暂停桌面壁纸</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.pauseOnBattery }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.pauseOnBattery"
+            aria-label="切到电池时暂停"
+            @click="flipPauseReason('pauseOnBattery')"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipPauseReason('pauseOnBattery'); } }"
+          />
+        </div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">远程桌面时暂停</div>
+            <div class="d">RDP / 远程会话期间自动暂停</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: settings.pauseOnRdp }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="settings.pauseOnRdp"
+            aria-label="远程桌面时暂停"
+            @click="flipPauseReason('pauseOnRdp')"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flipPauseReason('pauseOnRdp'); } }"
+          />
+        </div>
+        <div class="set-row">
+          <div class="lead">
+            <div class="t">壁纸声音</div>
+            <div class="d">动态壁纸的视频音效，默认关闭</div>
+          </div>
+          <div
+            class="toggle"
+            :class="{ on: wallpaperSoundOn }"
+            role="switch"
+            tabindex="0"
+            :aria-checked="wallpaperSoundOn"
+            aria-label="壁纸声音"
+            @click="toggleWallpaperSound"
+            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleWallpaperSound(); } }"
+          />
+        </div>
+        <div v-if="wallpaperSoundOn" class="set-row">
+          <div class="lead">
+            <div class="t">播放音量</div>
+            <div class="d">仅对带声音的动态壁纸生效</div>
+          </div>
+          <div class="slider" :style="{ '--vol': `${volPct}%` }" aria-label="播放音量">
+            <i :style="{ width: `${volPct}%` }" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              :value="volPct"
+              aria-label="播放音量滑块"
+              @input="onVolInput"
+            />
+          </div>
+        </div>
+      </section>
+      </div>
+
+      <!-- <footer-note>设置项已接入真实系统设置（部分依赖系统策略）</footer-note> -->
+    </div>
 
     <MigrationModal
       v-if="migration"
@@ -381,49 +367,121 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
 </template>
 
 <style scoped>
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.set-card {
+  background: #F5F6F9;
+  border: 1px solid #E8EAEE;
+  border-radius: var(--r-md);
+  padding: 10px 14px 2px;
+  box-shadow: none;
+  min-width: 0;
+}
+
+.set-card-top {
+  width: 100%;
+}
+
+.set-card h3 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+
+.set-card .set-row:last-child {
+  border-bottom: none;
+}
+
+.settings-row .set-card {
+  height: 100%;
+}
+
 footer-note {
   display: block;
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-3);
-  margin-top: 12px;
+  margin-top: 0;
+  line-height: 1.3;
 }
+
 .path-ctrl {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
+  margin-top: 0;
 }
+
+.path-ctrl-import {
+  margin-top: 0;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+}
+
 .path-note {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-2);
-  line-height: 1.55;
-  margin-bottom: 10px;
+  line-height: 1.4;
+  margin: 0 0 8px;
 }
+
 .path-note strong {
   color: var(--text);
   font-weight: 600;
 }
+
 .path-ctrl input {
   flex: 1;
-  background: var(--surface-2);
+  background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  padding: 9px 12px;
+  padding: 6px 10px;
   font: inherit;
+  font-size: 12px;
   color: var(--text);
 }
+
 .path-ctrl input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
   outline: none;
 }
+
+.path-ctrl :deep(.btn) {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.import-label {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
 .slider {
   position: relative;
-  width: 160px;
-  height: 6px;
+  width: 140px;
+  height: 5px;
   border-radius: 6px;
   background: var(--border);
 }
+
 .slider i {
   position: absolute;
   inset: 0 auto 0 0;
@@ -432,7 +490,8 @@ footer-note {
   width: var(--vol);
   transition: width var(--dur-fast) var(--ease);
 }
-.slider input[type=range] {
+
+.slider input[type="range"] {
   position: absolute;
   inset: -6px 0;
   width: 100%;
@@ -441,13 +500,14 @@ footer-note {
   cursor: pointer;
   opacity: 0;
 }
+
 .slider::after {
   content: "";
   position: absolute;
-  left: calc(var(--vol) - 9px);
-  top: -6px;
-  width: 18px;
-  height: 18px;
+  left: calc(var(--vol) - 8px);
+  top: -5px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #fff;
   box-shadow: var(--sh-md);
@@ -455,30 +515,35 @@ footer-note {
   pointer-events: none;
   transition: left var(--dur-fast) var(--ease);
 }
+
 .mini-btn {
   flex-shrink: 0;
-  font-size: 12px;
-  padding: 6px 12px;
+  font-size: 11px;
+  padding: 4px 10px;
   border-radius: var(--r-md);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: #fff;
   color: var(--text-2);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
+
 .mini-btn:hover {
   background: var(--surface-2);
   color: var(--text);
 }
+
 .mini-btn:active {
   transform: scale(0.96);
 }
+
 .mini-btn:disabled {
   opacity: 0.6;
   cursor: wait;
   transform: none;
 }
+
 .mini-btn.on {
   border-color: var(--primary);
   background: var(--primary-soft);

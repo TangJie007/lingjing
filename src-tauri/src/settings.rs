@@ -72,7 +72,7 @@ fn default_volume() -> f64 {
     0.0
 }
 fn default_loop_mode() -> String {
-    "list".into()
+    "single".into()
 }
 fn default_api_base_url() -> String {
     "https://36fa666671.eicp.vip".into()
