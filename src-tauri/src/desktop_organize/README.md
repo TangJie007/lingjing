@@ -24,6 +24,10 @@
 - `shell_menu.rs` 依赖 `ShellMenuEntry` 与 `shell_host_stage`
 - `power.rs` 调用 `reassert`
 
+## 设计文档
+
+- [桌面整理：图标映射原理与方案对照](../../../docs/desktop-organize-reference.md) — Windows/腾讯/ling-scape 映射链路、对照表、可借鉴项与路线图
+
 ## 后续可继续拆分
 
 - `win.rs` 仍可拆为 `win_icons.rs` + `win_fence.rs`
