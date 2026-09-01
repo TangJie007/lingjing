@@ -63,8 +63,6 @@ export function useShellFileDrag(opts?: {
 }) {
   let activePath = "";
   let previewDataUrl: string | null = null;
-  let shiftKey = false;
-  let ctrlKey = false;
   let inFlight = false;
   /** True once we commit to OLE — blocks Sortable end() from aborting handoff. */
   let handoff = false;
@@ -107,8 +105,6 @@ export function useShellFileDrag(opts?: {
     activePath = path;
     previewDataUrl =
       preview && preview.length <= MAX_PREVIEW_CHARS ? preview : null;
-    shiftKey = false;
-    ctrlKey = false;
     inFlight = false;
     handoff = false;
     endAfterProbe = false;
@@ -141,10 +137,8 @@ export function useShellFileDrag(opts?: {
     }
   }
 
-  function setModifiers(shift: boolean, ctrl: boolean) {
-    shiftKey = shift;
-    ctrlKey = ctrl;
-  }
+  /** Kept for callers; OLE now advertises COPY|MOVE and the target chooses. */
+  function setModifiers(_shift: boolean, _ctrl: boolean) {}
 
   function isPending() {
     return handoff;
@@ -181,7 +175,6 @@ export function useShellFileDrag(opts?: {
       handoff = true;
       endAfterProbe = false;
       const path = activePath;
-      const mode = ctrlKey && !shiftKey ? "copy" : "move";
       const preview = previewDataUrl;
       stopPoll();
       activePath = "";
@@ -191,11 +184,11 @@ export function useShellFileDrag(opts?: {
       opts?.onUiReset?.();
 
       try {
+        // Native side advertises COPY|MOVE; Explorer / upload UIs pick the effect.
         const started = await window.__TAURI__.core.invoke<boolean>(
           "try_start_desktop_file_drag_if_foreign",
           {
             path,
-            mode,
             previewDataUrl: preview,
           },
         );

@@ -21,13 +21,6 @@ fn decode_image_data_url(url: &str) -> Option<Vec<u8>> {
     from_base64(b64)
 }
 
-fn parse_drag_mode(mode: Option<&str>) -> drag::DragMode {
-    match mode.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
-        Some("copy") => drag::DragMode::Copy,
-        _ => drag::DragMode::Move,
-    }
-}
-
 fn drag_preview_png(path: &Path, preview_data_url: Option<&str>) -> Vec<u8> {
     if let Some(url) = preview_data_url {
         if let Some(bytes) = decode_image_data_url(url) {
@@ -149,6 +142,192 @@ fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
     }
 }
 
+#[cfg(windows)]
+mod ole_drag {
+    use std::ffi::c_void;
+    use std::iter::once;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+    use std::sync::Once;
+
+    use windows::core::{implement, BOOL, HRESULT, PCWSTR};
+    use windows::Win32::Foundation::{
+        COLORREF, DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DRAGDROP_S_USEDEFAULTCURSORS, POINT, SIZE,
+        S_OK,
+    };
+    use windows::Win32::Graphics::Gdi::{CreateBitmap, GetObjectW, BITMAP, HBITMAP};
+    use windows::Win32::Graphics::Imaging::{
+        CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICImagingFactory,
+        WICConvertBitmapSource, WICDecodeMetadataCacheOnDemand,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, IDataObject, CLSCTX_INPROC_SERVER,
+    };
+    use windows::Win32::System::Ole::{
+        DoDragDrop, IDropSource, IDropSource_Impl, OleInitialize, DROPEFFECT, DROPEFFECT_COPY,
+        DROPEFFECT_MOVE,
+    };
+    use windows::Win32::System::SystemServices::{MK_LBUTTON, MODIFIERKEYS_FLAGS};
+    use windows::Win32::UI::Shell::{
+        BHID_DataObject, CLSID_DragDropHelper, Common, IDragSourceHelper, IShellItemArray,
+        ILCreateFromPathW, ILFree, SHCreateShellItemArrayFromIDLists, SHDRAGIMAGE,
+    };
+
+    static OLE_INIT: Once = Once::new();
+    static mut OLE_INIT_OK: bool = false;
+
+    fn init_ole() -> Result<(), String> {
+        OLE_INIT.call_once(|| {
+            let ok = unsafe { OleInitialize(None).is_ok() };
+            unsafe {
+                OLE_INIT_OK = ok;
+            }
+        });
+        if unsafe { OLE_INIT_OK } {
+            Ok(())
+        } else {
+            Err("OleInitialize 失败".into())
+        }
+    }
+
+    #[implement(IDropSource)]
+    struct ShellFileDropSource;
+
+    #[allow(non_snake_case)]
+    impl IDropSource_Impl for ShellFileDropSource_Impl {
+        fn QueryContinueDrag(
+            &self,
+            fescapepressed: BOOL,
+            grfkeystate: MODIFIERKEYS_FLAGS,
+        ) -> HRESULT {
+            if fescapepressed.as_bool() {
+                DRAGDROP_S_CANCEL
+            } else if (grfkeystate.0 & MK_LBUTTON.0) == 0 {
+                DRAGDROP_S_DROP
+            } else {
+                S_OK
+            }
+        }
+
+        fn GiveFeedback(&self, _dweffect: DROPEFFECT) -> HRESULT {
+            DRAGDROP_S_USEDEFAULTCURSORS
+        }
+    }
+
+    fn file_data_object(path: &Path) -> Result<IDataObject, String> {
+        unsafe {
+            let wide: Vec<u16> = path.as_os_str().encode_wide().chain(once(0)).collect();
+            let pidl = ILCreateFromPathW(PCWSTR::from_raw(wide.as_ptr()));
+            if pidl.is_null() {
+                return Err("无法创建 Shell 项".into());
+            }
+            let list: [*const Common::ITEMIDLIST; 1] = [pidl.cast_const()];
+            let array = SHCreateShellItemArrayFromIDLists(&list);
+            ILFree(Some(pidl));
+            let array: IShellItemArray =
+                array.map_err(|e| format!("SHCreateShellItemArrayFromIDLists: {e}"))?;
+            array
+                .BindToHandler(None, &BHID_DataObject)
+                .map_err(|e| format!("BindToHandler(BHID_DataObject): {e}"))
+        }
+    }
+
+    fn png_to_hbitmap(bytes: &[u8]) -> Option<HBITMAP> {
+        unsafe {
+            let factory: IWICImagingFactory =
+                CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).ok()?;
+            let stream = factory.CreateStream().ok()?;
+            stream.InitializeFromMemory(bytes).ok()?;
+            let decoder = factory
+                .CreateDecoderFromStream(&stream, std::ptr::null(), WICDecodeMetadataCacheOnDemand)
+                .ok()?;
+            let frame = decoder.GetFrame(0).ok()?;
+
+            let mut width = 0u32;
+            let mut height = 0u32;
+            frame.GetSize(&mut width, &mut height).ok()?;
+
+            let mut pixel_buf = vec![0u8; (width * height * 4) as usize];
+            let pixel_format = frame.GetPixelFormat().ok()?;
+            if pixel_format != GUID_WICPixelFormat32bppPBGRA {
+                let converted =
+                    WICConvertBitmapSource(&GUID_WICPixelFormat32bppPBGRA, &frame).ok()?;
+                converted
+                    .CopyPixels(std::ptr::null(), width * 4, &mut pixel_buf)
+                    .ok()?;
+            } else {
+                frame
+                    .CopyPixels(std::ptr::null(), width * 4, &mut pixel_buf)
+                    .ok()?;
+            }
+
+            let hbmp = CreateBitmap(
+                width as i32,
+                height as i32,
+                1,
+                32,
+                Some(pixel_buf.as_ptr() as *const c_void),
+            );
+            if hbmp.is_invalid() {
+                None
+            } else {
+                Some(hbmp)
+            }
+        }
+    }
+
+    fn attach_drag_image(data_object: &IDataObject, preview_png: &[u8]) {
+        let Some(hbitmap) = png_to_hbitmap(preview_png) else {
+            return;
+        };
+        unsafe {
+            let mut bitmap = BITMAP::default();
+            let (width, height) = if GetObjectW(
+                hbitmap.into(),
+                std::mem::size_of::<BITMAP>() as i32,
+                Some(&mut bitmap as *mut BITMAP as *mut c_void),
+            ) == 0
+            {
+                (128, 128)
+            } else {
+                (bitmap.bmWidth, bitmap.bmHeight)
+            };
+            let drag_image = SHDRAGIMAGE {
+                sizeDragImage: SIZE {
+                    cx: width,
+                    cy: height,
+                },
+                ptOffset: POINT { x: 0, y: 0 },
+                hbmpDragImage: hbitmap,
+                crColorKey: COLORREF(0),
+            };
+            if let Ok(helper) =
+                CoCreateInstance::<_, IDragSourceHelper>(&CLSID_DragDropHelper, None, CLSCTX_INPROC_SERVER)
+            {
+                let _ = helper.InitializeFromBitmap(&drag_image, data_object);
+            }
+        }
+    }
+
+    /// Start OLE drag with both COPY and MOVE allowed; the drop target picks the effect.
+    pub fn start(path: &Path, preview_png: &[u8]) -> Result<(), String> {
+        init_ole()?;
+        let data_object = file_data_object(path)?;
+        attach_drag_image(&data_object, preview_png);
+        let drop_source: IDropSource = ShellFileDropSource.into();
+        let ok_effects = DROPEFFECT_COPY | DROPEFFECT_MOVE;
+        let mut out_effect = DROPEFFECT::default();
+        let hr = unsafe { DoDragDrop(&data_object, &drop_source, ok_effects, &mut out_effect) };
+        tracing::info!(
+            "[desktop-organize] DoDragDrop finished hr={hr:?} effect={out_effect:?}"
+        );
+        if hr.is_err() {
+            return Err(format!("启动文件拖放失败: {hr:?}"));
+        }
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
     #[cfg(windows)]
@@ -167,7 +346,8 @@ pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
 }
 
 /// Start a system shell file drag (CF_HDROP) so icons can be dropped into other apps.
-/// `mode`: "move" (default) or "copy". Hold Ctrl in the UI to request copy.
+/// Allowed effects are COPY|MOVE; the drop target (Explorer / upload UI / etc.) chooses.
+/// `mode` is accepted for API compatibility and ignored.
 #[tauri::command]
 pub fn start_desktop_file_drag(
     app: AppHandle,
@@ -175,6 +355,7 @@ pub fn start_desktop_file_drag(
     mode: Option<String>,
     preview_data_url: Option<String>,
 ) -> Result<(), String> {
+    let _ = mode;
     let trimmed = path.trim().to_string();
     if trimmed.is_empty() {
         return Err("路径为空".into());
@@ -187,7 +368,6 @@ pub fn start_desktop_file_drag(
         return Err("文件不存在".into());
     }
     let abs = strip_extended_path(std::fs::canonicalize(&path_buf).unwrap_or(path_buf));
-    let drag_mode = parse_drag_mode(mode.as_deref());
     let preview = drag_preview_png(&abs, preview_data_url.as_deref());
 
     let window = app
@@ -200,22 +380,13 @@ pub fn start_desktop_file_drag(
             return Err("鼠标已松开，取消拖出".into());
         }
         let handle = app.clone();
-        let win = window.clone();
-        tracing::info!(
-            "[desktop-organize] starting shell file drag path={trimmed} mode={drag_mode:?}"
-        );
+        let _win = window;
+        tracing::info!("[desktop-organize] starting shell file drag path={trimmed} effects=COPY|MOVE");
         return run_on_ui(&handle, move || {
             if !is_lbutton_down() {
                 return Err("鼠标已松开，取消拖出".into());
             }
-            let item = drag::DragItem::Files(vec![abs]);
-            let preview = drag::Image::Raw(preview);
-            let opts = drag::Options {
-                mode: drag_mode,
-                skip_animatation_on_cancel_or_failure: true,
-            };
-            drag::start_drag(&win, item, preview, |_result, _pos| {}, opts)
-                .map_err(|e| format!("启动文件拖放失败: {e}"))?;
+            ole_drag::start(&abs, &preview)?;
             tracing::info!("[desktop-organize] shell file drag finished path={trimmed}");
             // Refresh so moved-away items disappear from fences.
             let _ = super::lifecycle::refresh(&app);
@@ -224,7 +395,7 @@ pub fn start_desktop_file_drag(
     }
     #[cfg(not(windows))]
     {
-        let _ = (window, abs, drag_mode, preview);
+        let _ = (window, abs, preview);
         Err("桌面整理拖出仅支持 Windows".into())
     }
 }
