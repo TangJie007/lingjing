@@ -309,33 +309,64 @@ input, textarea {
 .win-act {
   font-size: 12px;
   color: var(--text-2);
-  padding: 5px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
+  padding: 6px;
+  border: none;
+  border-radius: var(--r-md);
   cursor: pointer;
-  background: var(--surface);
+  background: transparent;
   app-region: no-drag;
-  transition: transform var(--dur-fast) var(--ease), background var(--dur-base) var(--ease),
-    color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 0;
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
-.win-act:hover { background: var(--surface-2); color: var(--text); transform: translateY(-1px); }
+.win-act:hover {
+  background: rgba(232, 239, 255, 0.72);
+  color: var(--text);
+  transform: none;
+}
 .win-act:active { transform: scale(0.95); }
-.win-act.close:hover { background: var(--error); color: #fff; border-color: var(--error); }
+.win-act.close:hover {
+  background: rgba(232, 239, 255, 0.72);
+  color: var(--text);
+  border-color: transparent;
+}
+.win-act.icon-btn {
+  min-width: 32px;
+  min-height: 32px;
+}
+.win-act-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+  object-fit: contain;
+}
 .win-act.login {
-  max-width: 120px;
+  max-width: 140px;
+  padding: 6px 8px;
+  overflow: hidden;
+}
+.win-act.login .win-act-label {
+  font-size: 12px;
+  line-height: 1.2;
+  max-width: 88px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .win-act.login:not(.is-logged-in) {
-  color: var(--primary);
-  border-color: var(--primary-soft);
-  background: var(--primary-soft);
+  color: var(--text-2);
+  border: none;
+  background: transparent;
 }
-.win-act.login:not(.is-logged-in):hover {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
+.win-act.login:not(.is-logged-in):hover,
+.win-act.login.is-logged-in:hover {
+  background: rgba(232, 239, 255, 0.72);
+  color: var(--text);
+  border: none;
 }
 
 .app-body {
@@ -434,6 +465,37 @@ input, textarea {
   border-radius: var(--r-md);
 }
 .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-shrink: 0; }
+
+.online-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+  padding: 3px;
+  width: fit-content;
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+}
+.online-tab {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border: none;
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.online-tab:hover {
+  color: var(--text);
+  background: rgba(232, 239, 255, 0.55);
+}
+.online-tab.on {
+  color: var(--primary);
+  background: var(--surface);
+  box-shadow: var(--sh-sm);
+}
 .search {
   flex: 1;
   display: flex;

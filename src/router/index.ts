@@ -1,7 +1,6 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
 import OnlineView from "../views/OnlineView.vue";
 import LocalView from "../views/LocalView.vue";
-import FavoritesView from "../views/FavoritesView.vue";
 import PetView from "../views/PetView.vue";
 import SettingsView from "../views/SettingsView.vue";
 import AboutView from "../views/AboutView.vue";
@@ -18,7 +17,6 @@ declare module "vue-router" {
 export const NAV_ROUTE_NAMES = [
   "online",
   "local",
-  "favorite",
   "pet",
   "settings",
   "about",
@@ -38,13 +36,11 @@ const routes: RouteRecordRaw[] = [
     path: "/online",
     name: "online",
     component: OnlineView,
-    meta: { showDrawer: true, requiresOnline: true },
+    meta: { showDrawer: true },
   },
   {
     path: "/favorite",
-    name: "favorite",
-    component: FavoritesView,
-    meta: { showDrawer: true },
+    redirect: { name: "online", query: { tab: "mine" } },
   },
   {
     path: "/pet",

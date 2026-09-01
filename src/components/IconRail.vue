@@ -8,13 +8,7 @@ interface NavItem {
   key: NavRouteName;
   label: string;
   aria: string;
-  badge?: boolean;
 }
-
-const props = withDefaults(
-  defineProps<{ onlineEnabled?: boolean }>(),
-  { onlineEnabled: false },
-);
 
 const route = useRoute();
 const router = useRouter();
@@ -28,9 +22,8 @@ const activeKey = computed(() => {
 });
 
 const items: NavItem[] = [
-  { key: "online", label: "在线", aria: "在线资源" },
+  { key: "online", label: "在线", aria: "在线资源与我的收藏" },
   { key: "local", label: "本地", aria: "本地资源" },
-  { key: "favorite", label: "我的", aria: "我的收藏", badge: true },
   { key: "pet", label: "桌宠", aria: "桌宠管理" },
   { key: "settings", label: "设置", aria: "设置" },
   { key: "about", label: "关于", aria: "关于" },
@@ -38,10 +31,6 @@ const items: NavItem[] = [
 
 const indicator = ref<HTMLElement | null>(null);
 const rail = ref<HTMLElement | null>(null);
-
-function showItem(it: NavItem) {
-  return it.key !== "online" || props.onlineEnabled;
-}
 
 function moveIndicator(el: HTMLElement) {
   if (!indicator.value) return;
@@ -70,14 +59,7 @@ function fire(n: NavItem, el: HTMLElement, ev?: MouseEvent) {
     el.classList.add("spin");
     setTimeout(() => el.classList.remove("spin"), 640);
   }
-  if (n.key === "favorite") {
-    el.classList.remove("beat");
-    void el.offsetWidth;
-    el.classList.add("beat");
-    setTimeout(() => el.classList.remove("beat"), 760);
-  }
 
-  if (n.key === "online" && !props.onlineEnabled) return;
   if (route.name !== n.key) {
     void router.push({ name: n.key });
   }
@@ -92,7 +74,6 @@ function syncIndicator() {
 
 onMounted(() => nextTick(syncIndicator));
 watch(activeKey, () => nextTick(syncIndicator));
-watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
 </script>
 
 <template>
@@ -101,7 +82,6 @@ watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
     <template v-for="it in items" :key="it.key">
       <div v-if="it.key === 'settings'" class="nav-sep" />
       <div
-        v-if="showItem(it)"
         class="nav-item"
         :class="{ active: activeKey === it.key }"
         :data-nav="it.label"
@@ -122,9 +102,6 @@ watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
         <svg v-else-if="it.key === 'local'" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         </svg>
-        <svg v-else-if="it.key === 'favorite'" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 20s-7-4.5-9.5-9C1 8 2.5 4.5 6 4.5c2 0 3.2 1.2 4 2.3.8-1.1 2-2.3 4-2.3 3.5 0 5 3.5 3.5 6.5C19 15.5 12 20 12 20z" />
-        </svg>
         <svg v-else-if="it.key === 'pet'" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="7.5" cy="8" r="2.2" />
           <circle cx="16.5" cy="8" r="2.2" />
@@ -141,7 +118,6 @@ watch(() => props.onlineEnabled, () => nextTick(syncIndicator));
           <path d="M12 11v5M12 8h.01" />
         </svg>
         <span>{{ it.label }}</span>
-        <span v-if="it.badge" class="badge-dot" />
       </div>
     </template>
   </div>

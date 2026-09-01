@@ -2,6 +2,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import AppLogo from "./AppLogo.vue";
 import { showToast } from "../composables/useToast";
+import iconLogin from "../assets/svg/login.svg";
+import iconMin from "../assets/svg/min.svg";
+import iconClose from "../assets/svg/close.svg";
 
 defineProps<{
   onlineEnabled?: boolean;
@@ -42,34 +45,38 @@ async function hideToTray() {
     <span class="win-name">灵镜 LINGJING</span>
     <span class="win-sub">动态壁纸</span>
     <span class="win-spacer" />
-    <span
+    <button
       v-if="onlineEnabled"
-      class="win-act login"
+      type="button"
+      class="win-act icon-btn login"
       :class="{ 'is-logged-in': loggedIn }"
-      role="button"
-      tabindex="0"
       :aria-label="loggedIn ? `已登录：${userLabel}` : '登录灵境社区'"
+      :title="loggedIn ? userLabel : '登录'"
       @mousedown.stop
       @click.stop="emit('login')"
-      @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('login'); } }"
-    >{{ loggedIn ? userLabel : "登录" }}</span>
-    <span
-      class="win-act"
-      role="button"
-      tabindex="0"
+    >
+      <img :src="iconLogin" alt="" class="win-act-icon" draggable="false" />
+      <span v-if="loggedIn" class="win-act-label">{{ userLabel }}</span>
+    </button>
+    <button
+      type="button"
+      class="win-act icon-btn"
       aria-label="最小化"
       title="最小化"
       @mousedown.stop
       @click.stop="minimize"
-    >—</span>
-    <span
-      class="win-act close"
-      role="button"
-      tabindex="0"
+    >
+      <img :src="iconMin" alt="" class="win-act-icon" draggable="false" />
+    </button>
+    <button
+      type="button"
+      class="win-act icon-btn close"
       aria-label="隐藏到托盘"
       title="隐藏到托盘"
       @mousedown.stop
       @click.stop="hideToTray"
-    >✕</span>
+    >
+      <img :src="iconClose" alt="" class="win-act-icon" draggable="false" />
+    </button>
   </div>
 </template>

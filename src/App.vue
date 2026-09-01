@@ -110,13 +110,10 @@ const routeViewProps = computed(() => {
       return {
         selectedId: selectedId.value,
         items: onlineGridItems.value,
+        favorites: favoriteItems.value,
         loading: onlineGridLoading.value,
         emptyText: onlineEmptyText.value,
-      };
-    case "favorite":
-      return {
-        selectedId: selectedId.value,
-        items: favoriteItems.value,
+        onlineEnabled: settings.value.onlineEnabled,
       };
     case "local":
       return {
@@ -143,7 +140,7 @@ provide("findWallpaper", findWallpaper);
 
 function syncRouteSideEffects(name: typeof route.name) {
   if (name === "online") void refreshOnline();
-  const keepDrawer = name === "online" || name === "favorite" || name === "local";
+  const keepDrawer = name === "online" || name === "local";
   if (!keepDrawer) drawerOpen.value = false;
 }
 
@@ -175,15 +172,6 @@ watch(
     soundOn.value = v;
   },
   { immediate: true },
-);
-
-watch(
-  () => settings.value.onlineEnabled,
-  (enabled) => {
-    if (!enabled && route.name === "online") {
-      void router.replace({ name: "local" });
-    }
-  },
 );
 
 watch(
@@ -493,9 +481,6 @@ onMounted(async () => {
   } catch {
     firstRunOpen.value = true;
   }
-  if (!settings.value.onlineEnabled && route.name === "online") {
-    await router.replace({ name: "local" });
-  }
   syncLoopModeFromSettings();
   await refreshMe().catch(() => undefined);
   await refreshLibrary();
@@ -576,7 +561,7 @@ async function onFirstRunConfirm(autostart: boolean) {
     />
 
     <div class="app-body">
-      <IconRail :online-enabled="settings.onlineEnabled" />
+      <IconRail />
 
       <RouterView v-slot="{ Component }">
         <component
