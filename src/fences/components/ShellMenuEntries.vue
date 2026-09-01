@@ -10,6 +10,7 @@ import {
 } from "reka-ui";
 import type { ShellMenuEntry } from "../types";
 import { shellMenuIcon } from "../shellMenuIcons";
+import arrowRightIcon from "../../assets/svg/arrow-right-bold.svg";
 import ShellMenuLoading from "./ShellMenuLoading.vue";
 
 const props = defineProps<{
@@ -63,7 +64,7 @@ function iconOf(entry: ShellMenuEntry) {
               <img v-if="iconOf(entry)" :src="iconOf(entry)!" alt="" />
             </span>
             <span class="lbl">{{ entry.label || "" }}</span>
-            <span class="arrow">›</span>
+            <img class="arrow" :src="arrowRightIcon" alt="" />
           </ContextMenuSubTrigger>
           <ContextMenuPortal>
             <ContextMenuSubContent class="shell-ctx-sub" :side-offset="2">

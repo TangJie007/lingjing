@@ -16,7 +16,7 @@ pub(crate) fn pin_icon_svg(kind: &str) -> String {
         _ => "M4 8h12",
     };
     let svg = format!(
-        "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23f3f3f3' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'><path d='{path}'/></svg>"
+        "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%231f1f21' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'><path d='{path}'/></svg>"
     );
     format!(
         "data:image/svg+xml;utf8,{}",
@@ -44,8 +44,12 @@ pub(crate) fn pin_kind_from_verb_or_label(verb: &str, label: &str) -> Option<&'s
     None
 }
 
-/// Hide Start / Quick Access pin+unpin items from all Shell-derived menus.
-pub(crate) fn is_start_or_quick_access_menu_item(verb: &str, label: &str) -> bool {
+/// Hide Start / Quick Access pin+unpin and Print items from Shell-derived menus.
+pub(crate) fn should_hide_shell_menu_item(verb: &str, label: &str) -> bool {
+    is_start_or_quick_access_menu_item(verb, label) || is_print_menu_item(verb, label)
+}
+
+fn is_start_or_quick_access_menu_item(verb: &str, label: &str) -> bool {
     let v = verb.to_ascii_lowercase();
     if matches!(
         v.as_str(),
@@ -79,16 +83,31 @@ pub(crate) fn is_start_or_quick_access_menu_item(verb: &str, label: &str) -> boo
     false
 }
 
-pub(crate) fn strip_start_and_quick_access_pins(entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
+fn is_print_menu_item(verb: &str, label: &str) -> bool {
+    let v = verb.to_ascii_lowercase();
+    if matches!(v.as_str(), "print" | "printto") || v.starts_with("print") {
+        return true;
+    }
+    let lower = label.to_ascii_lowercase();
+    if lower == "print"
+        || lower.starts_with("print ")
+        || lower.contains("print to")
+        || lower.contains("&print")
+    {
+        return true;
+    }
+    // 打印 / 打印到… / 使用 Microsoft Print to PDF 打印 等
+    label.contains("打印")
+}
+
+pub(crate) fn strip_hidden_shell_menu_items(entries: Vec<ShellMenuEntry>) -> Vec<ShellMenuEntry> {
     let mut out: Vec<ShellMenuEntry> = Vec::with_capacity(entries.len());
     for mut entry in entries {
-        if !entry.separator && entry.children.is_none() {
-            if is_start_or_quick_access_menu_item("", &entry.label) {
-                continue;
-            }
+        if !entry.separator && should_hide_shell_menu_item("", &entry.label) {
+            continue;
         }
         if let Some(children) = entry.children.take() {
-            entry.children = Some(strip_start_and_quick_access_pins(children));
+            entry.children = Some(strip_hidden_shell_menu_items(children));
         }
         if entry.separator {
             if out.last().is_some_and(|e: &ShellMenuEntry| e.separator) {

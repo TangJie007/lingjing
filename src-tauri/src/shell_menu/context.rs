@@ -25,7 +25,7 @@ use super::host::{pump_for, pump_messages};
 use super::icons::hbitmap_to_data_url;
 use super::ids::is_builtin_command;
 use super::ids::{BUILTIN_DELETE, CMD_FIRST, CMD_LAST};
-use super::pin::{apply_win11_pin_row, is_start_or_quick_access_menu_item, strip_start_and_quick_access_pins};
+use super::pin::{apply_win11_pin_row, should_hide_shell_menu_item, strip_hidden_shell_menu_items};
 use super::util::{clean_menu_label, invoke_working_directory, menu_flags_for_path, stage, wide};
 use super::verbs::{command_verb, shell_execute_verb};
 
@@ -253,9 +253,12 @@ unsafe fn enumerate_hmenu(
 
         if children.is_none() {
             let verb = command_verb(pcm, mii.wID).unwrap_or_default();
-            if is_start_or_quick_access_menu_item(&verb, &label) {
+            if should_hide_shell_menu_item(&verb, &label) {
                 continue;
             }
+        } else if should_hide_shell_menu_item("", &label) {
+            // Drop whole cascades such as “打印”.
+            continue;
         }
 
         out.push(ShellMenuEntry {
@@ -270,7 +273,7 @@ unsafe fn enumerate_hmenu(
             destructive: mii.wID == BUILTIN_DELETE || label.contains("删除"),
         });
     }
-    strip_start_and_quick_access_pins(out)
+    strip_hidden_shell_menu_items(out)
 }
 
 unsafe fn initialize_submenu_path(
@@ -315,7 +318,7 @@ fn list_shell_context_menu_inner(
         stage("读取菜单项");
         let items = enumerate_hmenu(&pcm, hmenu, &[], 0);
         let items = apply_win11_pin_row(Some(&pcm), items);
-        let items = strip_start_and_quick_access_pins(items);
+        let items = strip_hidden_shell_menu_items(items);
         stage("完成");
         let _ = DestroyMenu(hmenu);
         Ok(items)
@@ -425,12 +428,12 @@ pub fn invoke_shell_context_command(
         // outside Explorer (no IContextMenuSite / wrong HWND / no message pump).
         if let (Some(p), Some(verb)) = (path, command_verb(&pcm, command_id)) {
             let label = command_menu_label(hmenu, command_id);
-            if is_start_or_quick_access_menu_item(&verb, &label) {
+            if should_hide_shell_menu_item(&verb, &label) {
                 let _ = DestroyMenu(hmenu);
                 return Err("已移除该菜单项".into());
             }
             let handled = match verb.as_str() {
-                "open" | "openas" | "runas" | "properties" | "edit" | "print" => {
+                "open" | "openas" | "runas" | "properties" | "edit" => {
                     Some(shell_execute_verb(p, &verb))
                 }
                 "delete" => Some(super::verbs::delete_to_recycle_bin(p)),
