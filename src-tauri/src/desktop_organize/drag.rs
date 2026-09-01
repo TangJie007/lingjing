@@ -229,6 +229,38 @@ pub fn start_desktop_file_drag(
     }
 }
 
+/// Re-check cursor is over a foreign window and LBUTTON is down, then start OLE drag.
+/// Returns `Ok(false)` when not over foreign (caller keeps probing). `Ok(true)` after a
+/// completed drag session. Fails if the button was released before DoDragDrop.
+#[tauri::command]
+pub fn try_start_desktop_file_drag_if_foreign(
+    app: AppHandle,
+    path: String,
+    mode: Option<String>,
+    preview_data_url: Option<String>,
+) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        let window = app
+            .get_webview_window(FENCE_LABEL)
+            .ok_or_else(|| "格子窗口未就绪".to_string())?;
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        if !is_cursor_over_foreign_window(&app, hwnd) {
+            return Ok(false);
+        }
+        if !is_lbutton_down() {
+            return Err("鼠标已松开，取消拖出".into());
+        }
+        start_desktop_file_drag(app, path, mode, preview_data_url)?;
+        Ok(true)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, path, mode, preview_data_url);
+        Ok(false)
+    }
+}
+
 /// Tiny valid PNG (1x1 transparent) used as drag preview when no icon file is handy.
 const MINI_DRAG_PNG: &[u8] = &[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,

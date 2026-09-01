@@ -440,6 +440,7 @@ pub fn run() {
             desktop_organize::layout::save_fence_layout,
             desktop_organize::drag::is_desktop_drag_over_foreign,
             desktop_organize::drag::start_desktop_file_drag,
+            desktop_organize::drag::try_start_desktop_file_drag_if_foreign,
             desktop_organize::menu_commands::drop_files_to_desktop,
             desktop_organize::item_commands::set_desktop_organize,
             desktop_organize::item_commands::list_desktop_items,

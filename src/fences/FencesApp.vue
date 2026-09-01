@@ -310,7 +310,20 @@ function onDragPointerMove(e: PointerEvent) {
     cellUnderPoint(e.clientX, e.clientY),
     srcPath,
   );
-  applySpecialDropTarget(drop, srcPath);
+  if (applySpecialDropTarget(drop, srcPath)) return;
+  // Outside the fence stage (or over another window with capture) — probe early.
+  const stage = document.getElementById("stage");
+  const r = stage?.getBoundingClientRect();
+  if (
+    r &&
+    e.clientX >= r.left &&
+    e.clientX <= r.right &&
+    e.clientY >= r.top &&
+    e.clientY <= r.bottom
+  ) {
+    return;
+  }
+  void shellDrag.probe();
 }
 
 function startDragPointerListen() {
@@ -355,6 +368,18 @@ function onDragStart(key: FenceGroupKey, evt: SortableEvent) {
 
 async function onDragEnd(key: FenceGroupKey) {
   stopDragPointerListen();
+
+  // OLE took over (or is taking over) — don't tear down the handoff or treat as fence drop.
+  if (shellDrag.isPending()) {
+    pendingSpecialDrop.value = null;
+    dragSourcePath.value = "";
+    clearFolderDropHighlight();
+    dragging.value = false;
+    fenceDraggingKey.value = null;
+    markIconDragEnd();
+    return;
+  }
+
   const pending = pendingSpecialDrop.value;
   const src = dragSourcePath.value || pending?.src || "";
   let drop:

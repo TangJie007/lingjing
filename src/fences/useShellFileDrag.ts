@@ -3,8 +3,8 @@
 import { clearIconDragArm } from "./iconDragCursor";
 import { friendlyError, showFenceToast } from "./fenceUi";
 
-const PROBE_INTERVAL_MS = 120;
-const PROBE_MIN_GAP_MS = 100;
+/** Poll while cursor may leave the webview (no pointer events over Explorer). */
+const PROBE_INTERVAL_MS = 32;
 /** Skip huge image data-URLs as OLE preview — decode/copy cost dominates. */
 const MAX_PREVIEW_CHARS = 48_000;
 
@@ -65,10 +65,11 @@ export function useShellFileDrag(opts?: {
   let previewDataUrl: string | null = null;
   let shiftKey = false;
   let ctrlKey = false;
-  let foreignHits = 0;
-  let lastProbe = 0;
   let inFlight = false;
-  let pending = false;
+  /** True once we commit to OLE — blocks Sortable end() from aborting handoff. */
+  let handoff = false;
+  /** end() during an in-flight probe — finish the probe before clearing. */
+  let endAfterProbe = false;
   let suspended = false;
   let session = 0;
   let pollTimer: number | null = null;
@@ -82,10 +83,19 @@ export function useShellFileDrag(opts?: {
 
   function startPoll() {
     stopPoll();
-    if (!activePath || suspended) return;
+    if (!activePath || suspended || handoff) return;
     pollTimer = window.setInterval(() => {
       void probe();
     }, PROBE_INTERVAL_MS);
+  }
+
+  function clearSession() {
+    stopPoll();
+    activePath = "";
+    inFlight = false;
+    endAfterProbe = false;
+    suspended = false;
+    session += 1;
   }
 
   function resetUi() {
@@ -99,31 +109,32 @@ export function useShellFileDrag(opts?: {
       preview && preview.length <= MAX_PREVIEW_CHARS ? preview : null;
     shiftKey = false;
     ctrlKey = false;
-    foreignHits = 0;
-    lastProbe = 0;
     inFlight = false;
-    pending = false;
+    handoff = false;
+    endAfterProbe = false;
     suspended = false;
     session += 1;
     startPoll();
   }
 
   function end() {
+    // Sortable mouseup often races OLE handoff — don't abort mid-flight.
+    if (handoff) return;
     stopPoll();
-    activePath = "";
-    pending = false;
-    inFlight = false;
-    foreignHits = 0;
-    suspended = false;
-    session += 1;
+    if (inFlight) {
+      // Keep activePath/session so a probe that already saw "foreign" can hand off.
+      endAfterProbe = true;
+      return;
+    }
+    clearSession();
   }
 
   /** Pause OLE handoff (e.g. while hovering a folder drop target). */
   function setSuspended(next: boolean) {
+    if (handoff) return;
     if (suspended === next) return;
     suspended = next;
     if (next) {
-      foreignHits = 0;
       stopPoll();
     } else if (activePath) {
       startPoll();
@@ -136,14 +147,19 @@ export function useShellFileDrag(opts?: {
   }
 
   function isPending() {
-    return pending;
+    return handoff;
   }
 
   async function probe() {
-    if (!activePath || pending || inFlight || suspended || !window.__TAURI__) return;
-    const now = performance.now();
-    if (now - lastProbe < PROBE_MIN_GAP_MS) return;
-    lastProbe = now;
+    if (
+      !activePath ||
+      handoff ||
+      inFlight ||
+      suspended ||
+      !window.__TAURI__
+    ) {
+      return;
+    }
 
     const mySession = session;
     inFlight = true;
@@ -151,45 +167,56 @@ export function useShellFileDrag(opts?: {
       const foreign = await window.__TAURI__.core.invoke<boolean>(
         "is_desktop_drag_over_foreign",
       );
-      if (mySession !== session || !activePath || pending || suspended) return;
-      if (!foreign) {
-        foreignHits = 0;
+      // Single-threaded: set handoff before any further await so nested
+      // Sortable end() → end() cannot abort this handoff.
+      if (mySession !== session || handoff || suspended) {
+        if (endAfterProbe) clearSession();
         return;
       }
-      foreignHits += 1;
-      if (foreignHits < 2) return;
+      if (!foreign || !activePath) {
+        if (endAfterProbe) clearSession();
+        return;
+      }
 
-      pending = true;
+      handoff = true;
+      endAfterProbe = false;
       const path = activePath;
       const mode = ctrlKey && !shiftKey ? "copy" : "move";
       const preview = previewDataUrl;
       stopPoll();
-      end();
+      activePath = "";
 
+      // End Sortable while LBUTTON is still physically down (DoDragDrop needs it).
       cancelHtmlDragArtifacts();
       opts?.onUiReset?.();
 
       try {
-        await window.__TAURI__.core.invoke("start_desktop_file_drag", {
-          path,
-          mode,
-          previewDataUrl: preview,
-        });
+        const started = await window.__TAURI__.core.invoke<boolean>(
+          "try_start_desktop_file_drag_if_foreign",
+          {
+            path,
+            mode,
+            previewDataUrl: preview,
+          },
+        );
+        if (!started) {
+          // Cursor left foreign window before OLE could start.
+          resetUi();
+        }
+        // When started, native drag already finished; UI was reset above.
       } catch (err) {
         const msg = friendlyError(err);
         if (!msg.includes("鼠标已松开")) {
           showFenceToast(msg);
         }
-      } finally {
         resetUi();
       }
     } catch (err) {
       showFenceToast(friendlyError(err));
-      foreignHits = 0;
       resetUi();
     } finally {
       inFlight = false;
-      pending = false;
+      handoff = false;
     }
   }
 
