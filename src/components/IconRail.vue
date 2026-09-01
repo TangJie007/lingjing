@@ -3,11 +3,17 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NAV_ROUTE_NAMES, type NavRouteName } from "../router";
 import { NAV_FREQ, playClick } from "../composables/useAudio";
+import iconOnline from "../assets/svg/online.svg";
+import iconLocal from "../assets/svg/local.svg";
+import iconPat from "../assets/svg/pat.svg";
+import iconSetting from "../assets/svg/setting.svg";
+import iconAbout from "../assets/svg/about.svg";
 
 interface NavItem {
   key: NavRouteName;
   label: string;
   aria: string;
+  icon: string;
 }
 
 const route = useRoute();
@@ -22,11 +28,11 @@ const activeKey = computed(() => {
 });
 
 const items: NavItem[] = [
-  { key: "online", label: "在线", aria: "在线资源与我的收藏" },
-  { key: "local", label: "本地", aria: "本地资源" },
-  { key: "pet", label: "桌宠", aria: "桌宠管理" },
-  { key: "settings", label: "设置", aria: "设置" },
-  { key: "about", label: "关于", aria: "关于" },
+  { key: "online", label: "在线", aria: "在线资源与我的收藏", icon: iconOnline },
+  { key: "local", label: "本地", aria: "本地资源", icon: iconLocal },
+  { key: "pet", label: "桌宠", aria: "桌宠管理", icon: iconPat },
+  { key: "settings", label: "设置", aria: "设置", icon: iconSetting },
+  { key: "about", label: "关于", aria: "关于", icon: iconAbout },
 ];
 
 const indicator = ref<HTMLElement | null>(null);
@@ -82,6 +88,11 @@ watch(activeKey, () => nextTick(syncIndicator));
     <template v-for="it in items" :key="it.key">
       <div v-if="it.key === 'settings'" class="nav-sep" />
       <div
+        v-if="it.key === 'about'"
+        class="nav-spacer"
+        aria-hidden="true"
+      />
+      <div
         class="nav-item"
         :class="{ active: activeKey === it.key }"
         :data-nav="it.label"
@@ -93,30 +104,13 @@ watch(activeKey, () => nextTick(syncIndicator));
         @click="(e) => fire(it, e.currentTarget as HTMLElement, e)"
         @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(it, e.currentTarget as HTMLElement); } }"
       >
-        <svg v-if="it.key === 'online'" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-        </svg>
-        <svg v-else-if="it.key === 'local'" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        </svg>
-        <svg v-else-if="it.key === 'pet'" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="7.5" cy="8" r="2.2" />
-          <circle cx="16.5" cy="8" r="2.2" />
-          <circle cx="5" cy="13.5" r="2" />
-          <circle cx="19" cy="13.5" r="2" />
-          <ellipse cx="12" cy="16.5" rx="4.2" ry="3.4" />
-        </svg>
-        <svg v-else-if="it.key === 'settings'" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
-        </svg>
-        <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v5M12 8h.01" />
-        </svg>
+        <img
+          class="nav-icon"
+          :src="it.icon"
+          alt=""
+          draggable="false"
+          aria-hidden="true"
+        />
         <span>{{ it.label }}</span>
       </div>
     </template>

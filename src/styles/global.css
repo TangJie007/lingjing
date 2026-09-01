@@ -288,7 +288,7 @@ input, textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 13px 18px;
+  padding: 5px 15px;
   border-bottom: none;
   background: var(--shell-bg);
   flex-shrink: 0;
@@ -302,14 +302,45 @@ input, textarea {
   transition: background var(--dur-base) var(--ease);
 }
 .win-dots span.a { background: var(--secondary); }
-.win-logo { app-region: no-drag; }
+.win-brand {
+  position: relative;
+  flex-shrink: 0;
+  width: 210px;
+  height: 34px;
+  app-region: no-drag;
+}
+.win-logo {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  app-region: no-drag;
+}
+.win-logo-txt {
+  position: absolute;
+  left: 28px;
+  top: 3px;
+  height: 28px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
 .win-name { font-size: 14px; font-weight: 700; }
 .win-sub { font-size: 11px; color: var(--text-2); }
 .win-spacer { flex: 1; }
+.win-acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  app-region: no-drag;
+}
 .win-act {
   font-size: 12px;
   color: var(--text-2);
-  padding: 6px;
+  padding: 4px;
   border: none;
   border-radius: var(--r-md);
   cursor: pointer;
@@ -318,7 +349,7 @@ input, textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   line-height: 0;
   transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
@@ -334,8 +365,8 @@ input, textarea {
   border-color: transparent;
 }
 .win-act.icon-btn {
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 26px;
+  min-height: 26px;
 }
 .win-act-icon {
   width: 16px;
@@ -344,9 +375,13 @@ input, textarea {
   pointer-events: none;
   object-fit: contain;
 }
+.win-act:not(.login) .win-act-icon {
+  width: 12px;
+  height: 12px;
+}
 .win-act.login {
   max-width: 140px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   overflow: hidden;
 }
 .win-act.login .win-act-label {
@@ -374,32 +409,33 @@ input, textarea {
   flex: 1;
   min-height: 0;
   background: var(--shell-bg);
-  gap: 8px;
-  padding: 0 8px 8px;
+  gap: 2px;
+  padding: 0 12px 15px 4px;
 }
 
 /* ---- 侧栏 ---- */
 .sidebar {
-  width: 80px;
+  width: 56px;
   flex-shrink: 0;
   border-right: none;
-  padding: 16px 8px;
+  padding: 10px 4px;
   background: var(--shell-bg);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   position: relative;
   transition: background var(--dur-base) var(--ease);
 }
-.nav-sep { height: 8px; }
+.nav-sep { height: 6px; }
+.nav-spacer { flex: 1; min-height: 8px; }
 .nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 11px 4px;
+  gap: 3px;
+  padding: 5px 2px;
   border-radius: var(--r-md);
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--text-2);
   cursor: pointer;
   position: relative;
@@ -408,20 +444,33 @@ input, textarea {
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease-spring);
 }
-.nav-item svg {
-  width: 23px; height: 23px;
-  stroke: currentColor; fill: none;
-  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+.nav-item svg,
+.nav-item .nav-icon {
+  width: 18px;
+  height: 18px;
   transform-origin: center;
   will-change: transform;
   transition: transform var(--dur-base) var(--ease-spring);
 }
+.nav-item svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nav-item .nav-icon {
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
+}
 .nav-indicator {
   position: absolute; left: 0; top: 0;
-  width: 3px; height: var(--ih, 30px);
-  border-radius: 0 3px 3px 0;
+  width: 2px; height: var(--ih, 24px);
+  border-radius: 0 2px 2px 0;
   background: var(--primary);
-  transform: translateY(var(--iy, 16px));
+  transform: translateY(var(--iy, 12px));
   transition: transform var(--dur-base) var(--ease-spring), height var(--dur-base) var(--ease-spring);
   will-change: transform;
   pointer-events: none;
@@ -430,24 +479,28 @@ input, textarea {
   content: "";
   position: absolute;
   left: var(--rx, 50%); top: var(--ry, 50%);
-  width: 66px; height: 66px;
-  margin: -33px 0 0 -33px;
+  width: 48px; height: 48px;
+  margin: -24px 0 0 -24px;
   border-radius: 50%;
   background: radial-gradient(circle, currentColor 0%, transparent 68%);
   opacity: 0;
   pointer-events: none;
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
-.nav-item:hover svg { transform: translateY(-1px) scale(1.08); }
+.nav-item:hover svg,
+.nav-item:hover .nav-icon { transform: translateY(-1px) scale(1.08); }
 .nav-item:active { transform: scale(0.95); }
 .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 .nav-item.ripple::after { animation: navRipple 380ms var(--ease-out); }
-.nav-item.pop svg { animation: navPop var(--dur-base) var(--ease-spring); }
-.nav-item.spin svg { animation: gearSpin 0.6s var(--ease); }
-.nav-item.beat svg { animation: heartBeat 0.72s var(--ease); }
+.nav-item.pop svg,
+.nav-item.pop .nav-icon { animation: navPop var(--dur-base) var(--ease-spring); }
+.nav-item.spin svg,
+.nav-item.spin .nav-icon { animation: gearSpin 0.6s var(--ease); }
+.nav-item.beat svg,
+.nav-item.beat .nav-icon { animation: heartBeat 0.72s var(--ease); }
 .nav-item .badge-dot {
-  position: absolute; top: 8px; right: 18px;
-  width: 7px; height: 7px; border-radius: 50%;
+  position: absolute; top: 5px; right: 10px;
+  width: 6px; height: 6px; border-radius: 50%;
   background: var(--error);
   animation: pulse 2s var(--ease) infinite;
 }

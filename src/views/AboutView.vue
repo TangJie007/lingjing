@@ -7,7 +7,7 @@ import AppLogo from "../components/AppLogo.vue";
     <div class="placeholder">
       <AppLogo :size="72" />
       <h3>关于灵镜</h3>
-      <p>动态壁纸客户端 · Phase 3 引擎已接入</p>
+      <p>版本 v1.2.1</p>
     </div>
   </div>
 </template>
