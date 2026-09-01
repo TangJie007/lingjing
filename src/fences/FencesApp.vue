@@ -112,12 +112,17 @@ const pendingFenceItems = ref<DesktopItem[] | null>(null);
 const dragging = ref(false);
 const fenceDraggingKey = ref<FenceGroupKey | null>(null);
 const fileDropHover = ref(false);
-/** Drop-on-folder target while Sortable-dragging (Explorer-like move into folder). */
-const pendingFolderDrop = ref<{ src: string; folder: string } | null>(null);
+/** Drop-on-folder / recycle while Sortable-dragging. */
+const pendingSpecialDrop = ref<
+  | { src: string; kind: "folder"; folder: string }
+  | { src: string; kind: "recycle" }
+  | null
+>(null);
 const dragSourcePath = ref("");
 const dirtyGroups = new Set<FenceGroupKey>();
 let lastDragPointer = { x: 0, y: 0 };
 let folderDropEl: HTMLElement | null = null;
+let dragPointerListening = false;
 const fencesCollapsed = ref(false);
 const fenceItemCount = computed(() =>
   (Object.keys(groups) as FenceGroupKey[]).reduce(
@@ -163,9 +168,10 @@ const {
 
 const shellDrag = useShellFileDrag({
   onUiReset: () => {
+    stopDragPointerListen();
     dragging.value = false;
     fenceDraggingKey.value = null;
-    pendingFolderDrop.value = null;
+    pendingSpecialDrop.value = null;
     dragSourcePath.value = "";
     clearFolderDropHighlight();
     markIconDragEnd();
@@ -220,23 +226,103 @@ function setFolderDropHighlight(cell: HTMLElement | null) {
   cell?.classList.add("folder-drop-over");
 }
 
-function findFolderDropCell(
+function cellUnderPoint(
+  x: number,
+  y: number,
+  dragged?: HTMLElement | null,
+): HTMLElement | null {
+  const under = document.elementFromPoint(x, y) as HTMLElement | null;
+  const cell = under?.closest?.(".cell") as HTMLElement | null;
+  if (!cell || cell === dragged) return null;
+  return cell;
+}
+
+function specialDropFromCell(
+  cell: HTMLElement | null,
+  srcPath: string,
+):
+  | { cell: HTMLElement; kind: "folder"; folder: string }
+  | { cell: HTMLElement; kind: "recycle" }
+  | null {
+  if (!cell || !srcPath) return null;
+  const path = cell.dataset?.path || "";
+  if (!path || path === srcPath) return null;
+  if (cell.dataset?.recycle === "1") {
+    return { cell, kind: "recycle" };
+  }
+  if (cell.dataset?.isDir === "1") {
+    return { cell, kind: "folder", folder: path };
+  }
+  return null;
+}
+
+function findSpecialDrop(
   evt: { dragged?: HTMLElement; related?: HTMLElement },
   originalEvent?: Event,
-): HTMLElement | null {
+): ReturnType<typeof specialDropFromCell> {
   const dragged = evt.dragged;
-  // Prefer Sortable related — avoid elementFromPoint on every move.
+  const srcPath =
+    dragSourcePath.value || dragged?.dataset?.path || "";
   const related = evt.related?.closest?.(".cell") as HTMLElement | null;
-  if (related && related !== dragged && related.dataset?.isDir === "1") {
-    return related;
-  }
+  const fromRelated = specialDropFromCell(related, srcPath);
+  if (fromRelated && related !== dragged) return fromRelated;
+
   const fromTarget = (originalEvent?.target as HTMLElement | null)?.closest?.(
     ".cell",
   ) as HTMLElement | null;
-  if (fromTarget && fromTarget !== dragged && fromTarget.dataset?.isDir === "1") {
-    return fromTarget;
+  const fromEvt = specialDropFromCell(fromTarget, srcPath);
+  if (fromEvt && fromTarget !== dragged) return fromEvt;
+
+  // Cross-group (files → apps recycle): Sortable may not report related.
+  return specialDropFromCell(
+    cellUnderPoint(lastDragPointer.x, lastDragPointer.y, dragged),
+    srcPath,
+  );
+}
+
+function applySpecialDropTarget(
+  drop: ReturnType<typeof specialDropFromCell>,
+  srcPath: string,
+): boolean {
+  if (!drop || !srcPath) {
+    setFolderDropHighlight(null);
+    pendingSpecialDrop.value = null;
+    shellDrag.setSuspended(false);
+    return false;
   }
-  return null;
+  setFolderDropHighlight(drop.cell);
+  pendingSpecialDrop.value =
+    drop.kind === "recycle"
+      ? { src: srcPath, kind: "recycle" }
+      : { src: srcPath, kind: "folder", folder: drop.folder };
+  shellDrag.setSuspended(true);
+  return true;
+}
+
+function onDragPointerMove(e: PointerEvent) {
+  if (!dragging.value) return;
+  if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) return;
+  lastDragPointer = { x: e.clientX, y: e.clientY };
+  shellDrag.setModifiers(!!e.shiftKey, !!e.ctrlKey);
+  const srcPath = dragSourcePath.value;
+  if (!srcPath) return;
+  const drop = specialDropFromCell(
+    cellUnderPoint(e.clientX, e.clientY),
+    srcPath,
+  );
+  applySpecialDropTarget(drop, srcPath);
+}
+
+function startDragPointerListen() {
+  if (dragPointerListening) return;
+  dragPointerListening = true;
+  window.addEventListener("pointermove", onDragPointerMove, true);
+}
+
+function stopDragPointerListen() {
+  if (!dragPointerListening) return;
+  dragPointerListening = false;
+  window.removeEventListener("pointermove", onDragPointerMove, true);
 }
 
 function removeItemLocally(path: string) {
@@ -257,33 +343,41 @@ function onDragStart(key: FenceGroupKey, evt: SortableEvent) {
   fenceDraggingKey.value = key === "app" ? null : key;
   dirtyGroups.clear();
   markDirty(key);
-  pendingFolderDrop.value = null;
+  pendingSpecialDrop.value = null;
   clearFolderDropHighlight();
   const el = evt.item as HTMLElement;
   const path = el?.dataset?.path || "";
   dragSourcePath.value = path;
   shellDrag.setSuspended(false);
   shellDrag.begin(path, cellPreviewDataUrl(el));
+  startDragPointerListen();
 }
 
 async function onDragEnd(key: FenceGroupKey) {
-  const src =
-    dragSourcePath.value || pendingFolderDrop.value?.src || "";
-  let folder = pendingFolderDrop.value?.folder || "";
-  const under = document.elementFromPoint(
-    lastDragPointer.x,
-    lastDragPointer.y,
-  ) as HTMLElement | null;
-  const cell = under?.closest?.(".cell") as HTMLElement | null;
-  if (
-    cell?.dataset?.isDir === "1" &&
-    cell.dataset?.path &&
-    cell.dataset.path !== src
-  ) {
-    folder = cell.dataset.path;
+  stopDragPointerListen();
+  const pending = pendingSpecialDrop.value;
+  const src = dragSourcePath.value || pending?.src || "";
+  let drop:
+    | { kind: "folder"; folder: string }
+    | { kind: "recycle" }
+    | null = pending
+      ? pending.kind === "recycle"
+        ? { kind: "recycle" }
+        : { kind: "folder", folder: pending.folder }
+      : null;
+
+  const under = specialDropFromCell(
+    cellUnderPoint(lastDragPointer.x, lastDragPointer.y),
+    src,
+  );
+  if (under) {
+    drop =
+      under.kind === "recycle"
+        ? { kind: "recycle" }
+        : { kind: "folder", folder: under.folder };
   }
 
-  pendingFolderDrop.value = null;
+  pendingSpecialDrop.value = null;
   dragSourcePath.value = "";
   clearFolderDropHighlight();
   dragging.value = false;
@@ -292,15 +386,21 @@ async function onDragEnd(key: FenceGroupKey) {
   shellDrag.end();
   markIconDragEnd();
 
-  if (src && folder && window.__TAURI__) {
+  if (src && drop && window.__TAURI__) {
     markDirty(key);
     removeItemLocally(src);
     persistDirty();
     try {
-      await window.__TAURI__.core.invoke("move_desktop_item_into_folder", {
-        path: src,
-        folderPath: folder,
-      });
+      if (drop.kind === "recycle") {
+        await window.__TAURI__.core.invoke("delete_desktop_item", {
+          path: src,
+        });
+      } else {
+        await window.__TAURI__.core.invoke("move_desktop_item_into_folder", {
+          path: src,
+          folderPath: drop.folder,
+        });
+      }
     } catch (e) {
       showFenceToast(friendlyError(e));
       try {
@@ -330,20 +430,12 @@ function onDragMove(
   }
   shellDrag.setModifiers(!!oe?.shiftKey, !!oe?.ctrlKey);
 
-  const folderCell = findFolderDropCell(evt, originalEvent);
   const srcPath =
     dragSourcePath.value || evt.dragged?.dataset?.path || "";
-  const folderPath = folderCell?.dataset?.path || "";
-  if (folderCell && folderPath && srcPath && folderPath !== srcPath) {
-    setFolderDropHighlight(folderCell);
-    pendingFolderDrop.value = { src: srcPath, folder: folderPath };
-    shellDrag.setSuspended(true);
+  const drop = findSpecialDrop(evt, originalEvent);
+  if (applySpecialDropTarget(drop, srcPath)) {
     return false;
   }
-
-  setFolderDropHighlight(null);
-  pendingFolderDrop.value = null;
-  shellDrag.setSuspended(false);
   return true;
 }
 
@@ -455,6 +547,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  stopDragPointerListen();
   externalDrop.stop();
   if (window.__fenceApply === applyFenceItems) delete window.__fenceApply;
 });

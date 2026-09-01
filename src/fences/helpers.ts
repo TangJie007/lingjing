@@ -31,6 +31,14 @@ const BUILTIN_ORDER = [
   "F02C1A0D-B21F-4110-8426-0A0C959C3602",
 ];
 
+const RECYCLE_BIN_GUID = "645FF040-5081-101B-9F08-00AA002F954E";
+
+export function isRecycleBinPath(path: string): boolean {
+  return String(path || "")
+    .toUpperCase()
+    .includes(RECYCLE_BIN_GUID);
+}
+
 export function saveOrder(key: string, paths: string[]) {
   saveFenceOrder(key, paths);
 }

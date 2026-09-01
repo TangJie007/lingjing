@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { iconFor } from "../helpers";
+import { iconFor, isRecycleBinPath } from "../helpers";
 import { onIconPointerDown, onIconPointerUp } from "../iconDragCursor";
 import { tryIconDoubleClick } from "../iconOpen";
 import type { DesktopItem } from "../types";
@@ -18,6 +18,7 @@ const emit = defineEmits<{
 }>();
 
 const canDrag = computed(() => !props.item.builtin);
+const isRecycle = computed(() => isRecycleBinPath(props.item.path));
 const lastClickAt = ref(0);
 
 function onActivate(e: MouseEvent) {
@@ -43,9 +44,11 @@ function onPointerUp() {
       draggable: canDrag,
       'no-drag': !canDrag,
       'is-folder': !!item.isDir && !item.builtin,
+      'is-recycle': isRecycle,
     }"
     :data-path="item.path"
     :data-is-dir="item.isDir && !item.builtin ? '1' : '0'"
+    :data-recycle="isRecycle ? '1' : '0'"
     :title="item.path"
     @click="onActivate"
     @pointerenter="emit('preload')"

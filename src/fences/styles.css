@@ -269,7 +269,8 @@ body,
   outline: 1px dashed rgba(255, 255, 255, 0.55);
 }
 
-.cell.is-folder.folder-drop-over {
+.cell.is-folder.folder-drop-over,
+.cell.is-recycle.folder-drop-over {
   background: rgba(90, 170, 255, 0.28);
   outline: 2px solid rgba(120, 190, 255, 0.85);
   outline-offset: 1px;
