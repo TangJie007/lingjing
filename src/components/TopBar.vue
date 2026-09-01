@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { inject, ref, type Ref } from "vue";
 
-const sort = inject<Ref<string>>("topbarSort", ref("最热"));
 const search = inject<Ref<string>>("topbarSearch", ref(""));
 </script>
 
@@ -24,18 +23,6 @@ const search = inject<Ref<string>>("topbarSearch", ref(""));
         :class="{ 'is-empty': !search }"
         aria-label="搜索壁纸"
       />
-    </div>
-    <div class="sort" role="tablist">
-      <span
-        v-for="s in ['最热', '最新']"
-        :key="s"
-        :class="{ on: sort === s }"
-        role="tab"
-        tabindex="0"
-        :aria-selected="sort === s"
-        @click="sort = s"
-        @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort = s; } }"
-      >{{ s }}</span>
     </div>
   </div>
 </template>

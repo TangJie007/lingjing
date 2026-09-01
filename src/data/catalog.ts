@@ -20,17 +20,7 @@ export interface WallpaperItem {
   importedAt?: number | string;
 }
 
-export const CATEGORIES = [
-  "全部",
-  "推荐",
-  "游戏",
-  "动漫",
-  "风景",
-  "动物",
-  "科技",
-  "趣味",
-  "人机交互",
-] as const;
+export const CATEGORIES = ["全部", "科技", "风景", "动漫"] as const;
 
 export const SORTS = ["最热", "最新"] as const;
 
