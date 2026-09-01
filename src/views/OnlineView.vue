@@ -3,6 +3,7 @@ import { computed, inject, ref, watch, type Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import TopBar from "../components/TopBar.vue";
 import WallpaperCardGrid from "../components/WallpaperCardGrid.vue";
+import EmptyState from "../components/EmptyState.vue";
 import { CATALOG, type WallpaperItem } from "../data/catalog";
 
 const props = withDefaults(
@@ -131,15 +132,9 @@ const totalCount = computed(() => (props.items ?? CATALOG).length);
         >{{ c }}</span>
       </div>
 
-      <div v-if="!onlineEnabled" class="placeholder">
-        <p>在线功能已关闭，可在设置中开启</p>
-      </div>
-      <div v-else-if="loading" class="placeholder">
-        <p>正在加载在线壁纸…</p>
-      </div>
-      <div v-else-if="discoverList.length === 0" class="placeholder">
-        <p>{{ emptyText }}</p>
-      </div>
+      <EmptyState v-if="!onlineEnabled" description="在线功能已关闭，可在设置中开启" />
+      <EmptyState v-else-if="loading" description="正在加载在线壁纸…" />
+      <EmptyState v-else-if="discoverList.length === 0" :description="emptyText" />
       <WallpaperCardGrid
         v-else
         :items="discoverList"
@@ -153,9 +148,10 @@ const totalCount = computed(() => (props.items ?? CATALOG).length);
     <template v-else>
       <div class="fav-sub">已收藏 {{ favoriteList.length }} 张壁纸 · 本地保存，无需登录</div>
 
-      <div v-if="favoriteList.length === 0" class="placeholder">
-        <p>还没有收藏，在壁纸卡片上点收藏吧</p>
-      </div>
+      <EmptyState
+        v-if="favoriteList.length === 0"
+        description="还没有收藏，在壁纸卡片上点收藏吧"
+      />
       <WallpaperCardGrid
         v-else
         :items="favoriteList"

@@ -1263,6 +1263,26 @@ use std::ffi::OsStr;
         }
     }
 
+    pub fn shell_open(path: &str) -> Result<(), String> {
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        unsafe {
+            let wpath = wide(path);
+            let verb = wide("open");
+            let ret = ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(wpath.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOW,
+            );
+            if (ret.0 as isize) <= 32 {
+                return Err(format!("打开失败: code={}", ret.0 as isize));
+            }
+        }
+        Ok(())
+    }
+
     pub fn shell_show_properties(path: &str) -> Result<(), String> {
         use windows::Win32::UI::Shell::ShellExecuteW;
         unsafe {

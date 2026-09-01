@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import WallpaperCardGrid from "../components/WallpaperCardGrid.vue";
+import EmptyState from "../components/EmptyState.vue";
 import type { WallpaperItem } from "../data/catalog";
 
 const props = defineProps<{
@@ -33,9 +34,7 @@ function confirmRemove(item: WallpaperItem, ev: Event) {
     </div>
     <div class="fav-sub">拖放文件到窗口或点击导入 · 仅支持 mp4 / webm 视频</div>
 
-    <div v-if="empty" class="placeholder">
-      <p>拖放或点击导入视频壁纸</p>
-    </div>
+    <EmptyState v-if="empty" description="拖放或点击导入视频壁纸" />
 
     <WallpaperCardGrid
       v-else

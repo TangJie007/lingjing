@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import VueSkeletonLoader from "vue3-skeleton-loader";
+import "vue3-skeleton-loader/dist/index.css";
 import type { WallpaperItem } from "../data/catalog";
 import { resolveMediaUri } from "../composables/useEngine";
 import {
@@ -29,6 +31,7 @@ const posterKey = computed(() => videoPosterKey(props.item));
 const mediaReady = ref(false);
 const posterUrl = ref<string | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
+const isLoading = computed(() => !!uri.value && !mediaReady.value);
 let seekPending = false;
 
 function applyCachedPoster() {
@@ -48,7 +51,6 @@ watch(
       posterUrl.value = null;
       return;
     }
-    // 命中 base64 缓存则直接用，避免列表刷新时闪空再截帧
     if (applyCachedPoster()) return;
     mediaReady.value = false;
     posterUrl.value = null;
@@ -114,10 +116,23 @@ function onImgLoad() {
     class="thumb-bg"
     :class="{
       'has-media': mediaReady,
+      'is-loading': isLoading,
       'is-video-preview': isPreview && showVideo,
     }"
-    :style="{ background: item.thumb }"
+    :style="isLoading ? undefined : { background: item.thumb }"
   >
+    <VueSkeletonLoader
+      v-if="isLoading"
+      class="thumb-skeleton"
+      type="image"
+      animation="wave"
+      width="100%"
+      height="100%"
+      border-radius="0"
+      base-color="#E8EAEF"
+      highlight-color="#F7F8FA"
+      duration="1.4s"
+    />
     <video
       v-if="showVideo && (isPreview || !posterUrl)"
       ref="videoRef"
@@ -154,6 +169,25 @@ function onImgLoad() {
 </template>
 
 <style scoped>
+.thumb-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.thumb-skeleton {
+  position: absolute !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+.thumb-skeleton :deep(.vue-skeleton-loader-bone),
+.thumb-skeleton :deep(.v-skeleton-loader-image) {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
 .thumb-media {
   position: absolute;
   inset: 0;
@@ -164,6 +198,7 @@ function onImgLoad() {
   opacity: 0;
   transition: opacity var(--dur-base) var(--ease);
   pointer-events: none;
+  z-index: 1;
 }
 .thumb-bg.has-media .thumb-media {
   opacity: 1;

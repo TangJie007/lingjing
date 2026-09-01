@@ -2,6 +2,7 @@
 import { computed, inject } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DetailMediaPreview from "../components/DetailMediaPreview.vue";
+import EmptyState from "../components/EmptyState.vue";
 import type { WallpaperItem } from "../data/catalog";
 
 const route = useRoute();
@@ -35,8 +36,8 @@ function goBack() {
       <h2 v-if="item">{{ item.name }}</h2>
     </div>
 
-    <div v-if="!item" class="placeholder">
-      <p>未找到该壁纸</p>
+    <div v-if="!item" class="detail-empty">
+      <EmptyState description="未找到该壁纸" />
       <button type="button" class="pill imp" @click="goBack">返回列表</button>
     </div>
 
@@ -88,3 +89,15 @@ function goBack() {
     </template>
   </div>
 </template>
+
+<style scoped>
+.detail-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+</style>

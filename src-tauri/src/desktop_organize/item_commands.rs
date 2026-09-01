@@ -113,23 +113,16 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        if let Some(clsid) = super::namespace_clsid_for_path(trimmed) {
-            let target = if matches!(super::builtin_kind_from_path(trimmed), Some("network")) {
+        let target = if let Some(clsid) = super::namespace_clsid_for_path(trimmed) {
+            if matches!(super::builtin_kind_from_path(trimmed), Some("network")) {
                 "shell:NetworkPlacesFolder".to_string()
             } else {
                 format!("shell:{clsid}")
-            };
-            std::process::Command::new("explorer.exe")
-                .arg(&target)
-                .spawn()
-                .map_err(|e| format!("打开系统图标失败: {e}"))?;
-            return Ok(());
-        }
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", trimmed])
-            .spawn()
-            .map_err(|e| format!("打开失败: {e}"))?;
-        return Ok(());
+            }
+        } else {
+            trimmed.to_string()
+        };
+        return win::shell_open(&target);
     }
     #[cfg(not(windows))]
     {

@@ -35,6 +35,9 @@ importers:
       vue-router:
         specifier: '4'
         version: 4.6.4(vue@3.5.41(typescript@5.6.3))
+      vue3-skeleton-loader:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4
@@ -981,6 +984,9 @@ packages:
     peerDependencies:
       typescript: '>=5.0.0'
 
+  vue3-skeleton-loader@1.0.3:
+    resolution: {integrity: sha512-xsSg91gsnCCIH9SKFDuQKREY73XDkwCK6fE1U1JMhUXtWciui/e6JfoP5ab4ay7hcrokr58vnwDfJg+jN3Yiew==}
+
   vue@3.5.41:
     resolution: {integrity: sha512-2laE0p+aK+/AOPG/XL/WepOs/GlK755LJ1XECi9kDUrz1FKNw8rb2Xzlw9JS1rqEV55nb0ttsKxVlTCcd+R5cg==}
     peerDependencies:
@@ -1714,6 +1720,8 @@ snapshots:
       '@volar/typescript': 2.4.15(typescript@5.6.3)
       '@vue/language-core': 2.2.12(typescript@5.6.3)
       typescript: 5.6.3
+
+  vue3-skeleton-loader@1.0.3: {}
 
   vue@3.5.41(typescript@5.6.3):
     dependencies:
