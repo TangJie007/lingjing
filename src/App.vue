@@ -27,6 +27,7 @@ import {
   type EngineState,
   type PauseRecommendPayload,
 } from "./composables/useEngine";
+import { forgetVideoPoster, videoPosterKey } from "./composables/useVideoPoster";
 import { loadSettings, useSettings, hasVersionRecord, completeFirstRun } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
 import { fetchOnlineWallpapers } from "./composables/useLingjingApi";
@@ -314,18 +315,16 @@ async function onRemoveLocal(item: WallpaperItem) {
     const wasCurrent = current.value?.id === item.id || engine.value?.mediaId === item.id;
     const newState = await removeLibraryItem(item.id);
     engine.value = newState;
+    forgetVideoPoster(videoPosterKey(item));
     localItems.value = localItems.value.filter((i) => i.id !== item.id);
     const { ids } = await loadFavoriteIds();
     await applyFavorites(ids);
     if (wasCurrent) {
       current.value = localItems.value[0] ?? CATALOG[0] ?? null;
-      showToast(`已移除并停止桌面壁纸「${item.name}」`);
-    } else {
-      if (current.value?.id === item.id) {
-        current.value = localItems.value[0] ?? CATALOG[0] ?? null;
-      }
-      showToast(`已从本地库移除「${item.name}」`);
+    } else if (current.value?.id === item.id) {
+      current.value = localItems.value[0] ?? CATALOG[0] ?? null;
     }
+    showToast("删除成功");
   } catch (e) {
     showToast(e instanceof Error ? e.message : String(e));
   }
@@ -347,8 +346,8 @@ async function runImport(paths?: string[] | null) {
       multiple: true,
       filters: [
         {
-          name: "Wallpaper",
-          extensions: ["mp4", "webm", "gif", "webp", "jpg", "jpeg", "png"],
+          name: "Video",
+          extensions: ["mp4", "webm"],
         },
       ],
     });
@@ -360,7 +359,7 @@ async function runImport(paths?: string[] | null) {
     const { items: imported, errors } = await importMedia(selected);
     await refreshLibrary();
     if (imported.length) {
-      showToast(`已导入 ${imported.length} 个文件`);
+      showToast("导入成功");
       await router.push({ name: "local" });
     } else {
       showToast("没有成功导入的文件");
@@ -380,10 +379,12 @@ function onDrop(e: DragEvent) {
   const paths: string[] = [];
   for (const f of Array.from(files)) {
     const p = (f as File & { path?: string }).path;
-    if (p) paths.push(p);
+    if (!p) continue;
+    if (!/\.(mp4|webm)$/i.test(p)) continue;
+    paths.push(p);
   }
   if (!paths.length) {
-    showToast("请使用导入按钮选择本地文件");
+    showToast("仅支持导入 mp4 / webm 视频");
     return;
   }
   void runImport(paths);

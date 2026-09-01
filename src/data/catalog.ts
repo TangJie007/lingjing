@@ -16,6 +16,8 @@ export interface WallpaperItem {
   source?: "catalog" | "local" | "online";
   /** Local library: source file missing (reference import) */
   missing?: boolean;
+  /** Local import time (ms since epoch); used as video poster cache key */
+  importedAt?: number | string;
 }
 
 export const CATEGORIES = [

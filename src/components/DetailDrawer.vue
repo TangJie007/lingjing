@@ -71,7 +71,6 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
           </svg>
           <div class="wheel-num" aria-live="polite">
             <div class="n">{{ remain }}</div>
-            <div class="l">秒后取消</div>
           </div>
         </div>
       </div>

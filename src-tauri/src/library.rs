@@ -20,6 +20,9 @@ pub struct LibraryItem {
     pub tags: Vec<String>,
     pub media_src: String,
     pub path: String,
+    /// Unix epoch milliseconds when imported; used as video poster cache key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_at: Option<i64>,
     #[serde(default, skip_serializing)]
     pub missing: bool,
 }
@@ -53,10 +56,7 @@ fn save_library(app: &AppHandle, file: &LibraryFile) -> Result<(), String> {
 }
 
 fn ext_allowed(ext: &str) -> bool {
-    matches!(
-        ext.to_ascii_lowercase().as_str(),
-        "mp4" | "webm" | "gif" | "webp" | "jpg" | "jpeg" | "png"
-    )
+    matches!(ext.to_ascii_lowercase().as_str(), "mp4" | "webm")
 }
 
 fn media_kind(ext: &str) -> &'static str {
@@ -77,6 +77,13 @@ fn thumb_for(kind: &str) -> String {
         "gif" => "linear-gradient(135deg,#bfdbfe,#2563eb)".into(),
         _ => "linear-gradient(135deg,#a5f3fc,#0891b2)".into(),
     }
+}
+
+fn now_imported_at_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +112,7 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
     }
     let mut imported = Vec::new();
     let mut errors = Vec::new();
+    let mut imported_at_base = now_imported_at_ms();
 
     for src in paths {
         let src_path = PathBuf::from(&src);
@@ -146,6 +154,11 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
         } else {
             (src_path.to_string_lossy().to_string(), src_path.to_string_lossy().to_string())
         };
+        let imported_at = {
+            let t = imported_at_base;
+            imported_at_base += 1;
+            t
+        };
         let item = LibraryItem {
             id: id.clone(),
             name,
@@ -159,6 +172,7 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
             tags: vec!["#本地".into()],
             media_src: path_str,
             path: stored,
+            imported_at: Some(imported_at),
             missing: false,
         };
         lib.items.insert(0, item.clone());

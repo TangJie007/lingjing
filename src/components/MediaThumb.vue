@@ -6,6 +6,7 @@ import {
   cacheVideoPoster,
   captureVideoFrame,
   getCachedVideoPoster,
+  videoPosterKey,
 } from "../composables/useVideoPoster";
 
 const props = withDefaults(
@@ -23,6 +24,7 @@ const showVideo = computed(() => props.item.type === "video" && !!uri.value);
 const showImage = computed(
   () => (props.item.type === "image" || props.item.type === "gif") && !!uri.value,
 );
+const posterKey = computed(() => videoPosterKey(props.item));
 
 const mediaReady = ref(false);
 const posterUrl = ref<string | null>(null);
@@ -30,9 +32,7 @@ const videoRef = ref<HTMLVideoElement | null>(null);
 let seekPending = false;
 
 function applyCachedPoster() {
-  const src = props.item.mediaSrc;
-  if (!src) return false;
-  const cached = getCachedVideoPoster(props.item.id, src);
+  const cached = getCachedVideoPoster(posterKey.value);
   if (!cached) return false;
   posterUrl.value = cached;
   mediaReady.value = true;
@@ -40,13 +40,18 @@ function applyCachedPoster() {
 }
 
 watch(
-  () => [props.item.id, props.item.mediaSrc, uri.value, props.mode] as const,
+  () => [posterKey.value, props.mode, showVideo.value] as const,
   () => {
+    seekPending = false;
+    if (isPreview.value || !showVideo.value) {
+      mediaReady.value = false;
+      posterUrl.value = null;
+      return;
+    }
+    // 命中 base64 缓存则直接用，避免列表刷新时闪空再截帧
+    if (applyCachedPoster()) return;
     mediaReady.value = false;
     posterUrl.value = null;
-    seekPending = false;
-    if (isPreview.value || !showVideo.value) return;
-    applyCachedPoster();
   },
   { immediate: true },
 );
@@ -73,13 +78,12 @@ function onThumbSeeked() {
   if (isPreview.value) return;
   seekPending = false;
   mediaReady.value = true;
-  const src = props.item.mediaSrc;
-  if (!src || posterUrl.value) return;
+  if (posterUrl.value) return;
   const v = videoRef.value;
   if (!v) return;
   const dataUrl = captureVideoFrame(v);
   if (dataUrl) {
-    cacheVideoPoster(props.item.id, src, dataUrl);
+    cacheVideoPoster(posterKey.value, dataUrl);
     posterUrl.value = dataUrl;
   }
 }

@@ -1,26 +1,41 @@
+import type { WallpaperItem } from "../data/catalog";
+
+/** key → base64 dataURL */
 const posterCache = new Map<string, string>();
 
-function cacheKey(id: string, src: string) {
-  return `${id}:${src}`;
-}
-
-export function getCachedVideoPoster(id: string, src: string): string | null {
-  return posterCache.get(cacheKey(id, src)) ?? null;
-}
-
-export function cacheVideoPoster(id: string, src: string, dataUrl: string) {
-  if (!dataUrl) return;
-  posterCache.set(cacheKey(id, src), dataUrl);
-}
-
-export function forgetVideoPoster(id: string, src?: string) {
+function fileNameFromItem(item: Pick<WallpaperItem, "name" | "mediaSrc">): string {
+  const src = (item.mediaSrc || "").trim();
   if (src) {
-    posterCache.delete(cacheKey(id, src));
-    return;
+    const base = src.replace(/\\/g, "/").split("/").pop();
+    if (base) return base;
   }
-  for (const key of posterCache.keys()) {
-    if (key.startsWith(`${id}:`)) posterCache.delete(key);
+  return (item.name || "unknown").trim() || "unknown";
+}
+
+/** 下标：有导入时间用时间，否则用文件名 */
+export function videoPosterKey(
+  item: Pick<WallpaperItem, "importedAt" | "name" | "mediaSrc">,
+): string {
+  const at = item.importedAt;
+  if (at != null && String(at).length > 0) {
+    return `t:${at}`;
   }
+  return `f:${fileNameFromItem(item)}`;
+}
+
+export function getCachedVideoPoster(key: string): string | null {
+  if (!key) return null;
+  return posterCache.get(key) ?? null;
+}
+
+export function cacheVideoPoster(key: string, dataUrl: string) {
+  if (!key || !dataUrl) return;
+  posterCache.set(key, dataUrl);
+}
+
+export function forgetVideoPoster(key: string) {
+  if (!key) return;
+  posterCache.delete(key);
 }
 
 export function captureVideoFrame(video: HTMLVideoElement): string | null {

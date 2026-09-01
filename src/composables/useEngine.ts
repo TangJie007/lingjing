@@ -96,6 +96,7 @@ export interface LibraryDto {
   mediaSrc: string;
   path: string;
   missing?: boolean;
+  importedAt?: number | null;
 }
 
 export function libraryToItem(dto: LibraryDto): WallpaperItem {
@@ -113,6 +114,7 @@ export function libraryToItem(dto: LibraryDto): WallpaperItem {
     mediaSrc: dto.mediaSrc || dto.path,
     source: "local",
     missing: !!dto.missing,
+    importedAt: dto.importedAt ?? undefined,
   };
 }
 
