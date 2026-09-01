@@ -8,7 +8,7 @@ use super::item_commands::{
     show_desktop_item_in_folder,
 };
 use super::lifecycle::refresh;
-use super::scan::desktop_scan_dirs;
+use super::scan::{desktop_scan_dirs, strip_extended_path};
 use super::shell_host::run_shell_menu_host;
 use super::state::FENCE_LABEL;
 use super::types::ShellMenuEntry;
@@ -392,45 +392,60 @@ fn clipboard_set_files(paths: &[&str], cut: bool) -> Result<(), String> {
     use std::ffi::OsStr;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
-    use windows::core::w;
-    use windows::Win32::Foundation::HANDLE;
+    use std::path::PathBuf;
+    use windows::core::{BOOL, w};
+    use windows::Win32::Foundation::{HANDLE, POINT};
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
     };
-    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GHND};
     use windows::Win32::System::Ole::CF_HDROP;
+    use windows::Win32::UI::Shell::DROPFILES;
+    use windows::Win32::UI::WindowsAndMessaging::{GetDesktopWindow, GetForegroundWindow};
 
-    #[repr(C)]
-    struct DropFiles {
-        p_files: u32,
-        pt: windows::Win32::Foundation::POINT,
-        f_nc: i32,
-        f_wide: i32,
+    // Build absolute Win32 paths (no \\?\). Relative / extended paths make Explorer
+    // treat the drop list as text-like garbage instead of real files.
+    let mut abs_paths: Vec<String> = Vec::with_capacity(paths.len());
+    for p in paths {
+        let trimmed = p.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let pb = PathBuf::from(trimmed);
+        if !pb.exists() {
+            return Err(format!("文件不存在: {trimmed}"));
+        }
+        let abs = strip_extended_path(std::fs::canonicalize(&pb).unwrap_or(pb));
+        abs_paths.push(abs.to_string_lossy().replace('/', "\\"));
+    }
+    if abs_paths.is_empty() {
+        return Err("没有可复制的文件".into());
     }
 
     let mut encoded: Vec<u16> = Vec::new();
-    for p in paths {
+    for p in &abs_paths {
         encoded.extend(OsStr::new(p).encode_wide());
         encoded.push(0);
     }
-    encoded.push(0);
+    encoded.push(0); // final double-NUL
     let path_bytes = encoded.len() * 2;
-    let header_size = size_of::<DropFiles>();
+    let header_size = size_of::<DROPFILES>();
     let total = header_size + path_bytes;
 
     unsafe {
-        let hmem = GlobalAlloc(GMEM_MOVEABLE, total).map_err(|e| format!("剪贴板分配失败: {e}"))?;
+        let hmem = GlobalAlloc(GHND, total).map_err(|e| format!("剪贴板分配失败: {e}"))?;
         let ptr = GlobalLock(hmem) as *mut u8;
         if ptr.is_null() {
             return Err("剪贴板锁定失败".into());
         }
-        let header = DropFiles {
-            p_files: header_size as u32,
-            pt: windows::Win32::Foundation::POINT { x: 0, y: 0 },
-            f_nc: 0,
-            f_wide: 1,
+        // Official DROPFILES is packed(1); must match or paste becomes a path string.
+        let header = DROPFILES {
+            pFiles: header_size as u32,
+            pt: POINT { x: 0, y: 0 },
+            fNC: BOOL(0),
+            fWide: BOOL(1),
         };
-        std::ptr::write_unaligned(ptr as *mut DropFiles, header);
+        std::ptr::write_unaligned(ptr as *mut DROPFILES, header);
         std::ptr::copy_nonoverlapping(
             encoded.as_ptr() as *const u8,
             ptr.add(header_size),
@@ -438,18 +453,25 @@ fn clipboard_set_files(paths: &[&str], cut: bool) -> Result<(), String> {
         );
         let _ = GlobalUnlock(hmem);
 
-        if !OpenClipboard(None).is_ok() {
+        // OpenClipboard(NULL) + EmptyClipboard makes SetClipboardData fail / unreliable.
+        let owner = GetForegroundWindow();
+        let owner = if owner.0.is_null() {
+            GetDesktopWindow()
+        } else {
+            owner
+        };
+        if OpenClipboard(Some(owner)).is_err() {
             return Err("无法打开剪贴板".into());
         }
         let _ = EmptyClipboard();
         if SetClipboardData(u32::from(CF_HDROP.0), Some(HANDLE(hmem.0 as _))).is_err() {
             let _ = CloseClipboard();
-            return Err("写入剪贴板失败".into());
+            return Err("写入文件剪贴板失败".into());
         }
 
         let fmt = RegisterClipboardFormatW(w!("Preferred DropEffect"));
         if fmt != 0 {
-            if let Ok(heffect) = GlobalAlloc(GMEM_MOVEABLE, 4) {
+            if let Ok(heffect) = GlobalAlloc(GHND, 4) {
                 let ep = GlobalLock(heffect) as *mut u32;
                 if !ep.is_null() {
                     // DROPEFFECT_MOVE = 2, DROPEFFECT_COPY = 1

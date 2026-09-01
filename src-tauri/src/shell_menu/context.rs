@@ -424,9 +424,11 @@ pub fn invoke_shell_context_command(
             return Err(e);
         }
 
-        // Prefer reliable ShellExecute for common verbs — InvokeCommand often fails
-        // outside Explorer (no IContextMenuSite / wrong HWND / no message pump).
-        if let (Some(p), Some(verb)) = (path, command_verb(&pcm, command_id)) {
+        // Prefer reliable ShellExecute / builtins for common verbs — InvokeCommand often
+        // fails outside Explorer (no IContextMenuSite / wrong HWND / no message pump).
+        // Also catch Chinese labels when GetCommandString verb is missing.
+        if let Some(p) = path {
+            let verb = command_verb(&pcm, command_id).unwrap_or_default();
             let label = command_menu_label(hmenu, command_id);
             if should_hide_shell_menu_item(&verb, &label) {
                 let _ = DestroyMenu(hmenu);
@@ -441,6 +443,9 @@ pub fn invoke_shell_context_command(
                 "copy" => Some(Err("BUILTIN_COPY".into())),
                 "link" => Some(Err("BUILTIN_LINK".into())),
                 "rename" => Some(Err("BUILTIN_RENAME".into())),
+                _ if label.contains("剪切") => Some(Err("BUILTIN_CUT".into())),
+                _ if label.contains("复制") => Some(Err("BUILTIN_COPY".into())),
+                _ if label.contains("删除") => Some(super::verbs::delete_to_recycle_bin(p)),
                 _ => None,
             };
             if let Some(result) = handled {
