@@ -404,6 +404,38 @@ input, textarea {
   border: none;
 }
 
+/* Modal close — same interaction as window chrome, geometric X (not brand close.svg) */
+.modal-close {
+  flex: 0 0 auto;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 4px;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.modal-close:hover {
+  background: rgba(232, 239, 255, 0.72);
+  color: var(--text);
+}
+.modal-close:active {
+  transform: scale(0.95);
+}
+.modal-close-icon {
+  width: 12px;
+  height: 12px;
+  display: block;
+  pointer-events: none;
+}
+
 .app-body {
   display: flex;
   flex: 1;
@@ -1127,14 +1159,14 @@ input, textarea {
 
 /* ---- Toast ---- */
 .toast-pop {
-  position: fixed; left: 50%; bottom: 36px;
+  position: absolute; left: 50%; bottom: 36px;
   transform: translate(-50%, 20px);
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 13.5px; font-weight: 600;
   padding: 12px 20px; border-radius: var(--r-md);
   background: var(--text); color: var(--bg);
   box-shadow: var(--sh-win);
-  opacity: 0; pointer-events: none; z-index: 50;
+  opacity: 0; pointer-events: none; z-index: 1200;
   transition: opacity var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
 }
 .toast-pop.show { opacity: 1; transform: translate(-50%, 0); }

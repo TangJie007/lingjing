@@ -631,9 +631,9 @@ async function onFirstRunConfirm(autostart: boolean) {
         @download="onDownload"
       />
     </div>
-  </div>
 
-  <Toast />
-  <FirstRunAutostartModal :open="firstRunOpen" :saving="firstRunSaving" @confirm="onFirstRunConfirm" />
-  <LoginModal :open="loginOpen" @close="loginOpen = false" @success="onLoginSuccess" />
+    <Toast />
+    <FirstRunAutostartModal :open="firstRunOpen" :saving="firstRunSaving" @confirm="onFirstRunConfirm" />
+    <LoginModal :open="loginOpen" @close="loginOpen = false" @success="onLoginSuccess" />
+  </div>
 </template>

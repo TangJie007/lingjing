@@ -14,7 +14,7 @@ function onConfirm() {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport to=".window">
     <div v-if="open" class="fr-mask">
       <div class="fr-card" role="dialog" aria-modal="true" aria-label="欢迎使用灵镜">
         <header>
@@ -58,13 +58,14 @@ function onConfirm() {
 
 <style scoped>
 .fr-mask {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: rgba(15, 17, 24, 0.45);
   backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
   z-index: 1100;
+  border-radius: inherit;
 }
 .fr-card {
   width: 420px;

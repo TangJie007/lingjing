@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted, watch } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   runMigration,
   type MigrationPlan,
   type MigrationProgress,
 } from "../composables/useSettings";
+import ModalCloseButton from "./ModalCloseButton.vue";
 
 const props = defineProps<{
   plan: MigrationPlan;
@@ -21,12 +22,29 @@ const progress = ref<MigrationProgress>({ done: 0, total: props.plan.files.lengt
 const lastReport = ref<{ copied: number; skipped: number; failed: number; errors: string[]; cleanedStale?: number } | null>(null);
 let unlisten: UnlistenFn | undefined;
 
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && props.open && !busy.value) {
+    e.preventDefault();
+    emit("close");
+  }
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) window.addEventListener("keydown", onKeydown);
+    else window.removeEventListener("keydown", onKeydown);
+  },
+);
+
 onMounted(async () => {
+  if (props.open) window.addEventListener("keydown", onKeydown);
   unlisten = await listen<MigrationProgress>("library-migration-progress", (ev) => {
     progress.value = ev.payload;
   });
 });
 onUnmounted(() => {
+  window.removeEventListener("keydown", onKeydown);
   unlisten?.();
 });
 
@@ -51,58 +69,64 @@ async function migrate(keepOriginals: boolean) {
 </script>
 
 <template>
-  <div v-if="open" class="mm-mask" @click.self="emit('close')">
-    <div class="mm-card" role="dialog" aria-modal="true" aria-label="迁移壁纸路径">
-      <header>
-        <h3>迁移到新路径</h3>
-        <p>将本地库索引与媒体文件复制到目标位置。原文件可选择保留或迁移后删除。</p>
-      </header>
-      <ul class="mm-notes">
-        <li><strong>会迁移</strong>：library.json、library/ 下的媒体文件</li>
-        <li><strong>不会迁移</strong>：settings.json、favorites.json、last_wallpaper.json（仍留在应用数据目录）</li>
-        <li>选择「迁移」（不保留原文件）时，还会清理应用数据目录中的旧 library 副本</li>
-      </ul>
-      <div class="mm-paths">
-        <div>
-          <span class="lab">原路径</span>
-          <code>{{ plan.fromDir }}</code>
+  <Teleport to=".window">
+    <div v-if="open" class="mm-mask" @click.self="emit('close')">
+      <div class="mm-card" role="dialog" aria-modal="true" aria-label="迁移壁纸路径">
+        <header class="mm-head">
+          <div class="mm-head-text">
+            <h3>迁移到新路径</h3>
+            <p>将本地库索引与媒体文件复制到目标位置。原文件可选择保留或迁移后删除。</p>
+          </div>
+          <ModalCloseButton @click="!busy && emit('close')" />
+        </header>
+        <ul class="mm-notes">
+          <li><strong>会迁移</strong>：library.json、library/ 下的媒体文件</li>
+          <li><strong>不会迁移</strong>：settings.json、favorites.json、last_wallpaper.json（仍留在应用数据目录）</li>
+          <li>选择「迁移」（不保留原文件）时，还会清理应用数据目录中的旧 library 副本</li>
+        </ul>
+        <div class="mm-paths">
+          <div>
+            <span class="lab">原路径</span>
+            <code>{{ plan.fromDir }}</code>
+          </div>
+          <div>
+            <span class="lab">新路径</span>
+            <code>{{ plan.toDir }}</code>
+          </div>
         </div>
-        <div>
-          <span class="lab">新路径</span>
-          <code>{{ plan.toDir }}</code>
+        <div class="mm-stat">
+          <span>共 {{ plan.files.length }} 个文件 / {{ (plan.files.reduce((s, f) => s + f.size, 0) / 1048576).toFixed(1) }} MB</span>
         </div>
+        <div v-if="lastReport" class="mm-result">
+          <div v-if="lastReport.copied">已迁移 {{ lastReport.copied }} 个</div>
+          <div v-if="lastReport.skipped">跳过 {{ lastReport.skipped }} 个（目标已存在）</div>
+          <div v-if="lastReport.failed">失败 {{ lastReport.failed }} 个：{{ lastReport.errors.slice(0, 3).join("；") }}</div>
+          <div v-if="lastReport.cleanedStale">已清理旧目录 {{ lastReport.cleanedStale }} 项</div>
+        </div>
+        <div class="mm-progress" v-else>
+          <div class="bar" :style="{ transform: `scaleX(${ratio})` }" />
+          <div class="lab">{{ progress.done }} / {{ progress.total }}<span v-if="progress.relPath"> · {{ progress.relPath }}</span></div>
+        </div>
+        <footer>
+          <button class="btn ghost" :disabled="busy" @click="emit('close')">取消</button>
+          <button class="btn" :disabled="busy" @click="migrate(true)">迁移并保留原文件</button>
+          <button class="btn primary" :disabled="busy" @click="migrate(false)">迁移</button>
+        </footer>
       </div>
-      <div class="mm-stat">
-        <span>共 {{ plan.files.length }} 个文件 / {{ (plan.files.reduce((s, f) => s + f.size, 0) / 1048576).toFixed(1) }} MB</span>
-      </div>
-      <div v-if="lastReport" class="mm-result">
-        <div v-if="lastReport.copied">已迁移 {{ lastReport.copied }} 个</div>
-        <div v-if="lastReport.skipped">跳过 {{ lastReport.skipped }} 个（目标已存在）</div>
-        <div v-if="lastReport.failed">失败 {{ lastReport.failed }} 个：{{ lastReport.errors.slice(0, 3).join("；") }}</div>
-        <div v-if="lastReport.cleanedStale">已清理旧目录 {{ lastReport.cleanedStale }} 项</div>
-      </div>
-      <div class="mm-progress" v-else>
-        <div class="bar" :style="{ transform: `scaleX(${ratio})` }" />
-        <div class="lab">{{ progress.done }} / {{ progress.total }}<span v-if="progress.relPath"> · {{ progress.relPath }}</span></div>
-      </div>
-      <footer>
-        <button class="btn ghost" :disabled="busy" @click="emit('close')">取消</button>
-        <button class="btn" :disabled="busy" @click="migrate(true)">迁移并保留原文件</button>
-        <button class="btn primary" :disabled="busy" @click="migrate(false)">迁移</button>
-      </footer>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style scoped>
 .mm-mask {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: rgba(15, 17, 24, 0.45);
   backdrop-filter: blur(6px);
   display: grid;
   place-items: center;
-  z-index: 80;
+  z-index: 1000;
+  border-radius: inherit;
 }
 .mm-card {
   width: 520px;
@@ -118,6 +142,16 @@ async function migrate(keepOriginals: boolean) {
 }
 header h3 { font-size: 16px; font-weight: 700; }
 header p { font-size: 12.5px; color: var(--text-2); margin-top: 6px; }
+.mm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mm-head-text {
+  min-width: 0;
+  flex: 1;
+}
 .mm-notes {
   margin: 0;
   padding-left: 18px;

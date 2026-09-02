@@ -273,10 +273,11 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .btn-in {
+  width: 100%;
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
-  align-self: flex-start;
+  align-self: stretch;
 }
 .btn-in:hover { background: var(--primary-hover); }
 .btn-in:disabled { opacity: 0.6; cursor: default; }
