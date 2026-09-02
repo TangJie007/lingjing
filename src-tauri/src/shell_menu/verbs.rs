@@ -48,9 +48,29 @@ pub(crate) fn shell_execute_verb(path: &str, verb: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    // Prefer async ShellExecuteEx so the menu host can exit without waiting.
     let wpath = wide(path);
     let wverb = wide(verb);
+    let is_runas = verb.eq_ignore_ascii_case("runas");
+
+    // Elevation (runas) MUST show the UAC consent UI and must not return with
+    // SEE_MASK_ASYNCOK / SEE_MASK_FLAG_NO_UI — those suppress the prompt and the
+    // shell-menu host would exit before consent completes.
+    if is_runas {
+        unsafe {
+            let mut info = SHELLEXECUTEINFOW {
+                cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+                fMask: Default::default(),
+                lpVerb: PCWSTR(wverb.as_ptr()),
+                lpFile: PCWSTR(wpath.as_ptr()),
+                nShow: SW_SHOWNORMAL.0 as i32,
+                ..Default::default()
+            };
+            ShellExecuteExW(&mut info).map_err(|e| format!("以管理员身份运行失败: {e}"))?;
+        }
+        return Ok(());
+    }
+
+    // Prefer async ShellExecuteEx so the menu host can exit without waiting.
     unsafe {
         let mut info = SHELLEXECUTEINFOW {
             cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
