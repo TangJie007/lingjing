@@ -15,6 +15,19 @@ interface ApiWallpaper {
   liked?: boolean;
 }
 
+export interface OnlineCategory {
+  id: number;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  enabled: boolean;
+}
+
+interface CategoryListData {
+  items: OnlineCategory[];
+  total: number;
+}
+
 interface WallpaperListData {
   items: ApiWallpaper[];
   total: number;
@@ -77,6 +90,20 @@ export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
     mediaSrc: w.fileUrl,
     source: "online",
   };
+}
+
+export async function fetchOnlineCategories(): Promise<OnlineCategory[]> {
+  const { authHeaders } = useAuth();
+  const res = await fetch(`${apiBase()}/api/lingjing/wallpaper-categories`, {
+    headers: { ...authHeaders() },
+  });
+  const body = (await res.json()) as ApiEnvelope<CategoryListData>;
+  if (!body.ok || !body.data) {
+    throw new Error(body.error || "加载壁纸分类失败");
+  }
+  return (body.data.items ?? [])
+    .filter((c) => c.enabled)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
 }
 
 export async function fetchOnlineWallpapers(options?: {

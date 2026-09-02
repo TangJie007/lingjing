@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import WallpaperCardGrid from "../components/WallpaperCardGrid.vue";
 import EmptyState from "../components/EmptyState.vue";
 import { CATALOG, type WallpaperItem } from "../data/catalog";
+import type { OnlineCategory } from "../composables/useLingjingApi";
 
 const props = withDefaults(
   defineProps<{
@@ -13,12 +14,16 @@ const props = withDefaults(
     loading?: boolean;
     emptyText?: string;
     onlineEnabled?: boolean;
+    categories?: OnlineCategory[];
+    categoryId?: number | null;
   }>(),
   {
     loading: false,
     emptyText: "暂无在线壁纸，请确认 API 服务已启动",
     onlineEnabled: false,
     favorites: () => [],
+    categories: () => [],
+    categoryId: null,
   },
 );
 
@@ -26,20 +31,18 @@ const emit = defineEmits<{
   (e: "select", item: WallpaperItem): void;
   (e: "preview", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
+  (e: "category-change", categoryId: number | null): void;
 }>();
 
 type OnlineTab = "discover" | "mine";
 
 type FilterKind = "cat" | "sort";
 
-const FILTERS: { key: string; kind: FilterKind }[] = [
-  { key: "全部", kind: "cat" },
-  { key: "最热", kind: "sort" },
-  { key: "最新", kind: "sort" },
-  { key: "科技", kind: "cat" },
-  { key: "风景", kind: "cat" },
-  { key: "动漫", kind: "cat" },
-];
+type FilterItem =
+  | { key: string; kind: "sort" }
+  | { key: string; kind: "cat"; categoryId: number | null };
+
+const OFFLINE_CATS = ["科技", "风景", "动漫"];
 
 const route = useRoute();
 const router = useRouter();
@@ -67,18 +70,49 @@ const activeCat = ref("全部");
 const search = inject<Ref<string>>("topbarSearch", ref(""));
 const sort = inject<Ref<string>>("topbarSort", ref("最热"));
 
-function isFilterOn(key: string, kind: FilterKind) {
-  return kind === "sort" ? sort.value === key : activeCat.value === key;
+const filters = computed<FilterItem[]>(() => {
+  const base: FilterItem[] = [
+    { key: "全部", kind: "cat", categoryId: null },
+    { key: "最热", kind: "sort" },
+    { key: "最新", kind: "sort" },
+  ];
+  if (props.onlineEnabled) {
+    for (const c of props.categories) {
+      base.push({ key: c.name, kind: "cat", categoryId: c.id });
+    }
+    return base;
+  }
+  for (const name of OFFLINE_CATS) {
+    base.push({ key: name, kind: "cat", categoryId: null });
+  }
+  return base;
+});
+
+function isFilterOn(f: FilterItem) {
+  if (f.kind === "sort") return sort.value === f.key;
+  if (props.onlineEnabled) {
+    return f.categoryId === (props.categoryId ?? null);
+  }
+  return activeCat.value === f.key;
 }
 
-function setFilter(key: string, kind: FilterKind) {
-  if (kind === "sort") sort.value = key;
-  else activeCat.value = key;
+function setFilter(f: FilterItem) {
+  if (f.kind === "sort") {
+    sort.value = f.key;
+    return;
+  }
+  if (props.onlineEnabled) {
+    emit("category-change", f.categoryId);
+    return;
+  }
+  activeCat.value = f.key;
 }
 
 const discoverList = computed(() => {
   let r = [...(props.items ?? CATALOG)];
-  if (activeCat.value !== "全部") r = r.filter((i) => i.category === activeCat.value);
+  if (!props.onlineEnabled) {
+    if (activeCat.value !== "全部") r = r.filter((i) => i.category === activeCat.value);
+  }
   if (search.value.trim()) {
     const q = search.value.trim().toLowerCase();
     r = r.filter(
@@ -144,14 +178,14 @@ const favoriteList = computed(() => props.favorites ?? []);
     <template v-if="tab === 'discover'">
       <div class="online-filters" role="toolbar" aria-label="筛选与排序">
         <span
-          v-for="f in FILTERS"
-          :key="f.key"
-          :class="{ on: isFilterOn(f.key, f.kind) }"
+          v-for="f in filters"
+          :key="`${f.kind}-${f.key}`"
+          :class="{ on: isFilterOn(f) }"
           role="button"
           tabindex="0"
-          :aria-pressed="isFilterOn(f.key, f.kind)"
-          @click="setFilter(f.key, f.kind)"
-          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilter(f.key, f.kind); } }"
+          :aria-pressed="isFilterOn(f)"
+          @click="setFilter(f)"
+          @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilter(f); } }"
         >{{ f.key }}</span>
       </div>
 

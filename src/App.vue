@@ -30,7 +30,7 @@ import {
 import { forgetVideoPoster, videoPosterKey } from "./composables/useVideoPoster";
 import { loadSettings, useSettings, hasVersionRecord, completeFirstRun } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
-import { fetchOnlineWallpapers } from "./composables/useLingjingApi";
+import { fetchOnlineCategories, fetchOnlineWallpapers, type OnlineCategory } from "./composables/useLingjingApi";
 
 const route = useRoute();
 const router = useRouter();
@@ -61,6 +61,8 @@ const userLabel = computed(
 );
 
 const onlineItems = ref<WallpaperItem[]>([]);
+const onlineCategories = ref<OnlineCategory[]>([]);
+const onlineCategoryId = ref<number | null>(null);
 const onlineLoading = ref(false);
 const onlineFetchError = ref("");
 
@@ -115,6 +117,8 @@ const routeViewProps = computed(() => {
         loading: onlineGridLoading.value,
         emptyText: onlineEmptyText.value,
         onlineEnabled: settings.value.onlineEnabled,
+        categories: onlineCategories.value,
+        categoryId: onlineCategoryId.value,
       };
     case "local":
       return {
@@ -197,6 +201,8 @@ async function refreshOnline() {
   if (route.name !== "online" || !settings.value.onlineEnabled) {
     if (!settings.value.onlineEnabled) {
       onlineItems.value = [];
+      onlineCategories.value = [];
+      onlineCategoryId.value = null;
       onlineFetchError.value = "";
     }
     return;
@@ -204,8 +210,16 @@ async function refreshOnline() {
   onlineLoading.value = true;
   onlineFetchError.value = "";
   try {
-    const { items } = await fetchOnlineWallpapers({ pageSize: 48 });
-    onlineItems.value = items;
+    const [cats, wallpaperResult] = await Promise.all([
+      fetchOnlineCategories().catch(() => [] as OnlineCategory[]),
+      fetchOnlineWallpapers({
+        pageSize: 48,
+        categoryId:
+          onlineCategoryId.value != null ? String(onlineCategoryId.value) : "",
+      }),
+    ]);
+    onlineCategories.value = cats;
+    onlineItems.value = wallpaperResult.items;
     const { ids } = await loadFavoriteIds();
     for (const i of onlineItems.value) {
       i.favorite = ids.includes(String(i.id));
@@ -215,6 +229,32 @@ async function refreshOnline() {
     const msg = e instanceof Error ? e.message : String(e);
     onlineFetchError.value = msg;
     if (route.name === "online") showToast(msg);
+  } finally {
+    onlineLoading.value = false;
+  }
+}
+
+async function onOnlineCategoryChange(categoryId: number | null) {
+  if (onlineCategoryId.value === categoryId) return;
+  onlineCategoryId.value = categoryId;
+  if (route.name !== "online" || !settings.value.onlineEnabled) return;
+  onlineLoading.value = true;
+  onlineFetchError.value = "";
+  try {
+    const { items } = await fetchOnlineWallpapers({
+      pageSize: 48,
+      categoryId: categoryId != null ? String(categoryId) : "",
+    });
+    onlineItems.value = items;
+    const { ids } = await loadFavoriteIds();
+    for (const i of onlineItems.value) {
+      i.favorite = ids.includes(String(i.id));
+    }
+  } catch (e) {
+    onlineItems.value = [];
+    const msg = e instanceof Error ? e.message : String(e);
+    onlineFetchError.value = msg;
+    showToast(msg);
   } finally {
     onlineLoading.value = false;
   }
@@ -489,6 +529,8 @@ onMounted(async () => {
     engine.value = s;
     if (s.error) toastEngineError(s.error);
     else lastEngineErrorToast = "";
+    // Single loop is handled by <video loop> in wallpaper.html.
+    // Do NOT call onSet here — that reloads the whole engine and spams toast.
     if (
       s.duration > 0 &&
       s.currentTime >= s.duration - 0.35 &&
@@ -497,13 +539,6 @@ onMounted(async () => {
       loopMode.value !== "single"
     ) {
       void onNext();
-    } else if (
-      s.duration > 0 &&
-      s.currentTime >= s.duration - 0.35 &&
-      loopMode.value === "single" &&
-      current.value
-    ) {
-      void onSet(current.value);
     }
   });
   unlistenPause = await onPauseRecommend(applyPauseRecommend);
@@ -575,6 +610,7 @@ async function onFirstRunConfirm(autostart: boolean) {
           @download="onDownload"
           @import="runImport()"
           @remove="onRemoveLocal"
+          @category-change="onOnlineCategoryChange"
         />
       </RouterView>
 
