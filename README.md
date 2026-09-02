@@ -42,7 +42,7 @@ pnpm tauri build    # Windows 安装包
 
 ## 数据目录
 
-默认位于 `%APPDATA%/com.lingjing.app/`（具体路径以 Tauri `appIdentifier` 为准）：
+默认位于 `%APPDATA%/com.lingscape.app/`（与 `tauri.conf.json` 的 `identifier` 一致）：
 
 ```
 app_data_dir/
@@ -59,18 +59,24 @@ app_data_dir/
 ## 项目结构
 
 ```
-├── src/                 # Vue 主窗口 UI
-├── src-tauri/           # Rust：引擎、设置、托盘、电源监听
+├── src/                 # Vue：主窗口 UI + fences/ 桌面整理前端
+├── src-tauri/           # Rust：引擎、整理、托盘、电源、Shell 菜单
 ├── public/
 │   ├── wallpaper.html   # 桌面壁纸渲染页（多屏 tile）
 │   └── samples/         # 示例媒体
-└── docs/comet/          # 规格与优化路线图
+├── fences.html          # 桌面整理窗口入口
+└── docs/                # 架构 / 目录 / 维护备忘 / Comet 规格
 ```
 
 ## 相关文档
 
+- **[文档索引](docs/README.md)** — 架构、目录、维护备忘入口
+- [架构总览](docs/architecture.md)
+- [目录结构](docs/directory-structure.md)
+- [维护备忘](docs/maintenance-notes.md)
+- [桌面整理参考](docs/desktop-organize-reference.md)
 - [优化路线图](docs/comet/optimization-roadmap.md)
-- Phase 2/3 Spec：`docs/comet/specs/`
+- Phase 规格：`docs/comet/specs/`
 
 ## 平台
 
