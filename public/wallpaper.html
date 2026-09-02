@@ -132,7 +132,7 @@
             duration: Number.isFinite(vid.duration) ? vid.duration : 0,
             playing: !vid.paused,
           });
-        }, 250);
+        }, 1000);
       }
 
       function defaultLayout() {
@@ -304,11 +304,15 @@
       function resumeIfNeeded() {
         if (!lastState || lastState.playing === false || lastState.userPaused) return;
         const needsResume = panes.some(
-          (pane) => pane.vid.classList.contains("on") && pane.vid.paused,
+          (pane) => pane.vid.classList.contains("on") && pane.vid.paused && !pane.vid.ended,
         );
-        if (needsResume) {
-          applyMedia(lastState, "play");
-        }
+        if (!needsResume) return;
+        // Soft resume — do not re-run full "set" (reload src); that freezes after long runs.
+        panes.forEach((pane) => {
+          if (pane.vid.classList.contains("on") && pane.vid.paused) {
+            safePlay(pane.vid);
+          }
+        });
       }
 
       window.__wallpaperApply = function (state, cmd, layout) {

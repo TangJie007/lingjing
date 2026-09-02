@@ -1,11 +1,25 @@
 //! Tauri commands and runtime helpers for the wallpaper engine.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::{push_command, push_state, EngineHandle, EngineState, SetWallpaperPayload};
 use crate::settings;
 use crate::system;
+
+/// Min gap between routine `engine-state` progress emits (ms).
+const PROGRESS_EMIT_MIN_MS: u64 = 1000;
+static LAST_PROGRESS_EMIT_MS: AtomicU64 = AtomicU64::new(0);
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 pub struct RuntimeProfile {
     pub low_power: bool,
@@ -199,6 +213,8 @@ pub fn engine_report_progress(
         .state
         .lock()
         .map_err(|_| "引擎状态锁失败".to_string())?;
+    let prev_playing = state.playing;
+    let prev_error = state.error.clone();
     state.current_time = payload.current_time;
     state.duration = payload.duration;
     if let Some(p) = payload.playing {
@@ -215,9 +231,24 @@ pub fn engine_report_progress(
     } else if payload.duration > 0.0 || payload.playing.unwrap_or(false) {
         state.error = None;
     }
-    let snapshot = state.clone();
+    let playing_changed = state.playing != prev_playing;
+    let error_changed = state.error != prev_error;
+    let now = now_unix_ms();
+    let last = LAST_PROGRESS_EMIT_MS.load(Ordering::Relaxed);
+    let due = now.saturating_sub(last) >= PROGRESS_EMIT_MIN_MS;
+    // Always emit play/pause/error flips; throttle time-only ticks so the main
+    // UI is not flooded (was every 250ms → Not Responding after long runs).
+    let should_emit = playing_changed || error_changed || due || payload.error.is_some();
+    let snapshot = if should_emit {
+        Some(state.clone())
+    } else {
+        None
+    };
     drop(state);
-    let _ = app.emit("engine-state", &snapshot);
+    if let Some(snapshot) = snapshot {
+        LAST_PROGRESS_EMIT_MS.store(now, Ordering::Relaxed);
+        let _ = app.emit("engine-state", &snapshot);
+    }
     Ok(())
 }
 
