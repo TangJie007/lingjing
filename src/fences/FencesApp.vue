@@ -39,7 +39,7 @@ import { friendlyError, showFenceToast } from "./fenceUi";
 import type { DesktopItem, FenceGroupKey, FenceGroupState } from "./types";
 import { cellPreviewDataUrl, useShellFileDrag } from "./useShellFileDrag";
 import { useExternalFileDrop } from "./useExternalFileDrop";
-import { markIconDragEnd, markIconDragStart } from "./iconOpen";
+import { beginIconOpen, markIconDragEnd, markIconDragStart } from "./iconOpen";
 import { useShellContextMenu } from "./useShellContextMenu";
 
 const groups = reactive<Record<FenceGroupKey, FenceGroupState>>({
@@ -510,6 +510,7 @@ function applyFenceItems(items: DesktopItem[] | null | undefined) {
 
 async function openItem(path: string) {
   if (!window.__TAURI__) return;
+  if (!beginIconOpen()) return;
   try {
     await window.__TAURI__.core.invoke("open_desktop_item", { path });
   } catch (e) {

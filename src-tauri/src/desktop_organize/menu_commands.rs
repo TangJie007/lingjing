@@ -168,7 +168,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_SHOW_IN_FOLDER,
     };
     match command_id {
-        BUILTIN_OPEN => open_desktop_item(path.to_string()),
+        BUILTIN_OPEN => open_desktop_item(app.clone(), path.to_string()),
         BUILTIN_SHOW_IN_FOLDER => show_desktop_item_in_folder(path.to_string()),
         BUILTIN_OPEN_WITH => open_desktop_item_with(path.to_string()),
         BUILTIN_PROPERTIES => open_desktop_item_properties(path.to_string()),
@@ -268,16 +268,22 @@ fn open_terminal_on_desktop() -> Result<(), String> {
 
 #[cfg(windows)]
 fn empty_recycle_bin() -> Result<(), String> {
-    use windows::core::PCWSTR;
-    use windows::Win32::UI::Shell::SHEmptyRecycleBinW;
-
-    // SHERB_NOCONFIRMATION is intentionally omitted so Windows still prompts.
-    const SHERB_NOPROGRESSUI: u32 = 0x0000_0002;
-    const SHERB_NOSOUND: u32 = 0x0000_0004;
-    unsafe {
-        SHEmptyRecycleBinW(None, PCWSTR::null(), SHERB_NOPROGRESSUI | SHERB_NOSOUND)
-            .map_err(|e| format!("清空回收站失败: {e}"))
-    }
+    // Dialog + shell callbacks must not run on the fence/UI command path.
+    std::thread::Builder::new()
+        .name("lingscape-empty-recycle".into())
+        .spawn(|| {
+            use windows::core::PCWSTR;
+            use windows::Win32::UI::Shell::SHEmptyRecycleBinW;
+            const SHERB_NOPROGRESSUI: u32 = 0x0000_0002;
+            const SHERB_NOSOUND: u32 = 0x0000_0004;
+            if let Err(e) = unsafe {
+                SHEmptyRecycleBinW(None, PCWSTR::null(), SHERB_NOPROGRESSUI | SHERB_NOSOUND)
+            } {
+                tracing::info!("[desktop-organize] empty recycle failed: {e}");
+            }
+        })
+        .map_err(|e| format!("无法启动清空回收站: {e}"))?;
+    Ok(())
 }
 
 #[cfg(windows)]

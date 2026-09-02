@@ -11,11 +11,12 @@ use std::ffi::OsStr;
         RDW_ALLCHILDREN, RDW_INVALIDATE, RDW_UPDATENOW,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallWindowProcW, EnumWindows, FindWindowExW, FindWindowW, GetParent, GetSystemMetrics,
-        GetWindowLongPtrW, GetWindowRect, SetLayeredWindowAttributes, SetParent,
+        CallWindowProcW, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW, GetParent,
+        GetSystemMetrics, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, IsIconic,
+        IsWindowVisible, SetForegroundWindow, SetLayeredWindowAttributes, SetParent,
         SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, GWL_EXSTYLE, GWL_STYLE,
         GWLP_WNDPROC, HICON, HTCLIENT, HWND_BOTTOM, LWA_ALPHA, MONITORINFOF_PRIMARY, SM_CXSCREEN,
-        SM_CYSCREEN, STYLESTRUCT, SW_HIDE, SW_SHOW, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
+        SM_CYSCREEN, STYLESTRUCT, SW_HIDE, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
         SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, WM_NCCALCSIZE,
         WM_NCHITTEST, WM_NCPAINT, WM_SETTEXT, WM_STYLECHANGED, WM_STYLECHANGING, WS_BORDER,
         WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_DLGFRAME, WS_EX_APPWINDOW,
@@ -1264,8 +1265,7 @@ use std::ffi::OsStr;
     }
 
     /// Open This PC / Recycle Bin / Network via Explorer known-folder names.
-    /// Must not call ShellExecute on our WorkerW-hosted HWND path — that can
-    /// DDE-deadlock the UI the second time a folder window is opened.
+    /// Prefer activating an existing Explorer window; only spawn when none found.
     pub fn shell_open_known_folder(kind: &str) -> Result<(), String> {
         let arg = match kind {
             "recycle" => "shell:RecycleBinFolder",
@@ -1273,10 +1273,20 @@ use std::ffi::OsStr;
             "network" => "shell:NetworkPlacesFolder",
             _ => return Err(format!("unknown namespace icon: {kind}")),
         };
+        let kind_owned = kind.to_string();
+        let arg_owned = arg.to_string();
         spawn_detached_open(move || {
-            match std::process::Command::new("explorer").arg(arg).spawn() {
+            if try_activate_known_folder(&kind_owned) {
+                return;
+            }
+            match std::process::Command::new("explorer")
+                .arg(&arg_owned)
+                .spawn()
+            {
                 Ok(_) => {}
-                Err(e) => tracing::info!("[desktop-organize] explorer open {arg} failed: {e}"),
+                Err(e) => {
+                    tracing::info!("[desktop-organize] explorer open {arg_owned} failed: {e}")
+                }
             }
         })
     }
@@ -1290,13 +1300,35 @@ use std::ffi::OsStr;
         })
     }
 
+    /// Properties via rundll32 so the dialog is owned by a helper process,
+    /// not our WorkerW-hosted STA (avoids second-open deadlocks).
     pub fn shell_show_properties(path: &str) -> Result<(), String> {
         let path = path.to_string();
         spawn_detached_open(move || {
-            if let Err(e) = shell_execute_async(&path, "properties") {
-                tracing::info!("[desktop-organize] shell_show_properties failed: {e}");
+            let r = std::process::Command::new("rundll32")
+                .arg("shell32.dll,ShellExec_RunDLL")
+                .arg("properties")
+                .arg(&path)
+                .spawn();
+            if let Err(e) = r {
+                tracing::info!(
+                    "[desktop-organize] properties rundll32 failed: {e}; fallback ShellExecuteEx"
+                );
+                if let Err(e2) = shell_execute_async(&path, "properties") {
+                    tracing::info!("[desktop-organize] shell_show_properties failed: {e2}");
+                }
             }
         })
+    }
+
+    /// True when `path` (file or .lnk) launches this running exe.
+    pub fn path_is_self_app(path: &str) -> bool {
+        let Ok(self_exe) = std::env::current_exe() else {
+            return false;
+        };
+        let self_canon = canonicalize_loose(&self_exe);
+        let candidates = resolve_open_targets(path);
+        candidates.iter().any(|c| paths_equal_loose(c, &self_canon))
     }
 
     fn spawn_detached_open<F>(f: F) -> Result<(), String>
@@ -1319,7 +1351,6 @@ use std::ffi::OsStr;
             let wverb = wide(verb);
             let mut info = SHELLEXECUTEINFOW {
                 cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-                // Return before the shell action finishes — avoids WorkerW/OLE deadlock.
                 fMask: SEE_MASK_ASYNCOK | SEE_MASK_FLAG_NO_UI,
                 lpVerb: PCWSTR(wverb.as_ptr()),
                 lpFile: PCWSTR(wpath.as_ptr()),
@@ -1328,4 +1359,153 @@ use std::ffi::OsStr;
             };
             ShellExecuteExW(&mut info).map_err(|e| format!("open failed: {e}"))
         }
+    }
+
+    fn canonicalize_loose(path: &std::path::Path) -> std::path::PathBuf {
+        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    }
+
+    fn paths_equal_loose(a: &std::path::Path, b: &std::path::Path) -> bool {
+        if a == b {
+            return true;
+        }
+        let norm = |p: &std::path::Path| {
+            p.to_string_lossy()
+                .trim_start_matches(r"\\?\")
+                .replace('/', "\\")
+                .trim_end_matches('\\')
+                .to_ascii_lowercase()
+        };
+        norm(a) == norm(b)
+    }
+
+    fn resolve_open_targets(path: &str) -> Vec<std::path::PathBuf> {
+        let p = std::path::PathBuf::from(path);
+        let mut out = Vec::new();
+        if p.exists() {
+            out.push(canonicalize_loose(&p));
+        }
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".lnk") {
+            if let Some(target) = resolve_shortcut_target(path) {
+                out.push(canonicalize_loose(&target));
+            }
+        }
+        out
+    }
+
+    fn resolve_shortcut_target(path: &str) -> Option<std::path::PathBuf> {
+        use windows::core::Interface;
+        use windows::Win32::System::Com::{
+            CoCreateInstance, CoInitializeEx, IPersistFile, CLSCTX_INPROC_SERVER,
+            COINIT_APARTMENTTHREADED,
+        };
+        use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let link: IShellLinkW =
+                CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+            let persist: IPersistFile = link.cast().ok()?;
+            let wpath = wide(path);
+            persist
+                .Load(
+                    PCWSTR(wpath.as_ptr()),
+                    windows::Win32::System::Com::STGM(0),
+                )
+                .ok()?;
+            let mut buf = [0u16; 520];
+            link.GetPath(&mut buf, std::ptr::null_mut(), 0).ok()?;
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            if len == 0 {
+                return None;
+            }
+            let s = String::from_utf16_lossy(&buf[..len]);
+            if s.is_empty() {
+                None
+            } else {
+                Some(std::path::PathBuf::from(s))
+            }
+        }
+    }
+
+    struct ActivateSearch {
+        kind: &'static str,
+        found: HWND,
+    }
+
+    fn known_folder_title_match(kind: &str, title: &str) -> bool {
+        let t = title.to_ascii_lowercase();
+        match kind {
+            "recycle" => {
+                title.contains("回收站")
+                    || t.contains("recycle bin")
+                    || t.contains("recyclebin")
+            }
+            "computer" => {
+                title.contains("此电脑")
+                    || title.contains("计算机")
+                    || t.contains("this pc")
+                    || t == "computer"
+                    || t.contains("my computer")
+            }
+            "network" => {
+                title.contains("网络")
+                    || t.contains("network")
+                    || t.contains("network places")
+            }
+            _ => false,
+        }
+    }
+
+    unsafe extern "system" fn enum_activate_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = &mut *(lparam.0 as *mut ActivateSearch);
+        let mut class_buf = [0u16; 64];
+        let class_len = GetClassNameW(hwnd, &mut class_buf);
+        if class_len <= 0 {
+            return BOOL(1);
+        }
+        let class = String::from_utf16_lossy(&class_buf[..class_len as usize]);
+        if class != "CabinetWClass" && class != "ExploreWClass" {
+            return BOOL(1);
+        }
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, &mut title_buf);
+        if title_len <= 0 {
+            return BOOL(1);
+        }
+        let title = String::from_utf16_lossy(&title_buf[..title_len as usize]);
+        if known_folder_title_match(data.kind, &title) {
+            data.found = hwnd;
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+
+    fn try_activate_known_folder(kind: &str) -> bool {
+        let kind_static: &'static str = match kind {
+            "recycle" => "recycle",
+            "computer" => "computer",
+            "network" => "network",
+            _ => return false,
+        };
+        let mut data = ActivateSearch {
+            kind: kind_static,
+            found: HWND::default(),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(enum_activate_proc),
+                LPARAM(&mut data as *mut _ as isize),
+            );
+            if data.found.0.is_null() {
+                return false;
+            }
+            if IsIconic(data.found).as_bool() {
+                let _ = ShowWindow(data.found, SW_RESTORE);
+            } else if !IsWindowVisible(data.found).as_bool() {
+                let _ = ShowWindow(data.found, SW_SHOW);
+            }
+            let _ = SetForegroundWindow(data.found);
+        }
+        true
     }

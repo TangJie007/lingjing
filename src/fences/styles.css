@@ -208,14 +208,24 @@ body,
   cursor: default;
   border: none;
   background: transparent;
+  transition: background-color 0.12s ease;
 }
 
 .cell:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
-.cell:active {
-  background: rgba(255, 255, 255, 0.18);
+.cell:active,
+.cell.is-pressed {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.cell.is-selected {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cell.is-opening {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .cell.native {
@@ -297,11 +307,17 @@ body,
 
 .cell.native:hover,
 .cell.native:active,
-.cell.native:focus {
+.cell.native:focus,
+.cell.native.is-pressed,
+.cell.native.is-selected {
   border: none;
   outline: none;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cell.native.is-opening {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .cell.native .icon,

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::settings;
 use super::lifecycle::set_enabled;
@@ -102,7 +102,7 @@ fn path_has_clsid(path: &str, clsid: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn open_desktop_item(path: String) -> Result<(), String> {
+pub fn open_desktop_item(app: AppHandle, path: String) -> Result<(), String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("路径为空".into());
@@ -113,9 +113,16 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        // Namespace icons: explorer known-folders on a detached thread.
-        // Synchronous ShellExecute here deadlocks after closing Recycle Bin /
-        // This PC once (WorkerW + shell DDE).
+        // Opening this app again must focus the existing main window (single-instance).
+        if win::path_is_self_app(trimmed) {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+            return Ok(());
+        }
+        // Namespace icons: activate existing Explorer window, else spawn known-folder.
         if let Some(kind) = super::builtin_kind_from_path(trimmed) {
             return win::shell_open_known_folder(kind);
         }
@@ -123,7 +130,7 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = trimmed;
+        let _ = (app, trimmed);
         Err("桌面整理仅支持 Windows".into())
     }
 }
