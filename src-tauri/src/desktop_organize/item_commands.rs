@@ -113,16 +113,13 @@ pub fn open_desktop_item(path: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        let target = if let Some(clsid) = super::namespace_clsid_for_path(trimmed) {
-            if matches!(super::builtin_kind_from_path(trimmed), Some("network")) {
-                "shell:NetworkPlacesFolder".to_string()
-            } else {
-                format!("shell:{clsid}")
-            }
-        } else {
-            trimmed.to_string()
-        };
-        return win::shell_open(&target);
+        // Namespace icons: explorer known-folders on a detached thread.
+        // Synchronous ShellExecute here deadlocks after closing Recycle Bin /
+        // This PC once (WorkerW + shell DDE).
+        if let Some(kind) = super::builtin_kind_from_path(trimmed) {
+            return win::shell_open_known_folder(kind);
+        }
+        return win::shell_open(trimmed);
     }
     #[cfg(not(windows))]
     {

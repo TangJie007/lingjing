@@ -1263,42 +1263,69 @@ use std::ffi::OsStr;
         }
     }
 
-    pub fn shell_open(path: &str) -> Result<(), String> {
-        use windows::Win32::UI::Shell::ShellExecuteW;
-        unsafe {
-            let wpath = wide(path);
-            let verb = wide("open");
-            let ret = ShellExecuteW(
-                None,
-                PCWSTR(verb.as_ptr()),
-                PCWSTR(wpath.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOW,
-            );
-            if (ret.0 as isize) <= 32 {
-                return Err(format!("打开失败: code={}", ret.0 as isize));
+    /// Open This PC / Recycle Bin / Network via Explorer known-folder names.
+    /// Must not call ShellExecute on our WorkerW-hosted HWND path — that can
+    /// DDE-deadlock the UI the second time a folder window is opened.
+    pub fn shell_open_known_folder(kind: &str) -> Result<(), String> {
+        let arg = match kind {
+            "recycle" => "shell:RecycleBinFolder",
+            "computer" => "shell:MyComputerFolder",
+            "network" => "shell:NetworkPlacesFolder",
+            _ => return Err(format!("unknown namespace icon: {kind}")),
+        };
+        spawn_detached_open(move || {
+            match std::process::Command::new("explorer").arg(arg).spawn() {
+                Ok(_) => {}
+                Err(e) => tracing::info!("[desktop-organize] explorer open {arg} failed: {e}"),
             }
-        }
-        Ok(())
+        })
+    }
+
+    pub fn shell_open(path: &str) -> Result<(), String> {
+        let path = path.to_string();
+        spawn_detached_open(move || {
+            if let Err(e) = shell_execute_async(&path, "open") {
+                tracing::info!("[desktop-organize] shell_open failed: {e}");
+            }
+        })
     }
 
     pub fn shell_show_properties(path: &str) -> Result<(), String> {
-        use windows::Win32::UI::Shell::ShellExecuteW;
+        let path = path.to_string();
+        spawn_detached_open(move || {
+            if let Err(e) = shell_execute_async(&path, "properties") {
+                tracing::info!("[desktop-organize] shell_show_properties failed: {e}");
+            }
+        })
+    }
+
+    fn spawn_detached_open<F>(f: F) -> Result<(), String>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        std::thread::Builder::new()
+            .name("lingscape-shell-open".into())
+            .spawn(f)
+            .map_err(|e| format!("failed to spawn open task: {e}"))?;
+        Ok(())
+    }
+
+    fn shell_execute_async(path: &str, verb: &str) -> Result<(), String> {
+        use windows::Win32::UI::Shell::{
+            ShellExecuteExW, SEE_MASK_ASYNCOK, SEE_MASK_FLAG_NO_UI, SHELLEXECUTEINFOW,
+        };
         unsafe {
             let wpath = wide(path);
-            let verb = wide("properties");
-            let ret = ShellExecuteW(
-                None,
-                PCWSTR(verb.as_ptr()),
-                PCWSTR(wpath.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOW,
-            );
-            if (ret.0 as isize) <= 32 {
-                return Err(format!("打开属性失败: code={}", ret.0 as isize));
-            }
+            let wverb = wide(verb);
+            let mut info = SHELLEXECUTEINFOW {
+                cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+                // Return before the shell action finishes — avoids WorkerW/OLE deadlock.
+                fMask: SEE_MASK_ASYNCOK | SEE_MASK_FLAG_NO_UI,
+                lpVerb: PCWSTR(wverb.as_ptr()),
+                lpFile: PCWSTR(wpath.as_ptr()),
+                nShow: SW_SHOW.0 as i32,
+                ..Default::default()
+            };
+            ShellExecuteExW(&mut info).map_err(|e| format!("open failed: {e}"))
         }
-        Ok(())
     }
