@@ -180,6 +180,14 @@ fn get_last_wallpaper(app: AppHandle) -> Result<Option<settings::LastWallpaper>,
     settings::load_last_wallpaper(&app)
 }
 
+fn focus_main_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "show", "显示灵镜", true, None::<&str>)?;
     let pause_item = MenuItem::with_id(app, "pause", "暂停壁纸", true, None::<&str>)?;
@@ -195,13 +203,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false);
     builder = builder.on_menu_event(|app, event| match event.id.as_ref() {
-        "show" => {
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
-                let _ = win.unminimize();
-                let _ = win.set_focus();
-            }
-        }
+        "show" => focus_main_window(app),
         "pause" => {
             let app_clone = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -256,9 +258,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 if visible && !minimized && focused {
                     let _ = win.hide();
                 } else {
-                    let _ = win.show();
-                    let _ = win.unminimize();
-                    let _ = win.set_focus();
+                    focus_main_window(app);
                 }
             }
         }
@@ -313,6 +313,11 @@ fn export_wallpaper(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Closing main only hides to tray; a second launch must not re-attach
+        // wallpaper / desktop-organize (that deadlocks / Not Responding).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            focus_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
