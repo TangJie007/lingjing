@@ -21,17 +21,36 @@ const uri = computed(() => {
   return resolveMediaUri(props.item);
 });
 
+const urlThumb = computed(() => {
+  const t = props.item.thumb?.trim();
+  if (!t) return null;
+  if (/^(https?:|data:|blob:|asset:)/i.test(t)) return t;
+  return null;
+});
+
 const isPreview = computed(() => props.mode === "preview");
-const showVideo = computed(() => props.item.type === "video" && !!uri.value);
-const showImage = computed(
-  () => (props.item.type === "image" || props.item.type === "gif") && !!uri.value,
+/** Card list: prefer remote thumbnailUrl over decoding the full video. */
+const showRemoteThumb = computed(() => !isPreview.value && !!urlThumb.value);
+const showVideo = computed(
+  () => props.item.type === "video" && !!uri.value && !showRemoteThumb.value,
 );
+const showImage = computed(() => {
+  if (showRemoteThumb.value) return true;
+  return (props.item.type === "image" || props.item.type === "gif") && !!uri.value;
+});
+const imageSrc = computed(() => {
+  if (showRemoteThumb.value) return urlThumb.value;
+  return uri.value;
+});
 const posterKey = computed(() => videoPosterKey(props.item));
 
 const mediaReady = ref(false);
 const posterUrl = ref<string | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
-const isLoading = computed(() => !!uri.value && !mediaReady.value);
+const isLoading = computed(() => {
+  if (showRemoteThumb.value) return !mediaReady.value;
+  return !!uri.value && !mediaReady.value;
+});
 let seekPending = false;
 
 function applyCachedPoster() {
@@ -43,9 +62,14 @@ function applyCachedPoster() {
 }
 
 watch(
-  () => [posterKey.value, props.mode, showVideo.value] as const,
+  () => [posterKey.value, props.mode, showVideo.value, showRemoteThumb.value, urlThumb.value] as const,
   () => {
     seekPending = false;
+    if (showRemoteThumb.value) {
+      mediaReady.value = false;
+      posterUrl.value = null;
+      return;
+    }
     if (isPreview.value || !showVideo.value) {
       mediaReady.value = false;
       posterUrl.value = null;
@@ -119,7 +143,11 @@ function onImgLoad() {
       'is-loading': isLoading,
       'is-video-preview': isPreview && showVideo,
     }"
-    :style="isLoading ? undefined : { background: item.thumb }"
+    :style="
+      isLoading || urlThumb
+        ? undefined
+        : { background: item.thumb }
+    "
   >
     <VueSkeletonLoader
       v-if="isLoading"
@@ -158,12 +186,13 @@ function onImgLoad() {
       @load="onImgLoad"
     />
     <img
-      v-else-if="showImage"
+      v-else-if="showImage && imageSrc"
       class="thumb-media"
-      :src="uri!"
+      :src="imageSrc"
       alt=""
       :loading="isPreview ? 'eager' : 'lazy'"
       @load="onImgLoad"
+      @error="mediaReady = true"
     />
   </div>
 </template>

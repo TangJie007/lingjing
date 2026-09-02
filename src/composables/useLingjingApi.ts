@@ -1,4 +1,5 @@
 import type { WallpaperItem, WallpaperType } from "../data/catalog";
+import { apiFetch } from "./apiFetch";
 import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 import { useAuth } from "./useAuth";
 
@@ -8,7 +9,9 @@ interface ApiWallpaper {
   description?: string;
   categoryId?: number;
   categoryName?: string;
-  fileUrl: string;
+  fileUrl?: string;
+  thumbnailUrl?: string;
+  streamPath?: string;
   mimeType?: string;
   fileSize?: number;
   likeCount?: number;
@@ -73,13 +76,25 @@ function thumbFor(type: WallpaperType): string {
   }
 }
 
+function resolveMediaSrc(w: ApiWallpaper): string | undefined {
+  const direct = w.fileUrl?.trim();
+  if (direct) return direct;
+  const stream = w.streamPath?.trim();
+  if (!stream) return undefined;
+  if (/^https?:\/\//i.test(stream)) return stream;
+  const base = apiBase().replace(/\/$/, "");
+  return stream.startsWith("/") ? `${base}${stream}` : `${base}/${stream}`;
+}
+
 export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
-  const type = mediaTypeFromMime(w.mimeType, w.fileUrl);
+  const mediaSrc = resolveMediaSrc(w);
+  const type = mediaTypeFromMime(w.mimeType, mediaSrc || w.thumbnailUrl);
   const category = w.categoryName || "在线";
+  const thumb = w.thumbnailUrl?.trim() || thumbFor(type);
   return {
     id: `online-${w.id}`,
     name: w.title,
-    thumb: thumbFor(type),
+    thumb,
     type,
     size: formatSize(w.fileSize),
     category,
@@ -87,14 +102,14 @@ export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
     heat: w.likeCount ? `🔥 ${w.likeCount}` : "在线",
     favorite: !!w.liked,
     tags: [`#${category}`],
-    mediaSrc: w.fileUrl,
+    mediaSrc,
     source: "online",
   };
 }
 
 export async function fetchOnlineCategories(): Promise<OnlineCategory[]> {
   const { authHeaders } = useAuth();
-  const res = await fetch(`${apiBase()}/api/lingjing/wallpaper-categories`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpaper-categories`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<CategoryListData>;
@@ -109,18 +124,23 @@ export async function fetchOnlineCategories(): Promise<OnlineCategory[]> {
 export async function fetchOnlineWallpapers(options?: {
   page?: number;
   pageSize?: number;
-  categoryId?: string;
+  categoryId?: string | number | null;
 }): Promise<{ items: WallpaperItem[]; total: number }> {
   const page = options?.page ?? 1;
   const pageSize = options?.pageSize ?? 24;
-  const categoryId = options?.categoryId ?? "";
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
-    categoryId,
   });
+  const rawCat = options?.categoryId;
+  if (rawCat != null && String(rawCat).trim() !== "") {
+    const id = Number(rawCat);
+    if (Number.isInteger(id) && id > 0) {
+      params.set("categoryId", String(id));
+    }
+  }
   const { authHeaders } = useAuth();
-  const res = await fetch(`${apiBase()}/api/lingjing/wallpapers?${params}`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpapers?${params}`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<WallpaperListData>;

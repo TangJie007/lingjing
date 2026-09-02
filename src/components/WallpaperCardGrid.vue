@@ -22,7 +22,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="grid">
+  <div class="card-list">
     <div
       v-for="(item, idx) in items"
       :key="item.id"

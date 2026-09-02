@@ -320,6 +320,7 @@ pub fn run() {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_http::init())
         .manage(EngineHandle::default())
         .manage(power::PowerWatcher::default())
         .on_window_event(|window, event| {

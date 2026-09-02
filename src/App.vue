@@ -214,8 +214,7 @@ async function refreshOnline() {
       fetchOnlineCategories().catch(() => [] as OnlineCategory[]),
       fetchOnlineWallpapers({
         pageSize: 48,
-        categoryId:
-          onlineCategoryId.value != null ? String(onlineCategoryId.value) : "",
+        categoryId: onlineCategoryId.value,
       }),
     ]);
     onlineCategories.value = cats;
@@ -243,7 +242,7 @@ async function onOnlineCategoryChange(categoryId: number | null) {
   try {
     const { items } = await fetchOnlineWallpapers({
       pageSize: 48,
-      categoryId: categoryId != null ? String(categoryId) : "",
+      categoryId,
     });
     onlineItems.value = items;
     const { ids } = await loadFavoriteIds();
@@ -525,23 +524,31 @@ onMounted(async () => {
   syncLoopModeFromSettings();
   await refreshMe().catch(() => undefined);
   await refreshLibrary();
-  unlisten = await onEngineState((s) => {
-    engine.value = s;
-    if (s.error) toastEngineError(s.error);
-    else lastEngineErrorToast = "";
-    // Single loop is handled by <video loop> in wallpaper.html.
-    // Do NOT call onSet here — that reloads the whole engine and spams toast.
-    if (
-      s.duration > 0 &&
-      s.currentTime >= s.duration - 0.35 &&
-      !s.playing &&
-      current.value &&
-      loopMode.value !== "single"
-    ) {
-      void onNext();
-    }
-  });
-  unlistenPause = await onPauseRecommend(applyPauseRecommend);
+  try {
+    unlisten = await onEngineState((s) => {
+      engine.value = s;
+      if (s.error) toastEngineError(s.error);
+      else lastEngineErrorToast = "";
+      // Single loop is handled by <video loop> in wallpaper.html.
+      // Do NOT call onSet here — that reloads the whole engine and spams toast.
+      if (
+        s.duration > 0 &&
+        s.currentTime >= s.duration - 0.35 &&
+        !s.playing &&
+        current.value &&
+        loopMode.value !== "single"
+      ) {
+        void onNext();
+      }
+    });
+  } catch (e) {
+    console.warn("onEngineState failed", e);
+  }
+  try {
+    unlistenPause = await onPauseRecommend(applyPauseRecommend);
+  } catch (e) {
+    console.warn("onPauseRecommend failed", e);
+  }
 
   try {
     const { listen } = await import("@tauri-apps/api/event");

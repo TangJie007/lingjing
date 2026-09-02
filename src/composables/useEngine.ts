@@ -2,6 +2,37 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { WallpaperItem } from "../data/catalog";
 
+function hasTauriInternals(): boolean {
+  return typeof window !== "undefined" && !!(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+}
+
+/** Wait until WebView injected Tauri IPC (avoids transformCallback crash on HMR / early mount). */
+async function whenTauriReady(timeoutMs = 8000): Promise<boolean> {
+  if (hasTauriInternals()) return true;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 50));
+    if (hasTauriInternals()) return true;
+  }
+  return false;
+}
+
+async function listenWhenReady<T>(
+  event: string,
+  handler: (payload: T) => void,
+): Promise<UnlistenFn> {
+  if (!(await whenTauriReady())) {
+    console.warn(`[tauri] skip listen("${event}"): IPC not ready`);
+    return () => {};
+  }
+  try {
+    return await listen<T>(event, (ev) => handler(ev.payload));
+  } catch (e) {
+    console.warn(`[tauri] listen("${event}") failed`, e);
+    return () => {};
+  }
+}
+
 export interface EngineState {
   mediaId: string | null;
   title: string | null;
@@ -68,7 +99,7 @@ export async function engineGetState() {
 }
 
 export function onEngineState(cb: (s: EngineState) => void): Promise<UnlistenFn> {
-  return listen<EngineState>("engine-state", (ev) => cb(ev.payload));
+  return listenWhenReady<EngineState>("engine-state", cb);
 }
 
 export interface PauseRecommendPayload {
@@ -79,7 +110,7 @@ export interface PauseRecommendPayload {
 export function onPauseRecommend(
   cb: (p: PauseRecommendPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen<PauseRecommendPayload>("engine-pause-recommend", (ev) => cb(ev.payload));
+  return listenWhenReady<PauseRecommendPayload>("engine-pause-recommend", cb);
 }
 
 export interface LibraryDto {

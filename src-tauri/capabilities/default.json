@@ -21,6 +21,13 @@
     "dialog:default",
     "autostart:default",
     "os:default",
-    "allow-engine"
+    "allow-engine",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://**" },
+        { "url": "http://**" }
+      ]
+    }
   ]
 }

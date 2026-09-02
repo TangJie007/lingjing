@@ -1,4 +1,5 @@
 import { computed, ref } from "vue";
+import { apiFetch } from "./apiFetch";
 import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 
 const AUTH_STORAGE_KEY = "lingjing.auth.v1";
@@ -98,7 +99,7 @@ async function applyAuthResponse(body: ApiEnvelope<Record<string, unknown>>) {
 
 async function refreshMe(): Promise<LingjingUser | null> {
   if (!token.value) return null;
-  const res = await fetch(`${apiBase()}/api/lingjing/auth/me`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/auth/me`, {
     headers: { Authorization: `Bearer ${token.value}` },
   });
   const body = await parseJson<Record<string, unknown>>(res);
@@ -120,7 +121,7 @@ async function logout(): Promise<void> {
   persistAuth();
   if (!t) return;
   try {
-    await fetch(`${apiBase()}/api/lingjing/auth/logout`, {
+    await apiFetch(`${apiBase()}/api/lingjing/auth/logout`, {
       method: "POST",
       headers: { Authorization: `Bearer ${t}` },
     });
@@ -135,7 +136,7 @@ export function useAuth() {
   async function login(account: string, password: string): Promise<void> {
     authLoading.value = true;
     try {
-      const res = await fetch(`${apiBase()}/api/lingjing/auth/login`, {
+      const res = await apiFetch(`${apiBase()}/api/lingjing/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account: account.trim(), password }),
@@ -147,7 +148,7 @@ export function useAuth() {
   }
 
   async function sendLoginCode(email: string): Promise<void> {
-    const res = await fetch(`${apiBase()}/api/lingjing/auth/send-login-code`, {
+    const res = await apiFetch(`${apiBase()}/api/lingjing/auth/send-login-code`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim() }),
@@ -161,7 +162,7 @@ export function useAuth() {
   async function loginWithCode(email: string, code: string): Promise<void> {
     authLoading.value = true;
     try {
-      const res = await fetch(`${apiBase()}/api/lingjing/auth/login-code`, {
+      const res = await apiFetch(`${apiBase()}/api/lingjing/auth/login-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), code: code.trim() }),

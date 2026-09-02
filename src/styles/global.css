@@ -698,18 +698,29 @@ input, textarea {
 }
 
 /* ---- 壁纸卡片 ---- */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.card-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
   gap: 14px;
-  align-content: start;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
   padding-bottom: 4px;
 }
+.card-list > .card {
+  flex: 0 0 calc((100% - 28px) / 3);
+  width: calc((100% - 28px) / 3);
+  max-width: calc((100% - 28px) / 3);
+  box-sizing: border-box;
+}
 @media (max-width: 680px) {
-  .grid { grid-template-columns: repeat(2, 1fr); }
+  .card-list > .card {
+    flex-basis: calc((100% - 14px) / 2);
+    width: calc((100% - 14px) / 2);
+    max-width: calc((100% - 14px) / 2);
+  }
 }
 .card {
   border: 1px solid var(--border);
@@ -732,7 +743,11 @@ input, textarea {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-soft);
 }
-.card .thumb { aspect-ratio: 16 / 10; position: relative; overflow: hidden; }
+.card .thumb {
+  aspect-ratio: 16 / 10;
+  position: relative;
+  overflow: hidden;
+}
 .card .thumb-bg {
   position: absolute; inset: 0;
   transition: transform var(--dur-base) var(--ease);
@@ -813,12 +828,26 @@ input, textarea {
 .ha-btn.apply { background: var(--primary); color: #fff; }
 .ha-btn:hover { transform: scale(1.06); }
 .ha-btn:active { transform: scale(0.92); }
-.card .info { padding: 9px 11px; }
-.card .info .t {
-  font-size: 13px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.card .info {
+  padding: 12px 12px 14px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.card .info .m { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.card .info .t {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.card .info .m {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-top: 0;
+  line-height: 1.45;
+  word-break: break-word;
+}
 
 /* ---- 详情抽屉 ---- */
 .detail {
