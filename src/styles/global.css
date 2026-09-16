@@ -1205,6 +1205,34 @@ input, textarea {
 
 .fav-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
 .fav-sub { font-size: 12.5px; color: var(--text-3); margin-bottom: 18px; }
+
+.online-login-gate {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-bottom: 24px;
+}
+
+.online-login-btn {
+  margin-top: 4px;
+  border: none;
+  border-radius: var(--r-md);
+  padding: 9px 18px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: #fff;
+  background: var(--primary);
+  cursor: pointer;
+}
+
+.online-login-btn:hover {
+  background: var(--primary-hover);
+}
 .page-head-row {
   display: flex;
   align-items: center;

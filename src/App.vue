@@ -117,6 +117,7 @@ const routeViewProps = computed(() => {
         loading: onlineGridLoading.value,
         emptyText: onlineEmptyText.value,
         onlineEnabled: settings.value.onlineEnabled,
+        loggedIn: isLoggedIn.value,
         categories: onlineCategories.value,
         categoryId: onlineCategoryId.value,
       };
@@ -617,6 +618,7 @@ async function onFirstRunConfirm(autostart: boolean) {
           @import="runImport()"
           @remove="onRemoveLocal"
           @category-change="onOnlineCategoryChange"
+          @login="openLogin"
         />
       </RouterView>
 

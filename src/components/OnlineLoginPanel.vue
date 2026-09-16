@@ -101,7 +101,7 @@ onUnmounted(() => {
       </div>
     </template>
     <template v-else>
-      <p class="hint">登录后可同步社区点赞状态；未登录也可正常浏览在线壁纸。</p>
+      <p class="hint">登录后可同步社区收藏与点赞；发现页未登录也可浏览在线壁纸。</p>
 
       <div class="tabs" role="tablist">
         <button

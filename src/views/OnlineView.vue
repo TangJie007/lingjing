@@ -14,6 +14,7 @@ const props = withDefaults(
     loading?: boolean;
     emptyText?: string;
     onlineEnabled?: boolean;
+    loggedIn?: boolean;
     categories?: OnlineCategory[];
     categoryId?: number | null;
   }>(),
@@ -21,6 +22,7 @@ const props = withDefaults(
     loading: false,
     emptyText: "暂无在线壁纸，请确认 API 服务已启动",
     onlineEnabled: false,
+    loggedIn: false,
     favorites: () => [],
     categories: () => [],
     categoryId: null,
@@ -32,11 +34,10 @@ const emit = defineEmits<{
   (e: "preview", item: WallpaperItem): void;
   (e: "set", item: WallpaperItem): void;
   (e: "category-change", categoryId: number | null): void;
+  (e: "login"): void;
 }>();
 
 type OnlineTab = "discover" | "mine";
-
-type FilterKind = "cat" | "sort";
 
 type FilterItem =
   | { key: string; kind: "sort" }
@@ -126,7 +127,9 @@ const discoverList = computed(() => {
   return r;
 });
 
-const favoriteList = computed(() => props.favorites ?? []);
+const favoriteList = computed(() =>
+  props.loggedIn ? (props.favorites ?? []) : [],
+);
 </script>
 
 <template>
@@ -203,20 +206,31 @@ const favoriteList = computed(() => props.favorites ?? []);
     </template>
 
     <template v-else>
-      <div class="fav-sub">已收藏 {{ favoriteList.length }} 张壁纸 · 本地保存，无需登录</div>
+      <div v-if="!loggedIn" class="online-login-gate">
+        <EmptyState
+          title="登录后查看我的收藏"
+          description="登录灵境社区后，可同步并管理你的收藏"
+        />
+        <button type="button" class="online-login-btn" @click="emit('login')">
+          去登录
+        </button>
+      </div>
+      <template v-else>
+        <div class="fav-sub">已收藏 {{ favoriteList.length }} 张壁纸</div>
 
-      <EmptyState
-        v-if="favoriteList.length === 0"
-        description="还没有收藏，在壁纸卡片上点收藏吧"
-      />
-      <WallpaperCardGrid
-        v-else
-        :items="favoriteList"
-        :selected-id="selectedId"
-        @select="emit('select', $event)"
-        @preview="emit('preview', $event)"
-        @set="emit('set', $event)"
-      />
+        <EmptyState
+          v-if="favoriteList.length === 0"
+          description="还没有收藏，在壁纸卡片上点收藏吧"
+        />
+        <WallpaperCardGrid
+          v-else
+          :items="favoriteList"
+          :selected-id="selectedId"
+          @select="emit('select', $event)"
+          @preview="emit('preview', $event)"
+          @set="emit('set', $event)"
+        />
+      </template>
     </template>
   </div>
 </template>

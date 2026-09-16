@@ -829,9 +829,10 @@ body,
 }
 
 .island-brand {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: 0;
+  color: rgba(245, 245, 247, 0.72);
 }
 
 .island-wave {
