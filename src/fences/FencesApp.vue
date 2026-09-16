@@ -598,6 +598,7 @@ onUnmounted(() => {
         <DynamicIsland
           :fences-collapsed="fencesCollapsed"
           :item-count="fenceItemCount"
+          :dragging="dragging"
           @toggle-fences="toggleFencesCollapsed"
           @open-settings="openMainSettings"
           @disable-organize="disableDesktopOrganize"
