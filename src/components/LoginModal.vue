@@ -31,20 +31,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to=".window">
-    <div v-if="open" class="lm-mask" @click.self="emit('close')">
-      <div class="lm-card" role="dialog" aria-modal="true" aria-label="登录灵境社区">
-        <header>
-          <div class="lm-title">
-            <AppLogo :size="28" decorative />
-            <h3>登录灵境社区</h3>
-          </div>
-          <ModalCloseButton @click="emit('close')" />
-        </header>
-        <OnlineLoginPanel @success="emit('success')" />
-      </div>
+  <!-- Already under .window — no Teleport. Absolute overlay covers the shell. -->
+  <div v-if="open" class="lm-mask" @click.self="emit('close')">
+    <div class="lm-card" role="dialog" aria-modal="true" aria-label="登录灵境社区">
+      <header>
+        <div class="lm-title">
+          <AppLogo :size="28" decorative />
+          <h3>登录灵境社区</h3>
+        </div>
+        <ModalCloseButton @click="emit('close')" />
+      </header>
+      <OnlineLoginPanel @success="emit('success')" />
     </div>
-  </Teleport>
+  </div>
 </template>
 
 <style scoped>

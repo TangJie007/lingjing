@@ -597,7 +597,6 @@ async function onFirstRunConfirm(autostart: boolean) {
     @drop="onDrop"
   >
     <WinBar
-      :online-enabled="settings.onlineEnabled"
       :logged-in="isLoggedIn"
       :user-label="userLabel"
       @login="openLogin"

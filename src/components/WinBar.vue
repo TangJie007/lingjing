@@ -8,7 +8,6 @@ import iconClose from "../assets/svg/close.svg";
 import logoTxt from "../assets/logo-txt.jpeg";
 
 defineProps<{
-  onlineEnabled?: boolean;
   loggedIn?: boolean;
   userLabel?: string;
 }>();
@@ -17,9 +16,15 @@ const emit = defineEmits<{ (e: "login"): void }>();
 
 async function onDrag(e: MouseEvent) {
   if (e.button !== 0) return;
-  const target = e.target as HTMLElement | null;
-  if (target?.closest(".win-act, .app-logo, .win-logo-txt")) return;
-  await invoke("start_drag");
+  try {
+    await invoke("start_drag");
+  } catch {
+    /* ignore in browser preview */
+  }
+}
+
+function onLoginClick() {
+  emit("login");
 }
 
 async function minimize() {
@@ -41,8 +46,15 @@ async function hideToTray() {
 </script>
 
 <template>
-  <div class="win-bar" @mousedown="onDrag">
-    <div class="win-brand">
+  <div class="win-bar">
+    <button
+      type="button"
+      class="win-brand win-brand-btn"
+      :aria-label="loggedIn ? `已登录：${userLabel}` : '登录灵境社区'"
+      :title="loggedIn ? userLabel : '登录灵境社区'"
+      @mousedown.stop
+      @click.stop="onLoginClick"
+    >
       <AppLogo class="win-logo" :size="22" decorative />
       <img
         class="win-logo-txt"
@@ -50,18 +62,17 @@ async function hideToTray() {
         alt="灵镜 LINGJING"
         draggable="false"
       />
-    </div>
-    <span class="win-spacer" />
+    </button>
+    <span class="win-spacer" @mousedown="onDrag" />
     <div class="win-acts">
       <button
-        v-if="onlineEnabled"
         type="button"
         class="win-act icon-btn login"
         :class="{ 'is-logged-in': loggedIn }"
         :aria-label="loggedIn ? `已登录：${userLabel}` : '登录灵境社区'"
         :title="loggedIn ? userLabel : '登录'"
         @mousedown.stop
-        @click.stop="emit('login')"
+        @click.stop="onLoginClick"
       >
         <img :src="iconLogin" alt="" class="win-act-icon" draggable="false" />
         <span v-if="loggedIn" class="win-act-label">{{ userLabel }}</span>

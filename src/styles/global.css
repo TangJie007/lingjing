@@ -309,6 +309,27 @@ input, textarea {
   height: 34px;
   app-region: no-drag;
 }
+.win-brand-btn {
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  position: relative;
+  z-index: 6;
+}
+.win-spacer {
+  flex: 1;
+  align-self: stretch;
+  min-width: 24px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: default;
+}
 .win-logo {
   position: absolute;
   left: 0;
@@ -330,7 +351,6 @@ input, textarea {
 }
 .win-name { font-size: 14px; font-weight: 700; }
 .win-sub { font-size: 11px; color: var(--text-2); }
-.win-spacer { flex: 1; }
 .win-acts {
   display: flex;
   align-items: center;
