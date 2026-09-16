@@ -123,6 +123,9 @@ onUnmounted(stopTick);
   padding: 10px 14px;
   background: linear-gradient(to top, rgba(17, 24, 39, 0.72), rgba(17, 24, 39, 0.35));
   backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom-left-radius: var(--r-md, 12px);
+  border-bottom-right-radius: var(--r-md, 12px);
 }
 .pp-btn {
   width: 32px;
