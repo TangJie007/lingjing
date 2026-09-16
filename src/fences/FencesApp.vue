@@ -97,6 +97,8 @@ const fileKeys: Exclude<FenceGroupKey, "app">[] = [
   "archive",
 ];
 
+const activeFileTab = ref<Exclude<FenceGroupKey, "app">>("image");
+
 const hostId: Record<Exclude<FenceGroupKey, "app">, string> = {
   image: "images",
   document: "documents",
@@ -616,35 +618,48 @@ onUnmounted(() => {
           @end="onDragEnd('app')"
         />
 
-        <div id="files">
-          <section
+        <section
+          id="files"
+          class="fence"
+          :class="{ 'fence-dragging': fenceDraggingKey === activeFileTab }"
+          :data-kind="activeFileTab"
+        >
+          <div class="fence-tabs" role="tablist" aria-label="文件分类">
+            <button
+              v-for="key in fileKeys"
+              :key="key"
+              type="button"
+              class="fence-tab"
+              role="tab"
+              :aria-selected="activeFileTab === key"
+              :class="{ on: activeFileTab === key }"
+              @click="activeFileTab = key"
+            >
+              <span>{{ groups[key].title }}</span>
+              <span v-if="groups[key].items.length" class="fence-tab-count">{{
+                groups[key].items.length
+              }}</span>
+            </button>
+          </div>
+          <FenceGroup
             v-for="key in fileKeys"
+            v-show="activeFileTab === key"
             :key="key"
-            class="fence"
-            :class="{
-              compact: groups[key].compact,
-              'fence-dragging': fenceDraggingKey === key,
-            }"
-            :data-kind="key"
-          >
-            <div class="fence-title">{{ groups[key].title }}</div>
-            <FenceGroup
-              :group-key="key"
-              v-model:items="groups[key].items"
-              :empty-text="emptyTextFor(key)"
-              :host-id="hostId[key]"
-              :drag-group="fileDragGroup"
-              :drag-delay="FILE_DRAG_DELAY_MS"
-              :folder-move-guard="onDragMove"
-              @open="openItem"
-              @preload="preloadShellMenu"
-              @sorted="onSorted(key)"
-              @added="onAdded(key, $event)"
-              @start="onDragStart(key, $event)"
-              @end="onDragEnd(key)"
-            />
-          </section>
-        </div>
+            :group-key="key"
+            v-model:items="groups[key].items"
+            :empty-text="emptyTextFor(key)"
+            :host-id="hostId[key]"
+            :drag-group="fileDragGroup"
+            :drag-delay="FILE_DRAG_DELAY_MS"
+            :folder-move-guard="onDragMove"
+            @open="openItem"
+            @preload="preloadShellMenu"
+            @sorted="onSorted(key)"
+            @added="onAdded(key, $event)"
+            @start="onDragStart(key, $event)"
+            @end="onDragEnd(key)"
+          />
+        </section>
       </div>
     </ContextMenuTrigger>
 
