@@ -7,9 +7,14 @@ import WinBar from "./components/WinBar.vue";
 import IconRail from "./components/IconRail.vue";
 import DetailDrawer from "./components/DetailDrawer.vue";
 import Toast from "./components/Toast.vue";
+import DownloadProgress from "./components/DownloadProgress.vue";
 import LoginModal from "./components/LoginModal.vue";
 import FirstRunAutostartModal from "./components/FirstRunAutostartModal.vue";
 import { showToast } from "./composables/useToast";
+import {
+  beginOnlineDownloadProgress,
+  endOnlineDownloadProgress,
+} from "./composables/useOnlineDownloadProgress";
 import { soundOn } from "./composables/useAudio";
 import { CATALOG, type WallpaperItem } from "./data/catalog";
 import {
@@ -360,9 +365,13 @@ async function applySetWallpaper(item: WallpaperItem) {
   try {
     let toSet = item;
     if (item.source === "online") {
-      showToast("正在获取下载地址…");
-      const localPath = await downloadOnlineWallpaperToCache(item);
-      toSet = { ...item, mediaSrc: localPath };
+      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id);
+      try {
+        const localPath = await downloadOnlineWallpaperToCache(item);
+        toSet = { ...item, mediaSrc: localPath };
+      } finally {
+        endOnlineDownloadProgress(200);
+      }
     }
     const state = await setWallpaper(toSet);
     engine.value = state;
@@ -370,6 +379,7 @@ async function applySetWallpaper(item: WallpaperItem) {
     selectedId.value = item.id;
     showToast(`壁纸「${item.name}」已成功应用到桌面`);
   } catch (e) {
+    endOnlineDownloadProgress();
     const msg = e instanceof Error ? e.message : String(e);
     showToast(`设壁纸失败：${msg}`);
   }
@@ -386,8 +396,13 @@ async function onSet(item: WallpaperItem) {
 async function onDownload(item: WallpaperItem) {
   try {
     if (item.source === "online") {
-      showToast("正在下载…");
-      const localPath = await exportOnlineWallpaperToCache(item);
+      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id);
+      let localPath: string;
+      try {
+        localPath = await exportOnlineWallpaperToCache(item);
+      } finally {
+        endOnlineDownloadProgress(200);
+      }
       const ext = localPath.includes(".") ? localPath.split(".").pop() ?? "bin" : "bin";
       const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_");
       const saved = await exportWallpaper(localPath, `${safeName}.${ext}`);
@@ -410,6 +425,7 @@ async function onDownload(item: WallpaperItem) {
     if (saved) showToast(`已保存：${saved}`);
     else showToast("已取消保存");
   } catch (e) {
+    endOnlineDownloadProgress();
     showToast(e instanceof Error ? e.message : String(e));
   }
 }
@@ -723,6 +739,7 @@ async function onFirstRunConfirm(autostart: boolean) {
     </div>
 
     <Toast />
+    <DownloadProgress />
     <FirstRunAutostartModal :open="firstRunOpen" :saving="firstRunSaving" @confirm="onFirstRunConfirm" />
     <LoginModal :open="loginOpen" @close="loginOpen = false" @success="onLoginSuccess" />
   </div>

@@ -1,12 +1,14 @@
 //! Cache online wallpapers under `{library_root}/.onlinefile/` (not part of local library index).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter};
 
 const ONLINE_CACHE_DIR: &str = ".onlinefile";
+const PROGRESS_EVENT: &str = "online-download-progress";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +28,22 @@ pub struct CacheOnlinePayload {
     /// record a member download even if a local cache already exists.
     #[serde(default)]
     pub record_download: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadProgressPayload {
+    id: String,
+    /// Bytes received so far
+    downloaded: u64,
+    /// Total size when Content-Length is known
+    total: Option<u64>,
+    /// `resolving` | `downloading` | `done` | `cached`
+    phase: &'static str,
+}
+
+fn emit_progress(app: &AppHandle, payload: DownloadProgressPayload) {
+    let _ = app.emit(PROGRESS_EVENT, payload);
 }
 
 fn online_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -178,6 +196,7 @@ pub async fn cache_online_wallpaper(
     }
 
     let stem = sanitize_file_stem(payload.id.trim());
+    let progress_id = payload.id.trim().to_string();
     let dir = online_cache_root(&app)?;
     fs::create_dir_all(&dir).map_err(|e| format!("创建 .onlinefile 目录失败: {e}"))?;
 
@@ -187,6 +206,16 @@ pub async fn cache_online_wallpaper(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
+
+    emit_progress(
+        &app,
+        DownloadProgressPayload {
+            id: progress_id.clone(),
+            downloaded: 0,
+            total: None,
+            phase: "resolving",
+        },
+    );
 
     // Resolve gateway → signed object URL (and record member download when JWT present).
     let mut fetch_url = url.clone();
@@ -198,6 +227,15 @@ pub async fn cache_online_wallpaper(
     }
 
     if let Some(existing) = find_existing_cache(&dir, &stem) {
+        emit_progress(
+            &app,
+            DownloadProgressPayload {
+                id: progress_id,
+                downloaded: 1,
+                total: Some(1),
+                phase: "cached",
+            },
+        );
         return Ok(existing.to_string_lossy().to_string());
     }
 
@@ -215,7 +253,7 @@ pub async fn cache_online_wallpaper(
         }
     }
 
-    let response = req
+    let mut response = req
         .send()
         .await
         .map_err(|e| format!("下载失败: {e}"))?;
@@ -228,29 +266,84 @@ pub async fn cache_online_wallpaper(
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
+    let total = response.content_length();
     let ext = resolve_ext(&payload, &fetch_url, content_type.as_deref());
     let dest = dir.join(format!("{stem}.{ext}"));
     let tmp = dir.join(format!("{stem}.{ext}.part"));
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("读取下载内容失败: {e}"))?;
-    if bytes.is_empty() {
+    emit_progress(
+        &app,
+        DownloadProgressPayload {
+            id: progress_id.clone(),
+            downloaded: 0,
+            total,
+            phase: "downloading",
+        },
+    );
+
+    let mut file =
+        fs::File::create(&tmp).map_err(|e| format!("写入临时文件失败: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let mut last_emit = Instant::now() - Duration::from_secs(1);
+
+    loop {
+        let chunk = response
+            .chunk()
+            .await
+            .map_err(|e| {
+                let _ = fs::remove_file(&tmp);
+                format!("读取下载内容失败: {e}")
+            })?;
+        let Some(chunk) = chunk else {
+            break;
+        };
+        if chunk.is_empty() {
+            continue;
+        }
+        file.write_all(&chunk).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("写入临时文件失败: {e}")
+        })?;
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+
+        let due = last_emit.elapsed() >= Duration::from_millis(80);
+        let finished = total.is_some_and(|t| t > 0 && downloaded >= t);
+        if due || finished {
+            emit_progress(
+                &app,
+                DownloadProgressPayload {
+                    id: progress_id.clone(),
+                    downloaded,
+                    total,
+                    phase: "downloading",
+                },
+            );
+            last_emit = Instant::now();
+        }
+    }
+
+    if downloaded == 0 {
+        let _ = fs::remove_file(&tmp);
         return Err("下载内容为空".into());
     }
 
-    {
-        let mut file =
-            fs::File::create(&tmp).map_err(|e| format!("写入临时文件失败: {e}"))?;
-        file.write_all(&bytes)
-            .map_err(|e| format!("写入临时文件失败: {e}"))?;
-        file.sync_all().ok();
-    }
+    file.sync_all().ok();
+    drop(file);
+
     fs::rename(&tmp, &dest).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         format!("保存缓存失败: {e}")
     })?;
+
+    emit_progress(
+        &app,
+        DownloadProgressPayload {
+            id: progress_id,
+            downloaded,
+            total: total.or(Some(downloaded)),
+            phase: "done",
+        },
+    );
 
     Ok(dest.to_string_lossy().to_string())
 }
