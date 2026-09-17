@@ -266,7 +266,7 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
         <div class="set-row">
           <div class="lead">
             <div class="t">启用在线壁纸</div>
-            <div class="d">开启后可在「在线 → 发现」浏览社区壁纸；登录后同步点赞</div>
+            <div class="d">开启后可在「在线 → 发现」浏览社区壁纸；登录后可同步社区收藏</div>
           </div>
           <div
             class="toggle"

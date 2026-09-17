@@ -23,6 +23,7 @@ import {
   removeLibraryItem,
   setFavoriteRemote,
   exportWallpaper,
+  cacheOnlineWallpaper,
   setWallpaper,
   type EngineState,
   type PauseRecommendPayload,
@@ -30,7 +31,13 @@ import {
 import { forgetVideoPoster, videoPosterKey } from "./composables/useVideoPoster";
 import { loadSettings, useSettings, hasVersionRecord, completeFirstRun } from "./composables/useSettings";
 import { useAuth } from "./composables/useAuth";
-import { fetchOnlineCategories, fetchOnlineWallpapers, type OnlineCategory } from "./composables/useLingjingApi";
+import {
+  fetchOnlineCategories,
+  fetchOnlineFavorites,
+  fetchOnlineWallpapers,
+  setOnlineFavorite,
+  type OnlineCategory,
+} from "./composables/useLingjingApi";
 
 const route = useRoute();
 const router = useRouter();
@@ -54,13 +61,14 @@ const firstRunOpen = ref(false);
 const firstRunSaving = ref(false);
 
 const settings = useSettings();
-const { isLoggedIn, refreshMe, user } = useAuth();
+const { isLoggedIn, refreshMe, checkSession, user, authHeaders } = useAuth();
 
 const userLabel = computed(
   () => user.value?.nickname || user.value?.username || user.value?.email || "已登录",
 );
 
 const onlineItems = ref<WallpaperItem[]>([]);
+const onlineFavoriteItems = ref<WallpaperItem[]>([]);
 const onlineCategories = ref<OnlineCategory[]>([]);
 const onlineCategoryId = ref<number | null>(null);
 const onlineLoading = ref(false);
@@ -99,7 +107,11 @@ const playQueue = computed(() => {
 const favoriteItems = computed(() => {
   const out: WallpaperItem[] = [];
   if (settings.value.onlineEnabled) {
-    for (const i of onlineItems.value) if (i.favorite) out.push(i);
+    if (isLoggedIn.value) {
+      out.push(...onlineFavoriteItems.value);
+    } else {
+      for (const i of onlineItems.value) if (i.favorite) out.push(i);
+    }
   } else {
     for (const i of CATALOG) if (i.favorite) out.push(i);
   }
@@ -146,8 +158,7 @@ provide("findWallpaper", findWallpaper);
 
 function syncRouteSideEffects(name: typeof route.name) {
   if (name === "online") void refreshOnline();
-  const keepDrawer = name === "online" || name === "local";
-  if (!keepDrawer) drawerOpen.value = false;
+  drawerOpen.value = false;
 }
 
 function syncLoopModeFromSettings() {
@@ -198,10 +209,35 @@ async function applyFavorites(ids: string[]) {
   for (const i of localItems.value) i.favorite = set.has(String(i.id));
 }
 
+async function syncOnlineFavoriteFlags(items: WallpaperItem[]) {
+  if (isLoggedIn.value) {
+    // JWT 已带上时，列表项的 favorited 由社区接口返回，不再用本地收藏覆盖
+    return;
+  }
+  const { ids } = await loadFavoriteIds();
+  for (const i of items) {
+    i.favorite = ids.includes(String(i.id));
+  }
+}
+
+async function refreshCommunityFavorites() {
+  if (!settings.value.onlineEnabled || !isLoggedIn.value) {
+    onlineFavoriteItems.value = [];
+    return;
+  }
+  try {
+    const { items } = await fetchOnlineFavorites({ pageSize: 48 });
+    onlineFavoriteItems.value = items;
+  } catch {
+    onlineFavoriteItems.value = [];
+  }
+}
+
 async function refreshOnline() {
   if (route.name !== "online" || !settings.value.onlineEnabled) {
     if (!settings.value.onlineEnabled) {
       onlineItems.value = [];
+      onlineFavoriteItems.value = [];
       onlineCategories.value = [];
       onlineCategoryId.value = null;
       onlineFetchError.value = "";
@@ -220,10 +256,8 @@ async function refreshOnline() {
     ]);
     onlineCategories.value = cats;
     onlineItems.value = wallpaperResult.items;
-    const { ids } = await loadFavoriteIds();
-    for (const i of onlineItems.value) {
-      i.favorite = ids.includes(String(i.id));
-    }
+    await syncOnlineFavoriteFlags(onlineItems.value);
+    await refreshCommunityFavorites();
   } catch (e) {
     onlineItems.value = [];
     const msg = e instanceof Error ? e.message : String(e);
@@ -246,10 +280,7 @@ async function onOnlineCategoryChange(categoryId: number | null) {
       categoryId,
     });
     onlineItems.value = items;
-    const { ids } = await loadFavoriteIds();
-    for (const i of onlineItems.value) {
-      i.favorite = ids.includes(String(i.id));
-    }
+    await syncOnlineFavoriteFlags(onlineItems.value);
   } catch (e) {
     onlineItems.value = [];
     const msg = e instanceof Error ? e.message : String(e);
@@ -299,7 +330,7 @@ function onOpenDetail(item: WallpaperItem) {
   openWallpaperDetail(item);
 }
 
-async function onSet(item: WallpaperItem) {
+async function applySetWallpaper(item: WallpaperItem) {
   if (item.missing) {
     showToast("源文件已缺失，请重新导入或删除该项");
     return;
@@ -309,15 +340,37 @@ async function onSet(item: WallpaperItem) {
     return;
   }
   try {
-    const state = await setWallpaper(item);
+    let toSet = item;
+    if (item.source === "online") {
+      showToast("正在缓存在线壁纸…");
+      const headers = authHeaders();
+      const raw = item.mediaSrc.split("?")[0] ?? item.mediaSrc;
+      const ext = raw.includes(".") ? (raw.split(".").pop() ?? "").toLowerCase() : "";
+      const localPath = await cacheOnlineWallpaper({
+        id: String(item.id),
+        url: item.mediaSrc,
+        authorization: headers.Authorization,
+        fileExt: ext && /^[a-z0-9]{1,8}$/i.test(ext) ? ext : undefined,
+      });
+      toSet = { ...item, mediaSrc: localPath };
+    }
+    const state = await setWallpaper(toSet);
     engine.value = state;
-    current.value = item;
+    current.value = toSet;
     selectedId.value = item.id;
     showToast(`壁纸「${item.name}」已成功应用到桌面`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     showToast(`设壁纸失败：${msg}`);
   }
+}
+
+async function onSet(item: WallpaperItem) {
+  if (item.source === "online" && !isLoggedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  await applySetWallpaper(item);
 }
 
 async function onDownload(item: WallpaperItem) {
@@ -341,8 +394,15 @@ async function onFavorite(item: WallpaperItem) {
   const next = !item.favorite;
   item.favorite = next;
   try {
-    const ids = await setFavoriteRemote(String(item.id), next);
-    await applyFavorites(ids);
+    if (item.source === "online" && isLoggedIn.value) {
+      await setOnlineFavorite(item.id, next);
+      const target = onlineItems.value.find((i) => i.id === item.id);
+      if (target) target.favorite = next;
+      await refreshCommunityFavorites();
+    } else {
+      const ids = await setFavoriteRemote(String(item.id), next);
+      await applyFavorites(ids);
+    }
     showToast(next ? "已收藏" : "已取消收藏");
   } catch (e) {
     item.favorite = !next;
@@ -377,6 +437,7 @@ function openLogin() {
 function onLoginSuccess() {
   loginOpen.value = false;
   if (route.name === "online") void refreshOnline();
+  else void refreshCommunityFavorites();
 }
 
 async function runImport(paths?: string[] | null) {
@@ -523,7 +584,8 @@ onMounted(async () => {
     firstRunOpen.value = true;
   }
   syncLoopModeFromSettings();
-  await refreshMe().catch(() => undefined);
+  const sessionOk = await checkSession().catch(() => false);
+  if (sessionOk) await refreshMe().catch(() => undefined);
   await refreshLibrary();
   try {
     unlisten = await onEngineState((s) => {

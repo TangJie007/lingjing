@@ -2,6 +2,7 @@ mod desktop;
 mod desktop_organize;
 mod favorites;
 mod library;
+mod online_cache;
 mod paths;
 mod power;
 pub mod settings;
@@ -431,6 +432,7 @@ pub fn run() {
             migrate_library,
             get_last_wallpaper,
             export_wallpaper,
+            online_cache::cache_online_wallpaper,
             desktop_organize::item_commands::open_desktop_item,
             desktop_organize::menu_commands::list_desktop_shell_context_menu,
             desktop_organize::menu_commands::list_desktop_shell_context_submenu,

@@ -3,19 +3,30 @@ import { apiFetch } from "./apiFetch";
 import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 import { useAuth } from "./useAuth";
 
+/** Raw wallpaper fields (snake_case from API; camelCase tolerated). */
 interface ApiWallpaper {
   id: number;
   title: string;
-  description?: string;
+  description?: string | null;
+  category_id?: number;
   categoryId?: number;
-  categoryName?: string;
-  fileUrl?: string;
-  thumbnailUrl?: string;
-  streamPath?: string;
-  mimeType?: string;
-  fileSize?: number;
+  category_name?: string | null;
+  categoryName?: string | null;
+  file_url?: string | null;
+  fileUrl?: string | null;
+  thumbnail_url?: string | null;
+  thumbnailUrl?: string | null;
+  stream_path?: string | null;
+  streamPath?: string | null;
+  mime_type?: string | null;
+  mimeType?: string | null;
+  file_size?: number | null;
+  fileSize?: number | null;
+  like_count?: number;
   likeCount?: number;
   liked?: boolean;
+  favorited?: boolean;
+  tags?: string[];
 }
 
 export interface OnlineCategory {
@@ -27,7 +38,15 @@ export interface OnlineCategory {
 }
 
 interface CategoryListData {
-  items: OnlineCategory[];
+  items: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    sort_order?: number;
+    sortOrder?: number;
+    is_active?: boolean;
+    enabled?: boolean;
+  }>;
   total: number;
 }
 
@@ -35,13 +54,15 @@ interface WallpaperListData {
   items: ApiWallpaper[];
   total: number;
   page: number;
-  pageSize: number;
+  page_size?: number;
+  pageSize?: number;
 }
 
 interface ApiEnvelope<T> {
   ok: boolean;
   data?: T;
   error?: string;
+  code?: number;
 }
 
 function apiBase(): string {
@@ -49,14 +70,14 @@ function apiBase(): string {
   return normalizeApiBaseUrl(settings.value.apiBaseUrl || DEFAULT_API_BASE_URL);
 }
 
-function formatSize(bytes?: number): string {
+function formatSize(bytes?: number | null): string {
   if (!bytes || bytes <= 0) return "—";
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)}M`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)}K`;
   return `${bytes}B`;
 }
 
-function mediaTypeFromMime(mime?: string, url?: string): WallpaperType {
+function mediaTypeFromMime(mime?: string | null, url?: string): WallpaperType {
   const m = (mime || "").toLowerCase();
   if (m.startsWith("video/")) return "video";
   if (m === "image/gif") return "gif";
@@ -76,10 +97,25 @@ function thumbFor(type: WallpaperType): string {
   }
 }
 
+function pickStr(...vals: Array<string | null | undefined>): string | undefined {
+  for (const v of vals) {
+    const t = v?.trim();
+    if (t) return t;
+  }
+  return undefined;
+}
+
+function pickNum(...vals: Array<number | null | undefined>): number | undefined {
+  for (const v of vals) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
 function resolveMediaSrc(w: ApiWallpaper): string | undefined {
-  const direct = w.fileUrl?.trim();
+  const direct = pickStr(w.file_url, w.fileUrl);
   if (direct) return direct;
-  const stream = w.streamPath?.trim();
+  const stream = pickStr(w.stream_path, w.streamPath);
   if (!stream) return undefined;
   if (/^https?:\/\//i.test(stream)) return stream;
   const base = apiBase().replace(/\/$/, "");
@@ -88,28 +124,41 @@ function resolveMediaSrc(w: ApiWallpaper): string | undefined {
 
 export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
   const mediaSrc = resolveMediaSrc(w);
-  const type = mediaTypeFromMime(w.mimeType, mediaSrc || w.thumbnailUrl);
-  const category = w.categoryName || "在线";
-  const thumb = w.thumbnailUrl?.trim() || thumbFor(type);
+  const thumbUrl = pickStr(w.thumbnail_url, w.thumbnailUrl);
+  const mime = pickStr(w.mime_type, w.mimeType);
+  const type = mediaTypeFromMime(mime, mediaSrc || thumbUrl);
+  const category = pickStr(w.category_name, w.categoryName) || "在线";
+  const likeCount = pickNum(w.like_count, w.likeCount) ?? 0;
+  const tags = Array.isArray(w.tags) && w.tags.length
+    ? w.tags.map((t) => (t.startsWith("#") ? t : `#${t}`))
+    : [`#${category}`];
   return {
     id: `online-${w.id}`,
     name: w.title,
-    thumb,
+    thumb: thumbUrl || thumbFor(type),
     type,
-    size: formatSize(w.fileSize),
+    size: formatSize(pickNum(w.file_size, w.fileSize)),
     category,
-    author: w.description?.trim() || "灵境社区",
-    heat: w.likeCount ? `🔥 ${w.likeCount}` : "在线",
-    favorite: !!w.liked,
-    tags: [`#${category}`],
+    author: pickStr(w.description) || "灵境社区",
+    heat: likeCount ? `🔥 ${likeCount}` : "在线",
+    favorite: !!w.favorited,
+    tags,
     mediaSrc,
     source: "online",
   };
 }
 
+function onlineWallpaperId(id: string | number): number | null {
+  if (typeof id === "number" && Number.isInteger(id) && id > 0) return id;
+  const m = String(id).match(/^online-(\d+)$/);
+  if (m) return Number(m[1]);
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 export async function fetchOnlineCategories(): Promise<OnlineCategory[]> {
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpaper-categories`, {
+  const res = await apiFetch(`${apiBase()}/api/public/categories`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<CategoryListData>;
@@ -117,6 +166,13 @@ export async function fetchOnlineCategories(): Promise<OnlineCategory[]> {
     throw new Error(body.error || "加载壁纸分类失败");
   }
   return (body.data.items ?? [])
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      sortOrder: pickNum(c.sort_order, c.sortOrder) ?? 0,
+      enabled: c.is_active ?? c.enabled ?? true,
+    }))
     .filter((c) => c.enabled)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
 }
@@ -125,22 +181,26 @@ export async function fetchOnlineWallpapers(options?: {
   page?: number;
   pageSize?: number;
   categoryId?: string | number | null;
+  sort?: "latest" | "popular" | "featured";
+  q?: string;
 }): Promise<{ items: WallpaperItem[]; total: number }> {
   const page = options?.page ?? 1;
   const pageSize = options?.pageSize ?? 24;
   const params = new URLSearchParams({
     page: String(page),
-    pageSize: String(pageSize),
+    page_size: String(pageSize),
   });
+  if (options?.sort) params.set("sort", options.sort);
+  if (options?.q?.trim()) params.set("q", options.q.trim());
   const rawCat = options?.categoryId;
   if (rawCat != null && String(rawCat).trim() !== "") {
     const id = Number(rawCat);
     if (Number.isInteger(id) && id > 0) {
-      params.set("categoryId", String(id));
+      params.set("category_id", String(id));
     }
   }
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpapers?${params}`, {
+  const res = await apiFetch(`${apiBase()}/api/public/wallpapers?${params}`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<WallpaperListData>;
@@ -151,4 +211,51 @@ export async function fetchOnlineWallpapers(options?: {
     items: (body.data.items ?? []).map(mapOnlineWallpaper),
     total: body.data.total ?? 0,
   };
+}
+
+/** Member: list favorited wallpapers (JWT required). */
+export async function fetchOnlineFavorites(options?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<{ items: WallpaperItem[]; total: number }> {
+  const page = options?.page ?? 1;
+  const pageSize = options?.pageSize ?? 48;
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  const { authHeaders } = useAuth();
+  const res = await apiFetch(`${apiBase()}/api/wallpapers/favorites?${params}`, {
+    headers: { ...authHeaders() },
+  });
+  const body = (await res.json()) as ApiEnvelope<WallpaperListData>;
+  if (!body.ok || !body.data) {
+    throw new Error(body.error || "加载社区收藏失败");
+  }
+  return {
+    items: (body.data.items ?? []).map((w) => {
+      const item = mapOnlineWallpaper(w);
+      item.favorite = true;
+      return item;
+    }),
+    total: body.data.total ?? 0,
+  };
+}
+
+/** Member: favorite / unfavorite a wallpaper (JWT required). */
+export async function setOnlineFavorite(
+  wallpaperId: string | number,
+  favorite: boolean,
+): Promise<void> {
+  const id = onlineWallpaperId(wallpaperId);
+  if (id == null) throw new Error("无效的在线壁纸 ID");
+  const { authHeaders } = useAuth();
+  const res = await apiFetch(`${apiBase()}/api/wallpapers/${id}/favorite`, {
+    method: favorite ? "POST" : "DELETE",
+    headers: { ...authHeaders() },
+  });
+  const body = (await res.json()) as ApiEnvelope<unknown>;
+  if (!body.ok) {
+    throw new Error(body.error || (favorite ? "收藏失败" : "取消收藏失败"));
+  }
 }

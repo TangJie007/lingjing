@@ -66,7 +66,7 @@ function goBack() {
           <span v-for="t in tags" :key="t" class="tag-demo">{{ t }}</span>
         </div>
         <div class="detail-page-actions">
-          <div class="act-row">
+          <div v-if="item.source !== 'local'" class="act-row">
             <div
               class="btn-ghost"
               :class="{ liked: item.favorite }"

@@ -67,6 +67,23 @@ export async function exportWallpaper(uri: string, fileName: string): Promise<st
   return invoke<string | null>("export_wallpaper", { uri, fileName });
 }
 
+/** Download online media into `{library}/.onlinefile/`; returns absolute local path. */
+export async function cacheOnlineWallpaper(options: {
+  id: string;
+  url: string;
+  authorization?: string;
+  fileExt?: string;
+}): Promise<string> {
+  return invoke<string>("cache_online_wallpaper", {
+    payload: {
+      id: options.id,
+      url: options.url,
+      authorization: options.authorization,
+      fileExt: options.fileExt,
+    },
+  });
+}
+
 export async function setWallpaper(item: WallpaperItem): Promise<EngineState> {
   const uri = resolveMediaUri(item);
   if (!uri) throw new Error("该资源暂无可用媒体");

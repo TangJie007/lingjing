@@ -1,7 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ref, watch } from "vue";
 
-export const DEFAULT_API_BASE_URL = "https://36fa666671.eicp.vip";
+/** 开发默认：本地社区 API */
+export const DEV_API_BASE_URL = "http://localhost:8000";
+/** 正式打包默认：线上社区 API */
+export const PROD_API_BASE_URL = "https://36fa666671.eicp.vip";
+
+/** 当前构建环境应对应的默认 API 基址（vite: DEV→本地，PROD→线上） */
+export const DEFAULT_API_BASE_URL = import.meta.env.DEV
+  ? DEV_API_BASE_URL
+  : PROD_API_BASE_URL;
+
+const LEGACY_API_BASE_URLS = new Set([
+  "http://localhost:3002",
+  "https://localhost:3002",
+]);
 
 export interface AppSettings {
   autostart: boolean;
@@ -43,14 +56,27 @@ export function useSettings() {
   return settings;
 }
 
+/**
+ * 空值 / 旧地址 / 另一环境的默认地址 → 当前环境默认。
+ * 开发：线上默认也会被切回本地；打包：本地默认会切到线上。
+ */
 export function normalizeApiBaseUrl(url?: string | null): string {
   const trimmed = (url || "").trim().replace(/\/$/, "");
-  if (
-    !trimmed ||
-    trimmed === "http://localhost:3002" ||
-    trimmed === "https://localhost:3002"
-  ) {
+  if (!trimmed || LEGACY_API_BASE_URLS.has(trimmed)) {
     return DEFAULT_API_BASE_URL;
+  }
+  if (import.meta.env.DEV) {
+    if (
+      trimmed === PROD_API_BASE_URL ||
+      trimmed === "http://36fa666671.eicp.vip"
+    ) {
+      return DEV_API_BASE_URL;
+    }
+  } else if (
+    trimmed === DEV_API_BASE_URL ||
+    trimmed === "http://127.0.0.1:8000"
+  ) {
+    return PROD_API_BASE_URL;
   }
   return trimmed;
 }

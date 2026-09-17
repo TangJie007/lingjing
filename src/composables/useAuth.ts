@@ -10,6 +10,9 @@ export interface LingjingUser {
   email?: string;
   nickname?: string;
   avatar?: string;
+  points?: number;
+  role?: string;
+  isActive?: boolean;
 }
 
 interface StoredAuth {
@@ -21,6 +24,7 @@ interface ApiEnvelope<T> {
   ok: boolean;
   data?: T;
   error?: string;
+  code?: number;
 }
 
 const token = ref<string | null>(null);
@@ -55,41 +59,53 @@ function apiBase(): string {
   return normalizeApiBaseUrl(settings.value.apiBaseUrl || DEFAULT_API_BASE_URL);
 }
 
+function authUrl(path: string): string {
+  return `${apiBase()}/api/auth/${path.replace(/^\//, "")}`;
+}
+
 async function parseJson<T>(res: Response): Promise<ApiEnvelope<T>> {
   const body = (await res.json()) as ApiEnvelope<T>;
   if (!res.ok && body.ok !== false) {
-    throw new Error(res.statusText || `HTTP ${res.status}`);
+    throw new Error(body.error || res.statusText || `HTTP ${res.status}`);
   }
   return body;
 }
 
+function envelopeError(body: ApiEnvelope<unknown>, fallback: string): Error {
+  return new Error(body.error || fallback);
+}
+
 function extractToken(data: Record<string, unknown> | undefined): string | null {
   if (!data) return null;
-  const t = data.token ?? data.accessToken ?? data.access_token;
+  const t = data.access_token ?? data.accessToken ?? data.token;
   return typeof t === "string" && t.trim() ? t.trim() : null;
 }
 
 function extractUser(data: Record<string, unknown> | undefined): LingjingUser | null {
   if (!data) return null;
-  const u = data.user ?? data;
+  const u = (data.user as Record<string, unknown> | undefined) ?? data;
   if (!u || typeof u !== "object") return null;
-  const obj = u as Record<string, unknown>;
+  const avatarRaw = u.avatar_url ?? u.avatar;
+  const activeRaw = u.is_active ?? u.isActive;
   return {
-    id: typeof obj.id === "number" ? obj.id : undefined,
-    username: typeof obj.username === "string" ? obj.username : undefined,
-    email: typeof obj.email === "string" ? obj.email : undefined,
-    nickname: typeof obj.nickname === "string" ? obj.nickname : undefined,
-    avatar: typeof obj.avatar === "string" ? obj.avatar : undefined,
+    id: typeof u.id === "number" ? u.id : undefined,
+    username: typeof u.username === "string" ? u.username : undefined,
+    email: typeof u.email === "string" ? u.email : undefined,
+    nickname: typeof u.nickname === "string" ? u.nickname : undefined,
+    avatar: typeof avatarRaw === "string" ? avatarRaw : undefined,
+    points: typeof u.points === "number" ? u.points : undefined,
+    role: typeof u.role === "string" ? u.role : undefined,
+    isActive: typeof activeRaw === "boolean" ? activeRaw : undefined,
   };
 }
 
 async function applyAuthResponse(body: ApiEnvelope<Record<string, unknown>>) {
   if (!body.ok) {
-    throw new Error(body.error || "登录失败");
+    throw envelopeError(body, "登录失败");
   }
   const nextToken = extractToken(body.data);
   if (!nextToken) {
-    throw new Error("登录响应缺少 token");
+    throw new Error("登录响应缺少 access_token");
   }
   token.value = nextToken;
   user.value = extractUser(body.data);
@@ -99,7 +115,7 @@ async function applyAuthResponse(body: ApiEnvelope<Record<string, unknown>>) {
 
 async function refreshMe(): Promise<LingjingUser | null> {
   if (!token.value) return null;
-  const res = await apiFetch(`${apiBase()}/api/lingjing/auth/me`, {
+  const res = await apiFetch(authUrl("me"), {
     headers: { Authorization: `Bearer ${token.value}` },
   });
   const body = await parseJson<Record<string, unknown>>(res);
@@ -107,11 +123,33 @@ async function refreshMe(): Promise<LingjingUser | null> {
     if (res.status === 401) {
       await logout();
     }
-    throw new Error(body.error || "获取用户信息失败");
+    throw envelopeError(body, "获取用户信息失败");
   }
   user.value = extractUser(body.data) ?? user.value;
   persistAuth();
   return user.value;
+}
+
+/** Probe login state via GET /api/auth/session (HTTP 200 + valid flag). */
+async function checkSession(): Promise<boolean> {
+  if (!token.value) return false;
+  try {
+    const res = await apiFetch(authUrl("session"), {
+      headers: { Authorization: `Bearer ${token.value}` },
+    });
+    const body = await parseJson<{ valid?: boolean; user?: Record<string, unknown> | null }>(res);
+    if (!body.ok || !body.data?.valid) {
+      await logout();
+      return false;
+    }
+    if (body.data.user) {
+      user.value = extractUser(body.data.user as Record<string, unknown>) ?? user.value;
+      persistAuth();
+    }
+    return true;
+  } catch {
+    return !!token.value;
+  }
 }
 
 async function logout(): Promise<void> {
@@ -121,7 +159,7 @@ async function logout(): Promise<void> {
   persistAuth();
   if (!t) return;
   try {
-    await apiFetch(`${apiBase()}/api/lingjing/auth/logout`, {
+    await apiFetch(authUrl("logout"), {
       method: "POST",
       headers: { Authorization: `Bearer ${t}` },
     });
@@ -133,13 +171,13 @@ async function logout(): Promise<void> {
 export function useAuth() {
   const isLoggedIn = computed(() => !!token.value);
 
-  async function login(account: string, password: string): Promise<void> {
+  async function login(username: string, password: string): Promise<void> {
     authLoading.value = true;
     try {
-      const res = await apiFetch(`${apiBase()}/api/lingjing/auth/login`, {
+      const res = await apiFetch(authUrl("login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account: account.trim(), password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       await applyAuthResponse(await parseJson<Record<string, unknown>>(res));
     } finally {
@@ -148,21 +186,21 @@ export function useAuth() {
   }
 
   async function sendLoginCode(email: string): Promise<void> {
-    const res = await apiFetch(`${apiBase()}/api/lingjing/auth/send-login-code`, {
+    const res = await apiFetch(authUrl("send-login-code"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim() }),
     });
     const body = await parseJson<Record<string, unknown>>(res);
     if (!body.ok) {
-      throw new Error(body.error || "发送验证码失败");
+      throw envelopeError(body, "发送验证码失败");
     }
   }
 
   async function loginWithCode(email: string, code: string): Promise<void> {
     authLoading.value = true;
     try {
-      const res = await apiFetch(`${apiBase()}/api/lingjing/auth/login-code`, {
+      const res = await apiFetch(authUrl("login-code"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), code: code.trim() }),
@@ -188,6 +226,7 @@ export function useAuth() {
     loginWithCode,
     logout,
     refreshMe,
+    checkSession,
     authHeaders,
     loadStoredAuth,
   };

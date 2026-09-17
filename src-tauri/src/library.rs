@@ -41,6 +41,8 @@ fn library_index_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(library_root(app)?.join("library.json"))
 }
 
+/// Local library is index-only (`library.json`). Media under `.onlinefile/` is never listed.
+
 fn load_library(app: &AppHandle) -> Result<LibraryFile, String> {
     let path = library_index_path(app)?;
     if !path.exists() {

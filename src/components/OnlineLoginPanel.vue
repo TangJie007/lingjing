@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../composables/useToast";
 import { useAuth } from "../composables/useAuth";
 
 const emit = defineEmits<{ (e: "success"): void }>();
+
+const REGISTER_URL = "https://www.wetspace.top/community#/register";
 
 const { user, isLoggedIn, authLoading, login, sendLoginCode, loginWithCode, logout } = useAuth();
 
@@ -83,6 +86,14 @@ async function onLogout() {
   showToast("已退出登录");
 }
 
+async function openRegister() {
+  try {
+    await openUrl(REGISTER_URL);
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : String(e));
+  }
+}
+
 onUnmounted(() => {
   if (codeTimer !== null) window.clearInterval(codeTimer);
 });
@@ -129,7 +140,7 @@ onUnmounted(() => {
             v-model="account"
             type="text"
             autocomplete="username"
-            placeholder="邮箱或用户名"
+            placeholder="用户名或邮箱"
             @keydown.enter="onPasswordLogin"
           />
         </label>
@@ -179,6 +190,11 @@ onUnmounted(() => {
           {{ authLoading ? "登录中…" : "登录" }}
         </button>
       </template>
+
+      <p class="register-row">
+        还没有账号？
+        <button type="button" class="register-link" @click="openRegister">去注册</button>
+      </p>
     </template>
   </div>
 </template>
@@ -281,6 +297,25 @@ onUnmounted(() => {
 }
 .btn-in:hover { background: var(--primary-hover); }
 .btn-in:disabled { opacity: 0.6; cursor: default; }
+.register-row {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.register-link {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+}
+.register-link:hover {
+  text-decoration: underline;
+}
 .btn-out {
   background: var(--surface);
   color: var(--text);

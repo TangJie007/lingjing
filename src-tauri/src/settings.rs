@@ -74,8 +74,16 @@ fn default_volume() -> f64 {
 fn default_loop_mode() -> String {
     "single".into()
 }
+const DEV_API_BASE_URL: &str = "http://localhost:8000";
+const PROD_API_BASE_URL: &str = "https://36fa666671.eicp.vip";
+
+/// debug 构建 → 本地 8000；release 打包 → 线上域名
 fn default_api_base_url() -> String {
-    "https://36fa666671.eicp.vip".into()
+    if cfg!(debug_assertions) {
+        DEV_API_BASE_URL.into()
+    } else {
+        PROD_API_BASE_URL.into()
+    }
 }
 
 fn normalize_api_base_url(url: &str) -> String {
@@ -84,10 +92,20 @@ fn normalize_api_base_url(url: &str) -> String {
         || trimmed.eq_ignore_ascii_case("http://localhost:3002")
         || trimmed.eq_ignore_ascii_case("https://localhost:3002")
     {
-        default_api_base_url()
-    } else {
-        trimmed.to_string()
+        return default_api_base_url();
     }
+    if cfg!(debug_assertions) {
+        if trimmed.eq_ignore_ascii_case(PROD_API_BASE_URL)
+            || trimmed.eq_ignore_ascii_case("http://36fa666671.eicp.vip")
+        {
+            return DEV_API_BASE_URL.into();
+        }
+    } else if trimmed.eq_ignore_ascii_case(DEV_API_BASE_URL)
+        || trimmed.eq_ignore_ascii_case("http://127.0.0.1:8000")
+    {
+        return PROD_API_BASE_URL.into();
+    }
+    trimmed.to_string()
 }
 
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
