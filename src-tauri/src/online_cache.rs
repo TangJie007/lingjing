@@ -13,7 +13,8 @@ const ONLINE_CACHE_DIR: &str = ".onlinefile";
 pub struct CacheOnlinePayload {
     /// Wallpaper id, e.g. `online-12`
     pub id: String,
-    /// Remote media URL (http/https)
+    /// Remote media URL (http/https). May be the site download gateway
+    /// (`…/download`) which 302s to a signed object URL.
     pub url: String,
     /// Optional `Bearer …` / full Authorization header value
     #[serde(default)]
@@ -21,6 +22,10 @@ pub struct CacheOnlinePayload {
     /// Preferred extension without dot, e.g. `mp4`
     #[serde(default)]
     pub file_ext: Option<String>,
+    /// When true, always hit `url` first (no redirect follow) so the server can
+    /// record a member download even if a local cache already exists.
+    #[serde(default)]
+    pub record_download: bool,
 }
 
 fn online_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -71,13 +76,16 @@ fn ext_from_content_type(ct: &str) -> Option<&'static str> {
     }
 }
 
-fn resolve_ext(payload: &CacheOnlinePayload, content_type: Option<&str>) -> String {
+fn resolve_ext(payload: &CacheOnlinePayload, fetch_url: &str, content_type: Option<&str>) -> String {
     if let Some(e) = payload
         .file_ext
         .as_ref()
         .map(|s| s.trim().trim_start_matches('.').to_ascii_lowercase())
         .filter(|s| !s.is_empty() && s.len() <= 8)
     {
+        return e;
+    }
+    if let Some(e) = ext_from_url(fetch_url) {
         return e;
     }
     if let Some(e) = content_type.and_then(ext_from_content_type) {
@@ -110,6 +118,49 @@ fn find_existing_cache(dir: &Path, stem: &str) -> Option<PathBuf> {
     None
 }
 
+fn authorization_value(raw: &str) -> String {
+    let auth = raw.trim();
+    if auth.to_ascii_lowercase().starts_with("bearer ") {
+        auth.to_string()
+    } else {
+        format!("Bearer {auth}")
+    }
+}
+
+/// GET `url` without following redirects. Used to hit `/download` so the API can
+/// write download history; returns the `Location` when present.
+async fn probe_download_gateway(url: &str, authorization: Option<&str>) -> Result<Option<String>, String> {
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("创建下载客户端失败: {e}"))?;
+
+    let mut req = client.get(url);
+    if let Some(auth) = authorization.map(str::trim).filter(|s| !s.is_empty()) {
+        req = req.header(reqwest::header::AUTHORIZATION, authorization_value(auth));
+    }
+
+    let response = req.send().await.map_err(|e| format!("下载失败: {e}"))?;
+    let status = response.status();
+    if status.as_u16() == 429 {
+        return Err("下载请求过于频繁，请稍后再试".into());
+    }
+    if status.as_u16() == 404 {
+        return Err("壁纸不存在或未上架".into());
+    }
+    if !(status.is_redirection() || status.is_success()) {
+        return Err(format!("下载失败: HTTP {status}"));
+    }
+
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    Ok(location)
+}
+
 /// Download remote media into `{library_root}/.onlinefile/{id}.{ext}`.
 /// Reuses an existing non-empty file for the same id. Never writes into library.json.
 #[tauri::command]
@@ -130,6 +181,22 @@ pub async fn cache_online_wallpaper(
     let dir = online_cache_root(&app)?;
     fs::create_dir_all(&dir).map_err(|e| format!("创建 .onlinefile 目录失败: {e}"))?;
 
+    let auth = payload
+        .authorization
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    // Resolve gateway → signed object URL (and record member download when JWT present).
+    let mut fetch_url = url.clone();
+    if payload.record_download {
+        let location = probe_download_gateway(&url, auth.as_deref()).await?;
+        if let Some(loc) = location.filter(|s| !s.trim().is_empty()) {
+            fetch_url = loc;
+        }
+    }
+
     if let Some(existing) = find_existing_cache(&dir, &stem) {
         return Ok(existing.to_string_lossy().to_string());
     }
@@ -139,21 +206,13 @@ pub async fn cache_online_wallpaper(
         .build()
         .map_err(|e| format!("创建下载客户端失败: {e}"))?;
 
-    let mut req = client.get(&url);
-    if let Some(auth) = payload
-        .authorization
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        req = req.header(
-            reqwest::header::AUTHORIZATION,
-            if auth.to_ascii_lowercase().starts_with("bearer ") {
-                auth.to_string()
-            } else {
-                format!("Bearer {auth}")
-            },
-        );
+    // Presigned R2 URL must not carry Authorization — it invalidates the signature.
+    // Only attach auth when still hitting our own gateway (record_download already resolved).
+    let mut req = client.get(&fetch_url);
+    if !payload.record_download {
+        if let Some(ref a) = auth {
+            req = req.header(reqwest::header::AUTHORIZATION, authorization_value(a));
+        }
     }
 
     let response = req
@@ -169,7 +228,7 @@ pub async fn cache_online_wallpaper(
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let ext = resolve_ext(&payload, content_type.as_deref());
+    let ext = resolve_ext(&payload, &fetch_url, content_type.as_deref());
     let dest = dir.join(format!("{stem}.{ext}"));
     let tmp = dir.join(format!("{stem}.{ext}.part"));
 

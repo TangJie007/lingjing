@@ -13,6 +13,8 @@ export interface WallpaperItem {
   tags: string[];
   /** Public path or absolute filesystem path */
   mediaSrc?: string;
+  /** Site download gateway path, e.g. `/api/public/wallpapers/1/download` */
+  downloadPath?: string;
   source?: "catalog" | "local" | "online";
   /** Local library: source file missing (reference import) */
   missing?: boolean;

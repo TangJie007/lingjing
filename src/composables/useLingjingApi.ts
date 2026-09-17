@@ -1,5 +1,6 @@
 import type { WallpaperItem, WallpaperType } from "../data/catalog";
 import { apiFetch } from "./apiFetch";
+import { cacheOnlineWallpaper } from "./useEngine";
 import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 import { useAuth } from "./useAuth";
 
@@ -18,6 +19,8 @@ interface ApiWallpaper {
   thumbnailUrl?: string | null;
   stream_path?: string | null;
   streamPath?: string | null;
+  download_path?: string | null;
+  downloadPath?: string | null;
   mime_type?: string | null;
   mimeType?: string | null;
   file_size?: number | null;
@@ -122,6 +125,25 @@ function resolveMediaSrc(w: ApiWallpaper): string | undefined {
   return stream.startsWith("/") ? `${base}${stream}` : `${base}/${stream}`;
 }
 
+function resolveDownloadPath(w: ApiWallpaper): string | undefined {
+  const path = pickStr(w.download_path, w.downloadPath);
+  if (path) return path;
+  return undefined;
+}
+
+function absoluteApiPath(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = apiBase().replace(/\/$/, "");
+  return path.startsWith("/") ? `${base}${path}` : `${base}/${path}`;
+}
+
+function guessFileExt(item: WallpaperItem): string | undefined {
+  if (item.type === "video") return "mp4";
+  if (item.type === "gif") return "gif";
+  if (item.type === "image") return "jpg";
+  return undefined;
+}
+
 export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
   const mediaSrc = resolveMediaSrc(w);
   const thumbUrl = pickStr(w.thumbnail_url, w.thumbnailUrl);
@@ -132,6 +154,12 @@ export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
   const tags = Array.isArray(w.tags) && w.tags.length
     ? w.tags.map((t) => (t.startsWith("#") ? t : `#${t}`))
     : [`#${category}`];
+  const idNum = w.id;
+  const downloadPath =
+    resolveDownloadPath(w) ||
+    (Number.isInteger(idNum) && idNum > 0
+      ? `/api/public/wallpapers/${idNum}/download`
+      : undefined);
   return {
     id: `online-${w.id}`,
     name: w.title,
@@ -144,6 +172,7 @@ export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
     favorite: !!w.favorited,
     tags,
     mediaSrc,
+    downloadPath,
     source: "online",
   };
 }
@@ -242,6 +271,31 @@ export async function fetchOnlineFavorites(options?: {
   };
 }
 
+/** Member: list download history (JWT required). */
+export async function fetchOnlineDownloads(options?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<{ items: WallpaperItem[]; total: number }> {
+  const page = options?.page ?? 1;
+  const pageSize = options?.pageSize ?? 48;
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  const { authHeaders } = useAuth();
+  const res = await apiFetch(`${apiBase()}/api/wallpapers/downloads?${params}`, {
+    headers: { ...authHeaders() },
+  });
+  const body = (await res.json()) as ApiEnvelope<WallpaperListData>;
+  if (!body.ok || !body.data) {
+    throw new Error(body.error || "加载下载记录失败");
+  }
+  return {
+    items: (body.data.items ?? []).map(mapOnlineWallpaper),
+    total: body.data.total ?? 0,
+  };
+}
+
 /** Member: favorite / unfavorite a wallpaper (JWT required). */
 export async function setOnlineFavorite(
   wallpaperId: string | number,
@@ -258,4 +312,97 @@ export async function setOnlineFavorite(
   if (!body.ok) {
     throw new Error(body.error || (favorite ? "收藏失败" : "取消收藏失败"));
   }
+}
+
+export interface OnlineSignedFileUrl {
+  wallpaperId: number;
+  url: string;
+  expiresIn: number;
+  expiresAt?: string;
+}
+
+/**
+ * GET /api/public/wallpapers/{id}/file-url — R2 presigned download URL.
+ * Used before caching online wallpaper to `.onlinefile`.
+ */
+export async function fetchOnlineFileUrl(
+  wallpaperId: string | number,
+  expires = 3600,
+): Promise<OnlineSignedFileUrl> {
+  const id = onlineWallpaperId(wallpaperId);
+  if (id == null) throw new Error("无效的在线壁纸 ID");
+  const params = new URLSearchParams({ expires: String(expires) });
+  const { authHeaders } = useAuth();
+  const res = await apiFetch(
+    `${apiBase()}/api/public/wallpapers/${id}/file-url?${params}`,
+    { headers: { ...authHeaders() } },
+  );
+  const body = (await res.json()) as ApiEnvelope<{
+    wallpaper_id?: number;
+    wallpaperId?: number;
+    url?: string;
+    expires_in?: number;
+    expiresIn?: number;
+    expires_at?: string;
+    expiresAt?: string;
+  }>;
+  if (!body.ok || !body.data?.url) {
+    throw new Error(body.error || "获取下载地址失败");
+  }
+  const data = body.data;
+  return {
+    wallpaperId: pickNum(data.wallpaper_id, data.wallpaperId) ?? id,
+    url: data.url,
+    expiresIn: pickNum(data.expires_in, data.expiresIn) ?? expires,
+    expiresAt: pickStr(data.expires_at, data.expiresAt),
+  };
+}
+
+/**
+ * Resolve a fresh download URL via file-url API, then cache into `.onlinefile`.
+ * Used when applying wallpaper (does not write member download history).
+ * Returns absolute local path.
+ */
+export async function downloadOnlineWallpaperToCache(
+  item: WallpaperItem,
+): Promise<string> {
+  if (item.source !== "online") {
+    throw new Error("仅支持在线壁纸下载");
+  }
+  const signed = await fetchOnlineFileUrl(item.id, 3600);
+  const raw = signed.url.split("?")[0] ?? signed.url;
+  const ext = raw.includes(".") ? (raw.split(".").pop() ?? "").toLowerCase() : "";
+  // Presigned R2 URL must not carry Authorization — it invalidates the signature.
+  return cacheOnlineWallpaper({
+    id: String(item.id),
+    url: signed.url,
+    fileExt: ext && /^[a-z0-9]{1,8}$/i.test(ext) ? ext : guessFileExt(item),
+  });
+}
+
+/**
+ * User-facing download: hit `/download` (records history when JWT present),
+ * cache into `.onlinefile`, return absolute local path for save dialog.
+ */
+export async function exportOnlineWallpaperToCache(
+  item: WallpaperItem,
+): Promise<string> {
+  if (item.source !== "online") {
+    throw new Error("仅支持在线壁纸下载");
+  }
+  const id = onlineWallpaperId(item.id);
+  if (id == null) throw new Error("无效的在线壁纸 ID");
+  const path =
+    pickStr(item.downloadPath) || `/api/public/wallpapers/${id}/download`;
+  const params = new URLSearchParams({ expires: "3600" });
+  const url = `${absoluteApiPath(path)}${path.includes("?") ? "&" : "?"}${params}`;
+  const { authHeaders } = useAuth();
+  const auth = authHeaders().Authorization;
+  return cacheOnlineWallpaper({
+    id: String(item.id),
+    url,
+    authorization: typeof auth === "string" ? auth : undefined,
+    fileExt: guessFileExt(item),
+    recordDownload: true,
+  });
 }

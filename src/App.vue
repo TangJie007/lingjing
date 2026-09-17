@@ -23,7 +23,6 @@ import {
   removeLibraryItem,
   setFavoriteRemote,
   exportWallpaper,
-  cacheOnlineWallpaper,
   setWallpaper,
   type EngineState,
   type PauseRecommendPayload,
@@ -33,8 +32,11 @@ import { loadSettings, useSettings, hasVersionRecord, completeFirstRun } from ".
 import { useAuth } from "./composables/useAuth";
 import {
   fetchOnlineCategories,
+  fetchOnlineDownloads,
   fetchOnlineFavorites,
   fetchOnlineWallpapers,
+  downloadOnlineWallpaperToCache,
+  exportOnlineWallpaperToCache,
   setOnlineFavorite,
   type OnlineCategory,
 } from "./composables/useLingjingApi";
@@ -61,7 +63,7 @@ const firstRunOpen = ref(false);
 const firstRunSaving = ref(false);
 
 const settings = useSettings();
-const { isLoggedIn, refreshMe, checkSession, user, authHeaders } = useAuth();
+const { isLoggedIn, refreshMe, checkSession, user } = useAuth();
 
 const userLabel = computed(
   () => user.value?.nickname || user.value?.username || user.value?.email || "已登录",
@@ -69,6 +71,7 @@ const userLabel = computed(
 
 const onlineItems = ref<WallpaperItem[]>([]);
 const onlineFavoriteItems = ref<WallpaperItem[]>([]);
+const onlineDownloadItems = ref<WallpaperItem[]>([]);
 const onlineCategories = ref<OnlineCategory[]>([]);
 const onlineCategoryId = ref<number | null>(null);
 const onlineLoading = ref(false);
@@ -126,6 +129,7 @@ const routeViewProps = computed(() => {
         selectedId: selectedId.value,
         items: onlineGridItems.value,
         favorites: favoriteItems.value,
+        downloads: onlineDownloadItems.value,
         loading: onlineGridLoading.value,
         emptyText: onlineEmptyText.value,
         onlineEnabled: settings.value.onlineEnabled,
@@ -233,11 +237,25 @@ async function refreshCommunityFavorites() {
   }
 }
 
+async function refreshCommunityDownloads() {
+  if (!settings.value.onlineEnabled || !isLoggedIn.value) {
+    onlineDownloadItems.value = [];
+    return;
+  }
+  try {
+    const { items } = await fetchOnlineDownloads({ pageSize: 48 });
+    onlineDownloadItems.value = items;
+  } catch {
+    onlineDownloadItems.value = [];
+  }
+}
+
 async function refreshOnline() {
   if (route.name !== "online" || !settings.value.onlineEnabled) {
     if (!settings.value.onlineEnabled) {
       onlineItems.value = [];
       onlineFavoriteItems.value = [];
+      onlineDownloadItems.value = [];
       onlineCategories.value = [];
       onlineCategoryId.value = null;
       onlineFetchError.value = "";
@@ -257,7 +275,7 @@ async function refreshOnline() {
     onlineCategories.value = cats;
     onlineItems.value = wallpaperResult.items;
     await syncOnlineFavoriteFlags(onlineItems.value);
-    await refreshCommunityFavorites();
+    await Promise.all([refreshCommunityFavorites(), refreshCommunityDownloads()]);
   } catch (e) {
     onlineItems.value = [];
     const msg = e instanceof Error ? e.message : String(e);
@@ -335,23 +353,15 @@ async function applySetWallpaper(item: WallpaperItem) {
     showToast("源文件已缺失，请重新导入或删除该项");
     return;
   }
-  if (!item.mediaSrc) {
+  if (!item.mediaSrc && item.source !== "online") {
     showToast("该资源暂无可用媒体");
     return;
   }
   try {
     let toSet = item;
     if (item.source === "online") {
-      showToast("正在缓存在线壁纸…");
-      const headers = authHeaders();
-      const raw = item.mediaSrc.split("?")[0] ?? item.mediaSrc;
-      const ext = raw.includes(".") ? (raw.split(".").pop() ?? "").toLowerCase() : "";
-      const localPath = await cacheOnlineWallpaper({
-        id: String(item.id),
-        url: item.mediaSrc,
-        authorization: headers.Authorization,
-        fileExt: ext && /^[a-z0-9]{1,8}$/i.test(ext) ? ext : undefined,
-      });
+      showToast("正在获取下载地址…");
+      const localPath = await downloadOnlineWallpaperToCache(item);
       toSet = { ...item, mediaSrc: localPath };
     }
     const state = await setWallpaper(toSet);
@@ -374,14 +384,28 @@ async function onSet(item: WallpaperItem) {
 }
 
 async function onDownload(item: WallpaperItem) {
-  if (!item.mediaSrc) {
-    showToast("该资源无法下载");
-    return;
-  }
-  const raw = item.mediaSrc.split("?")[0] ?? item.mediaSrc;
-  const ext = raw.includes(".") ? raw.split(".").pop() ?? "bin" : "bin";
-  const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_");
   try {
+    if (item.source === "online") {
+      showToast("正在下载…");
+      const localPath = await exportOnlineWallpaperToCache(item);
+      const ext = localPath.includes(".") ? localPath.split(".").pop() ?? "bin" : "bin";
+      const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_");
+      const saved = await exportWallpaper(localPath, `${safeName}.${ext}`);
+      if (saved) {
+        showToast(`已保存：${saved}`);
+        if (isLoggedIn.value) void refreshCommunityDownloads();
+      } else {
+        showToast("已取消保存");
+      }
+      return;
+    }
+    if (!item.mediaSrc) {
+      showToast("该资源无法下载");
+      return;
+    }
+    const raw = item.mediaSrc.split("?")[0] ?? item.mediaSrc;
+    const ext = raw.includes(".") ? raw.split(".").pop() ?? "bin" : "bin";
+    const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_");
     const saved = await exportWallpaper(item.mediaSrc, `${safeName}.${ext}`);
     if (saved) showToast(`已保存：${saved}`);
     else showToast("已取消保存");
@@ -437,7 +461,10 @@ function openLogin() {
 function onLoginSuccess() {
   loginOpen.value = false;
   if (route.name === "online") void refreshOnline();
-  else void refreshCommunityFavorites();
+  else {
+    void refreshCommunityFavorites();
+    void refreshCommunityDownloads();
+  }
 }
 
 async function runImport(paths?: string[] | null) {

@@ -73,6 +73,8 @@ export async function cacheOnlineWallpaper(options: {
   url: string;
   authorization?: string;
   fileExt?: string;
+  /** Hit download gateway first (record history + resolve 302 Location). */
+  recordDownload?: boolean;
 }): Promise<string> {
   return invoke<string>("cache_online_wallpaper", {
     payload: {
@@ -80,6 +82,7 @@ export async function cacheOnlineWallpaper(options: {
       url: options.url,
       authorization: options.authorization,
       fileExt: options.fileExt,
+      recordDownload: options.recordDownload === true,
     },
   });
 }

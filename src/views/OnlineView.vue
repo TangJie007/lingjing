@@ -11,6 +11,7 @@ const props = withDefaults(
     selectedId?: string | null;
     items?: WallpaperItem[];
     favorites?: WallpaperItem[];
+    downloads?: WallpaperItem[];
     loading?: boolean;
     emptyText?: string;
     onlineEnabled?: boolean;
@@ -24,6 +25,7 @@ const props = withDefaults(
     onlineEnabled: false,
     loggedIn: false,
     favorites: () => [],
+    downloads: () => [],
     categories: () => [],
     categoryId: null,
   },
@@ -130,6 +132,10 @@ const discoverList = computed(() => {
 const favoriteList = computed(() =>
   props.loggedIn ? (props.favorites ?? []) : [],
 );
+
+const downloadList = computed(() =>
+  props.loggedIn ? (props.downloads ?? []) : [],
+);
 </script>
 
 <template>
@@ -208,8 +214,8 @@ const favoriteList = computed(() =>
     <template v-else>
       <div v-if="!loggedIn" class="online-login-gate">
         <EmptyState
-          title="登录后查看我的收藏"
-          description="登录灵境社区后，可同步并管理你的收藏"
+          title="登录后查看我的收藏与下载"
+          description="登录灵境社区后，可同步收藏，并查看下载记录"
         />
         <button type="button" class="online-login-btn" @click="emit('login')">
           去登录
@@ -225,6 +231,21 @@ const favoriteList = computed(() =>
         <WallpaperCardGrid
           v-else
           :items="favoriteList"
+          :selected-id="selectedId"
+          @select="emit('select', $event)"
+          @preview="emit('preview', $event)"
+          @set="emit('set', $event)"
+        />
+
+        <div class="fav-sub mine-section-gap">已下载 {{ downloadList.length }} 张壁纸</div>
+
+        <EmptyState
+          v-if="downloadList.length === 0"
+          description="还没有下载记录，在详情页点下载即可"
+        />
+        <WallpaperCardGrid
+          v-else
+          :items="downloadList"
           :selected-id="selectedId"
           @select="emit('select', $event)"
           @preview="emit('preview', $event)"
