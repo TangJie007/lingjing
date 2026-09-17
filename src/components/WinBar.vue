@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import AppLogo from "./AppLogo.vue";
+import DownloadTray from "./DownloadTray.vue";
 import { showToast } from "../composables/useToast";
 import iconLogin from "../assets/svg/login.svg";
 import iconMin from "../assets/svg/min.svg";
@@ -65,6 +66,7 @@ async function hideToTray() {
     </button>
     <span class="win-spacer" @mousedown="onDrag" />
     <div class="win-acts">
+      <DownloadTray />
       <button
         type="button"
         class="win-act icon-btn login"

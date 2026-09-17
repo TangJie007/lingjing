@@ -424,6 +424,164 @@ input, textarea {
   border: none;
 }
 
+/* ---- Titlebar download tray ---- */
+.win-dl {
+  position: relative;
+  app-region: no-drag;
+}
+.win-dl-btn {
+  position: relative;
+}
+.win-dl-btn.has-active {
+  color: var(--primary);
+}
+.win-dl-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.win-dl-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  max-width: min(300px, calc(100vw - 32px));
+  padding: 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--sh-win);
+  z-index: 1300;
+}
+.win-dl-head {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.win-dl-empty {
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 10px 4px 6px;
+}
+.win-dl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.win-dl-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.win-dl-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.win-dl-meta {
+  min-width: 0;
+  flex: 1;
+}
+.win-dl-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.win-dl-status {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.win-dl-size {
+  opacity: 0.85;
+}
+.win-dl-cancel {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.win-dl-cancel:hover {
+  color: var(--danger, #c23);
+  background: rgba(204, 34, 51, 0.08);
+}
+.win-dl-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  color: var(--text-3);
+  background: var(--surface-2, #eef0f4);
+}
+.win-dl-item.is-ok .win-dl-tag {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.1);
+}
+.win-dl-item.is-fail .win-dl-tag {
+  color: var(--error, #dc2626);
+  background: rgba(220, 38, 38, 0.1);
+}
+.win-dl-item.is-fail .win-dl-status {
+  color: var(--error, #dc2626);
+}
+.win-dl-item.is-cancel .win-dl-tag {
+  color: var(--text-3);
+}
+.win-dl-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-2, #eef0f4);
+  overflow: hidden;
+}
+.win-dl-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 120ms linear;
+}
+.win-dl-fill.pulse {
+  width: 36%;
+  transform: none;
+  animation: win-dl-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes win-dl-indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
 /* Modal close — same interaction as window chrome, geometric X (not brand close.svg) */
 .modal-close {
   flex: 0 0 auto;

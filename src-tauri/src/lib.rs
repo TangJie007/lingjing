@@ -438,6 +438,7 @@ pub fn run() {
             online_cache::save_online_wallpaper,
             online_cache::list_online_file_downloads,
             online_cache::get_online_file_path,
+            online_cache::cancel_online_download,
             desktop_organize::item_commands::open_desktop_item,
             desktop_organize::menu_commands::list_desktop_shell_context_menu,
             desktop_organize::menu_commands::list_desktop_shell_context_submenu,

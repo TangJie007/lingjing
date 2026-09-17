@@ -12,7 +12,7 @@ import FirstRunAutostartModal from "./components/FirstRunAutostartModal.vue";
 import { showToast } from "./composables/useToast";
 import {
   beginOnlineDownloadProgress,
-  endOnlineDownloadProgress,
+  finishOnlineDownloadJob,
 } from "./composables/useOnlineDownloadProgress";
 import {
   isLocalOnlineDownloaded,
@@ -396,7 +396,6 @@ async function applySetWallpaper(item: WallpaperItem) {
     selectedId.value = item.id;
     showToast(`壁纸「${item.name}」已成功应用到桌面`);
   } catch (e) {
-    endOnlineDownloadProgress();
     const msg = e instanceof Error ? e.message : String(e);
     showToast(`设壁纸失败：${msg}`);
   }
@@ -416,18 +415,21 @@ async function onDownload(item: WallpaperItem) {
       await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
         forButton: true,
       });
-      let saved: string | null = null;
       try {
-        saved = await saveOnlineWallpaperToDisk(item);
-      } finally {
-        endOnlineDownloadProgress(saved ? 200 : 0);
-      }
-      if (saved) {
+        await saveOnlineWallpaperToDisk(item);
+        finishOnlineDownloadJob(item.id, { success: true });
         markLocalOnlineDownloaded(item.id);
-        showToast(`已保存：${saved}`);
+        showToast("已下载到本地");
         if (isLoggedIn.value) void refreshCommunityDownloads();
-      } else {
-        showToast("已取消保存");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/已取消/.test(msg)) {
+          finishOnlineDownloadJob(item.id, { success: false, cancelled: true });
+          showToast("已取消下载");
+          return;
+        }
+        finishOnlineDownloadJob(item.id, { success: false, error: msg });
+        showToast(msg);
       }
       return;
     }
@@ -442,8 +444,12 @@ async function onDownload(item: WallpaperItem) {
     if (saved) showToast(`已保存：${saved}`);
     else showToast("已取消保存");
   } catch (e) {
-    endOnlineDownloadProgress();
-    showToast(e instanceof Error ? e.message : String(e));
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/已取消/.test(msg)) {
+      showToast("已取消下载");
+      return;
+    }
+    showToast(msg);
   }
 }
 

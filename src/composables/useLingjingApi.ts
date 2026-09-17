@@ -381,12 +381,12 @@ export async function downloadOnlineWallpaperToCache(
 }
 
 /**
- * User-facing download: save dialog first, then stream via `/download`
- * (records history when JWT present). Returns saved path or null if cancelled.
+ * User-facing download: probe `/download` to record history, stream bytes from
+ * a fresh `file-url` signed URL into `.onlinefile`. Returns local cache path.
  */
 export async function saveOnlineWallpaperToDisk(
   item: WallpaperItem,
-): Promise<string | null> {
+): Promise<string> {
   if (item.source !== "online") {
     throw new Error("仅支持在线壁纸下载");
   }
@@ -397,13 +397,20 @@ export async function saveOnlineWallpaperToDisk(
   const params = new URLSearchParams({ expires: "3600" });
   const sep = path.includes("?") ? "&" : "?";
   const url = `${absoluteApiPath(path)}${sep}${params}`;
+  const signed = await fetchOnlineFileUrl(item.id, 3600);
   const { authHeaders } = useAuth();
   const auth = authHeaders().Authorization;
-  const ext = guessFileExt(item) || "bin";
+  const raw = signed.url.split("?")[0] ?? signed.url;
+  const fromSigned = raw.includes(".") ? (raw.split(".").pop() ?? "").toLowerCase() : "";
+  const ext =
+    fromSigned && /^[a-z0-9]{1,8}$/i.test(fromSigned)
+      ? fromSigned
+      : guessFileExt(item) || "bin";
   const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_") || `wallpaper-${id}`;
   return saveOnlineWallpaper({
     id: String(item.id),
     url,
+    fetchUrl: signed.url,
     fileName: `${safeName}.${ext}`,
     title: item.name,
     fileExt: ext,

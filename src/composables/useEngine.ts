@@ -87,21 +87,24 @@ export async function cacheOnlineWallpaper(options: {
   });
 }
 
-/** Save online wallpaper via system dialog; streams to the chosen path. */
+/** Save online wallpaper into `.onlinefile` (no system save dialog). */
 export async function saveOnlineWallpaper(options: {
   id: string;
   url: string;
-  fileName: string;
+  /** Direct media URL; when set with recordDownload, `url` is only probed for history. */
+  fetchUrl?: string;
+  fileName?: string;
   title?: string;
   fileExt?: string;
   authorization?: string;
   recordDownload?: boolean;
-}): Promise<string | null> {
-  return invoke<string | null>("save_online_wallpaper", {
+}): Promise<string> {
+  return invoke<string>("save_online_wallpaper", {
     payload: {
       id: options.id,
       url: options.url,
-      fileName: options.fileName,
+      fetchUrl: options.fetchUrl,
+      fileName: options.fileName ?? "",
       title: options.title,
       fileExt: options.fileExt,
       authorization: options.authorization,
