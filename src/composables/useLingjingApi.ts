@@ -350,9 +350,11 @@ export async function fetchOnlineFileUrl(
     throw new Error(body.error || "获取下载地址失败");
   }
   const data = body.data;
+  const url = data.url;
+  if (!url) throw new Error("获取下载地址失败");
   return {
     wallpaperId: pickNum(data.wallpaper_id, data.wallpaperId) ?? id,
-    url: data.url,
+    url,
     expiresIn: pickNum(data.expires_in, data.expiresIn) ?? expires,
     expiresAt: pickStr(data.expires_at, data.expiresAt),
   };
@@ -382,7 +384,7 @@ export async function downloadOnlineWallpaperToCache(
 
 /**
  * User-facing download via `/download` (JWT + history + 302 to object URL).
- * Streams into `.onlinefile`. Does not use `file-url`.
+ * Streams into `.onlinefile` via Rust reqwest. Does not use `file-url`.
  */
 export async function saveOnlineWallpaperToDisk(
   item: WallpaperItem,

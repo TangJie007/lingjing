@@ -2,7 +2,8 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 /**
  * Native HTTP via tauri-plugin-http — bypasses WebView CORS.
- * Falls back to window.fetch only if the plugin is unavailable (e.g. plain browser preview).
+ * Falls back to window.fetch if the plugin call fails (API hosts usually allow CORS;
+ * object-storage downloads must not rely on this fallback).
  */
 export async function apiFetch(
   input: string,
@@ -11,10 +12,12 @@ export async function apiFetch(
   try {
     return await tauriFetch(input, init);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Plugin not registered / not in Tauri shell — last-resort browser fetch.
-    if (/plugin|not allowed|unknown|ipc|tauri/i.test(msg) && typeof fetch === "function") {
-      return fetch(input, init);
+    if (typeof fetch === "function") {
+      try {
+        return await fetch(input, init);
+      } catch {
+        throw e instanceof Error ? e : new Error(String(e));
+      }
     }
     throw e;
   }

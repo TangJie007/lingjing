@@ -11,7 +11,8 @@ const props = withDefaults(
     selectedId?: string | null;
     items?: WallpaperItem[];
     favorites?: WallpaperItem[];
-    downloads?: WallpaperItem[];
+    /** Local `.onlinefile` cache — 已下载 tab. */
+    localDownloads?: WallpaperItem[];
     loading?: boolean;
     emptyText?: string;
     onlineEnabled?: boolean;
@@ -25,7 +26,7 @@ const props = withDefaults(
     onlineEnabled: false,
     loggedIn: false,
     favorites: () => [],
-    downloads: () => [],
+    localDownloads: () => [],
     categories: () => [],
     categoryId: null,
   },
@@ -39,7 +40,7 @@ const emit = defineEmits<{
   (e: "login"): void;
 }>();
 
-type OnlineTab = "discover" | "mine";
+type OnlineTab = "discover" | "downloaded" | "mine";
 
 type FilterItem =
   | { key: string; kind: "sort" }
@@ -50,14 +51,18 @@ const OFFLINE_CATS = ["科技", "风景", "动漫"];
 const route = useRoute();
 const router = useRouter();
 
-const tab = ref<OnlineTab>(
-  route.query.tab === "mine" ? "mine" : "discover",
-);
+function tabFromQuery(q: unknown): OnlineTab {
+  if (q === "mine") return "mine";
+  if (q === "downloaded") return "downloaded";
+  return "discover";
+}
+
+const tab = ref<OnlineTab>(tabFromQuery(route.query.tab));
 
 watch(
   () => route.query.tab,
   (q) => {
-    tab.value = q === "mine" ? "mine" : "discover";
+    tab.value = tabFromQuery(q);
   },
 );
 
@@ -65,7 +70,7 @@ function setTab(next: OnlineTab) {
   tab.value = next;
   void router.replace({
     name: "online",
-    query: next === "mine" ? { tab: "mine" } : {},
+    query: next === "discover" ? {} : { tab: next },
   });
 }
 
@@ -133,9 +138,19 @@ const favoriteList = computed(() =>
   props.loggedIn ? (props.favorites ?? []) : [],
 );
 
-const downloadList = computed(() =>
-  props.loggedIn ? (props.downloads ?? []) : [],
-);
+const downloadedList = computed(() => {
+  let r = [...(props.localDownloads ?? [])];
+  if (search.value.trim()) {
+    const q = search.value.trim().toLowerCase();
+    r = r.filter(
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        i.category.toLowerCase().includes(q) ||
+        i.author.toLowerCase().includes(q),
+    );
+  }
+  return r;
+});
 </script>
 
 <template>
@@ -151,6 +166,16 @@ const downloadList = computed(() =>
           @click="setTab('discover')"
         >
           发现
+        </button>
+        <button
+          type="button"
+          class="online-tab"
+          role="tab"
+          :class="{ on: tab === 'downloaded' }"
+          :aria-selected="tab === 'downloaded'"
+          @click="setTab('downloaded')"
+        >
+          已下载
         </button>
         <button
           type="button"
@@ -211,11 +236,28 @@ const downloadList = computed(() =>
       />
     </template>
 
+    <template v-else-if="tab === 'downloaded'">
+      <div class="fav-sub">本地已下载 {{ downloadedList.length }} 张壁纸</div>
+      <EmptyState
+        v-if="downloadedList.length === 0"
+        description="还没有本地下载，在详情页点下载即可"
+      />
+      <WallpaperCardGrid
+        v-else
+        :items="downloadedList"
+        :selected-id="selectedId"
+        :show-apply="true"
+        @select="emit('select', $event)"
+        @preview="emit('preview', $event)"
+        @set="emit('set', $event)"
+      />
+    </template>
+
     <template v-else>
       <div v-if="!loggedIn" class="online-login-gate">
         <EmptyState
-          title="登录后查看我的收藏与下载"
-          description="登录灵境社区后，可同步收藏，并查看下载记录"
+          title="登录后查看我的收藏"
+          description="登录灵境社区后，可同步收藏"
         />
         <button type="button" class="online-login-btn" @click="emit('login')">
           去登录
@@ -231,21 +273,6 @@ const downloadList = computed(() =>
         <WallpaperCardGrid
           v-else
           :items="favoriteList"
-          :selected-id="selectedId"
-          :show-apply="false"
-          @select="emit('select', $event)"
-          @preview="emit('preview', $event)"
-        />
-
-        <div class="fav-sub mine-section-gap">已下载 {{ downloadList.length }} 张壁纸</div>
-
-        <EmptyState
-          v-if="downloadList.length === 0"
-          description="还没有下载记录，在详情页点下载即可"
-        />
-        <WallpaperCardGrid
-          v-else
-          :items="downloadList"
           :selected-id="selectedId"
           :show-apply="false"
           @select="emit('select', $event)"

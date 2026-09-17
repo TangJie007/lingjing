@@ -187,6 +187,50 @@ function patchJob(id: string, patch: Partial<DownloadJob>) {
   jobs.value = copy;
 }
 
+/** Update an in-flight job's byte progress (plugin-http driven downloads). */
+export function reportOnlineDownloadProgress(
+  id: string,
+  downloaded: number,
+  total?: number | null,
+  phase: OnlineDownloadPhase = "downloading",
+) {
+  const jobId = String(id);
+  const idx = jobs.value.findIndex((j) => j.id === jobId);
+  if (idx < 0) return;
+  const cur = jobs.value[idx]!;
+  if (!isActivePhase(cur.phase) && cur.outcome) return;
+  const copy = jobs.value.slice();
+  copy[idx] = {
+    ...cur,
+    downloaded,
+    total:
+      typeof total === "number" && total > 0
+        ? total
+        : cur.total,
+    phase,
+    updatedAt: Date.now(),
+  };
+  jobs.value = copy;
+}
+
+const httpAbortControllers = new Map<string, AbortController>();
+
+export function registerHttpDownloadAbort(id: string, ac: AbortController) {
+  httpAbortControllers.set(String(id), ac);
+}
+
+export function clearHttpDownloadAbort(id: string) {
+  httpAbortControllers.delete(String(id));
+}
+
+function abortHttpDownload(id: string) {
+  const ac = httpAbortControllers.get(String(id));
+  if (ac) {
+    ac.abort();
+    httpAbortControllers.delete(String(id));
+  }
+}
+
 /** Archive a finished row that reuses the wallpaper id so a new attempt can start. */
 function archiveFinishedIfNeeded(jobId: string) {
   const idx = jobs.value.findIndex((j) => j.id === jobId && isFinishedJob(j));
@@ -333,6 +377,7 @@ export async function cancelOnlineDownload(id: string): Promise<boolean> {
   const jobId = String(id);
   patchJob(jobId, { phase: "cancelled", outcome: "cancelled", forButton: false });
   persistFinishedJobs();
+  abortHttpDownload(jobId);
   try {
     return await invoke<boolean>("cancel_online_download", { id: jobId });
   } catch (e) {

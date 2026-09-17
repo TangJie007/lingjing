@@ -18,6 +18,7 @@ import {
   isLocalOnlineDownloaded,
   markLocalOnlineDownloaded,
   refreshLocalOnlineDownloads,
+  useLocalOnlineDownloads,
 } from "./composables/useLocalOnlineDownloads";
 import { soundOn } from "./composables/useAudio";
 import { CATALOG, type WallpaperItem } from "./data/catalog";
@@ -42,7 +43,6 @@ import { loadSettings, useSettings, hasVersionRecord, completeFirstRun } from ".
 import { useAuth } from "./composables/useAuth";
 import {
   fetchOnlineCategories,
-  fetchOnlineDownloads,
   fetchOnlineFavorites,
   fetchOnlineWallpapers,
   saveOnlineWallpaperToDisk,
@@ -80,7 +80,7 @@ const userLabel = computed(
 
 const onlineItems = ref<WallpaperItem[]>([]);
 const onlineFavoriteItems = ref<WallpaperItem[]>([]);
-const onlineDownloadItems = ref<WallpaperItem[]>([]);
+const { items: localDownloadedItems } = useLocalOnlineDownloads();
 const onlineCategories = ref<OnlineCategory[]>([]);
 const onlineCategoryId = ref<number | null>(null);
 const onlineLoading = ref(false);
@@ -138,7 +138,7 @@ const routeViewProps = computed(() => {
         selectedId: selectedId.value,
         items: onlineGridItems.value,
         favorites: favoriteItems.value,
-        downloads: onlineDownloadItems.value,
+        localDownloads: localDownloadedItems.value,
         loading: onlineGridLoading.value,
         emptyText: onlineEmptyText.value,
         onlineEnabled: settings.value.onlineEnabled,
@@ -246,25 +246,11 @@ async function refreshCommunityFavorites() {
   }
 }
 
-async function refreshCommunityDownloads() {
-  if (!settings.value.onlineEnabled || !isLoggedIn.value) {
-    onlineDownloadItems.value = [];
-    return;
-  }
-  try {
-    const { items } = await fetchOnlineDownloads({ pageSize: 48 });
-    onlineDownloadItems.value = items;
-  } catch {
-    onlineDownloadItems.value = [];
-  }
-}
-
 async function refreshOnline() {
   if (route.name !== "online" || !settings.value.onlineEnabled) {
     if (!settings.value.onlineEnabled) {
       onlineItems.value = [];
       onlineFavoriteItems.value = [];
-      onlineDownloadItems.value = [];
       onlineCategories.value = [];
       onlineCategoryId.value = null;
       onlineFetchError.value = "";
@@ -286,7 +272,6 @@ async function refreshOnline() {
     await syncOnlineFavoriteFlags(onlineItems.value);
     await Promise.all([
       refreshCommunityFavorites(),
-      refreshCommunityDownloads(),
       refreshLocalOnlineDownloads(),
     ]);
   } catch (e) {
@@ -421,7 +406,7 @@ async function onDownload(item: WallpaperItem) {
         finishOnlineDownloadJob(item.id, { success: true });
         markLocalOnlineDownloaded(item.id);
         showToast("已下载到本地");
-        if (isLoggedIn.value) void refreshCommunityDownloads();
+        void refreshLocalOnlineDownloads();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (/已取消/.test(msg)) {
@@ -503,7 +488,7 @@ function onLoginSuccess() {
   if (route.name === "online") void refreshOnline();
   else {
     void refreshCommunityFavorites();
-    void refreshCommunityDownloads();
+    void refreshLocalOnlineDownloads();
   }
 }
 

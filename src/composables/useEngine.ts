@@ -113,6 +113,48 @@ export async function saveOnlineWallpaper(options: {
   });
 }
 
+export async function beginOnlineFileWrite(options: {
+  id: string;
+  fileExt?: string;
+  title?: string;
+}): Promise<{ cached: boolean; path: string }> {
+  return invoke<{ cached: boolean; path: string }>("begin_online_file_write", {
+    payload: {
+      id: options.id,
+      fileExt: options.fileExt,
+      title: options.title,
+    },
+  });
+}
+
+export async function appendOnlineFileWrite(
+  id: string,
+  chunkBase64: string,
+): Promise<number> {
+  return invoke<number>("append_online_file_write", {
+    id: String(id),
+    chunkBase64,
+  });
+}
+
+export async function finishOnlineFileWrite(options: {
+  id: string;
+  contentType?: string;
+  fetchUrl?: string;
+}): Promise<string> {
+  return invoke<string>("finish_online_file_write", {
+    payload: {
+      id: options.id,
+      contentType: options.contentType,
+      fetchUrl: options.fetchUrl,
+    },
+  });
+}
+
+export async function abortOnlineFileWrite(id: string): Promise<void> {
+  await invoke("abort_online_file_write", { id: String(id) });
+}
+
 export interface OnlineFileDownloadItem {
   id: string;
   title?: string | null;
