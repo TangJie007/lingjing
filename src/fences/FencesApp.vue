@@ -409,7 +409,7 @@ async function onDragEnd(key: FenceGroupKey) {
   clearFolderDropHighlight();
   dragging.value = false;
   fenceDraggingKey.value = null;
-  shellDrag.setSuspended(true);
+  // Don't setSuspended(true) here — that cancels the native OLE watch.
   shellDrag.end();
   markIconDragEnd();
 

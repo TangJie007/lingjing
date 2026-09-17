@@ -113,6 +113,59 @@ fn collect_own_hwnds(app: &AppHandle, fence_hwnd: isize) -> Vec<isize> {
     own
 }
 
+#[cfg(windows)]
+fn explorer_window_contains_point(pt: windows::Win32::Foundation::POINT) -> Option<String> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowRect, IsWindowVisible,
+    };
+    struct State {
+        pt: windows::Win32::Foundation::POINT,
+        found: Option<String>,
+    }
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state = &mut *(lparam.0 as *mut State);
+        if state.found.is_some() {
+            return false.into();
+        }
+        if !IsWindowVisible(hwnd).as_bool() {
+            return true.into();
+        }
+        let class = window_class_name(hwnd);
+        if !is_explorer_frame_class(&class) {
+            return true.into();
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return true.into();
+        }
+        if state.pt.x >= rect.left
+            && state.pt.x < rect.right
+            && state.pt.y >= rect.top
+            && state.pt.y < rect.bottom
+        {
+            state.found = Some(format!(
+                "explorer-rect {} at {},{} bounds=[{},{},{},{}]",
+                class,
+                state.pt.x,
+                state.pt.y,
+                rect.left,
+                rect.top,
+                rect.right,
+                rect.bottom
+            ));
+            return false.into();
+        }
+        true.into()
+    }
+    let mut state = State { pt, found: None };
+    unsafe {
+        let _ = EnumWindows(Some(callback), LPARAM(&mut state as *mut State as isize));
+    }
+    state.found
+}
+
 /// Classify cursor hit for outgoing drag. Returns (is_foreign, debug reason).
 #[cfg(windows)]
 fn classify_cursor_foreign(app: &AppHandle, fence_hwnd: isize) -> (bool, String) {
@@ -129,6 +182,11 @@ fn classify_cursor_foreign(app: &AppHandle, fence_hwnd: isize) -> (bool, String)
         let mut pt = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut pt).is_err() {
             return (false, "GetCursorPos failed".into());
+        }
+        // Prefer geometry: if an Explorer window rect contains the cursor, treat as foreign
+        // even when WindowFromPoint still reports our fullscreen DefView child.
+        if let Some(reason) = explorer_window_contains_point(pt) {
+            return (true, reason);
         }
         let hit = WindowFromPoint(pt);
         if hit.0.is_null() {
@@ -457,7 +515,12 @@ pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
             .ok_or_else(|| "格子窗口未就绪".to_string())?;
         let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
         let (foreign, reason) = classify_cursor_foreign(&app, hwnd);
-        tracing::info!("[desktop-organize] probe foreign={foreign} {reason}");
+        if foreign {
+            tracing::info!(
+                "[desktop-organize] probe foreign=true {}",
+                reason
+            );
+        }
         Ok(foreign)
     }
     #[cfg(not(windows))]
@@ -565,7 +628,14 @@ pub fn arm_desktop_outgoing_drag_watch(
 ) -> Result<u64, String> {
     #[cfg(windows)]
     {
+        // Invalidate any prior watch immediately — before slow path work.
+        let gen = OUTGOING_WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
         let trimmed = path.trim().to_string();
+        tracing::info!(
+            "[desktop-organize] arm outgoing watch gen={} path={}",
+            gen,
+            trimmed
+        );
         if trimmed.is_empty() {
             return Err("路径为空".into());
         }
@@ -574,39 +644,52 @@ pub fn arm_desktop_outgoing_drag_watch(
         }
         let path_buf = PathBuf::from(&trimmed);
         if !path_buf.exists() {
-            return Err("文件不存在".into());
+            return Err(format!("文件不存在: {trimmed}"));
         }
         let abs = strip_extended_path(std::fs::canonicalize(&path_buf).unwrap_or(path_buf));
-        let preview = drag_preview_png(&abs, preview_data_url.as_deref());
-        let gen = OUTGOING_WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
-        tracing::info!(
-            "[desktop-organize] arm outgoing watch gen={gen} path={trimmed}"
-        );
+        // Cheap preview only on the command thread — shell icon extract can hang.
+        let preview = preview_data_url
+            .as_deref()
+            .and_then(decode_image_data_url)
+            .unwrap_or_else(|| MINI_DRAG_PNG.to_vec());
 
         std::thread::spawn(move || {
             let mut last_log = std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(1))
                 .unwrap_or_else(std::time::Instant::now);
+            tracing::info!(
+                "[desktop-organize] watch gen={} thread start path={}",
+                gen,
+                trimmed
+            );
             while OUTGOING_WATCH_GEN.load(Ordering::SeqCst) == gen {
                 if !is_lbutton_down() {
                     tracing::info!(
-                        "[desktop-organize] watch gen={gen} stop: LBUTTON up path={trimmed}"
+                        "[desktop-organize] watch gen={} stop: LBUTTON up path={}",
+                        gen,
+                        trimmed
                     );
                     break;
                 }
                 let Some(window) = app.get_webview_window(FENCE_LABEL) else {
-                    tracing::info!("[desktop-organize] watch gen={gen} stop: no fence window");
+                    tracing::info!(
+                        "[desktop-organize] watch gen={} stop: no fence window",
+                        gen
+                    );
                     break;
                 };
                 let Ok(hwnd) = window.hwnd() else {
-                    tracing::info!("[desktop-organize] watch gen={gen} stop: no hwnd");
+                    tracing::info!("[desktop-organize] watch gen={} stop: no hwnd", gen);
                     break;
                 };
                 let hwnd = hwnd.0 as isize;
                 let (foreign, reason) = classify_cursor_foreign(&app, hwnd);
                 if last_log.elapsed() >= std::time::Duration::from_millis(200) {
                     tracing::info!(
-                        "[desktop-organize] watch gen={gen} foreign={foreign} {reason}"
+                        "[desktop-organize] watch gen={} foreign={} {}",
+                        gen,
+                        foreign,
+                        reason
                     );
                     last_log = std::time::Instant::now();
                 }
@@ -620,13 +703,17 @@ pub fn arm_desktop_outgoing_drag_watch(
                 // Tell the webview to tear down Sortable *before* DoDragDrop,
                 // while LBUTTON is still physically down.
                 tracing::info!(
-                    "[desktop-organize] watch gen={gen} handoff → OLE path={trimmed} {reason}"
+                    "[desktop-organize] watch gen={} handoff → OLE path={} {}",
+                    gen,
+                    trimmed,
+                    reason
                 );
                 let _ = app.emit("desktop-outgoing-drag-handoff", trimmed.clone());
                 std::thread::sleep(std::time::Duration::from_millis(24));
                 if OUTGOING_WATCH_GEN.load(Ordering::SeqCst) != gen || !is_lbutton_down() {
                     tracing::info!(
-                        "[desktop-organize] watch gen={gen} aborted before DoDragDrop lbtn={} gen_ok={}",
+                        "[desktop-organize] watch gen={} aborted before DoDragDrop lbtn={} gen_ok={}",
+                        gen,
                         is_lbutton_down(),
                         OUTGOING_WATCH_GEN.load(Ordering::SeqCst) == gen
                     );
@@ -641,7 +728,8 @@ pub fn arm_desktop_outgoing_drag_watch(
                         return Err("鼠标已松开，取消拖出".into());
                     }
                     tracing::info!(
-                        "[desktop-organize] watch starting shell file drag path={path_log} effects=COPY|MOVE"
+                        "[desktop-organize] watch starting shell file drag path={} effects=COPY|MOVE",
+                        path_log
                     );
                     ole_drag::start(&abs2, &preview2)?;
                     let _ = super::lifecycle::refresh(&app2);
@@ -650,19 +738,24 @@ pub fn arm_desktop_outgoing_drag_watch(
                 match result {
                     Ok(Ok(())) => {
                         tracing::info!(
-                            "[desktop-organize] watch shell file drag finished path={trimmed}"
+                            "[desktop-organize] watch shell file drag finished path={}",
+                            trimmed
                         );
                         let _ = app.emit("desktop-outgoing-drag-done", true);
                     }
                     Ok(Err(e)) => {
                         tracing::info!(
-                            "[desktop-organize] watch shell file drag failed path={trimmed}: {e}"
+                            "[desktop-organize] watch shell file drag failed path={}: {}",
+                            trimmed,
+                            e
                         );
                         let _ = app.emit("desktop-outgoing-drag-done", false);
                     }
                     Err(e) => {
                         tracing::info!(
-                            "[desktop-organize] watch shell file drag ui failed path={trimmed}: {e}"
+                            "[desktop-organize] watch shell file drag ui failed path={}: {}",
+                            trimmed,
+                            e
                         );
                         let _ = app.emit("desktop-outgoing-drag-done", false);
                     }
@@ -690,7 +783,10 @@ pub fn arm_desktop_outgoing_drag_watch(
 #[tauri::command]
 pub fn cancel_desktop_outgoing_drag_watch() {
     let gen = OUTGOING_WATCH_GEN.fetch_add(1, Ordering::SeqCst);
-    tracing::info!("[desktop-organize] cancel outgoing watch prev_gen={gen}");
+    tracing::info!(
+        "[desktop-organize] cancel outgoing watch prev_gen={}",
+        gen
+    );
 }
 
 /// Tiny valid PNG (1x1 transparent) used as drag preview when no icon file is handy.

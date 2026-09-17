@@ -79,6 +79,7 @@ export function useShellFileDrag(opts?: {
   let pollTimer: number | null = null;
   let unlistenHandoff: (() => void) | undefined;
   let unlistenDone: (() => void) | undefined;
+  let armSeq = 0;
 
   function stopPoll() {
     if (pollTimer != null) {
@@ -104,14 +105,35 @@ export function useShellFileDrag(opts?: {
     }
   }
 
-  function clearSession() {
+  function armNativeWatch() {
+    if (!window.__TAURI__ || !activePath || suspended || handoff) return;
+    const path = activePath;
+    const preview = previewDataUrl;
+    const seq = ++armSeq;
+    log("arm request", path);
+    void window.__TAURI__.core
+      .invoke("arm_desktop_outgoing_drag_watch", {
+        path,
+        previewDataUrl: preview,
+      })
+      .then((gen: unknown) => {
+        if (seq !== armSeq) return;
+        log("armed watch gen=", gen, path);
+      })
+      .catch((err: unknown) => {
+        console.warn(LOG, "arm failed", err);
+      });
+  }
+
+  function clearSession(cancelWatch = true) {
     stopPoll();
-    void cancelNativeWatch();
+    if (cancelWatch) void cancelNativeWatch();
     activePath = "";
     inFlight = false;
     endAfterProbe = false;
     suspended = false;
     session += 1;
+    armSeq += 1;
   }
 
   function resetUi() {
@@ -135,7 +157,7 @@ export function useShellFileDrag(opts?: {
     log("native done");
     inFlight = false;
     handoff = false;
-    clearSession();
+    clearSession(false);
   }
 
   async function ensureNativeListeners() {
@@ -166,18 +188,8 @@ export function useShellFileDrag(opts?: {
     session += 1;
     log("begin", path);
     void ensureNativeListeners();
-    void cancelNativeWatch().then(() => {
-      if (!window.__TAURI__ || !activePath) return;
-      void window.__TAURI__.core
-        .invoke("arm_desktop_outgoing_drag_watch", {
-          path: activePath,
-          previewDataUrl,
-        })
-        .then((gen: unknown) => log("armed watch gen=", gen))
-        .catch((err: unknown) => {
-          console.warn("arm_desktop_outgoing_drag_watch failed", err);
-        });
-    });
+    // arm() itself invalidates any prior watch — do NOT cancel-then-arm (race).
+    armNativeWatch();
     startPoll();
   }
 
@@ -189,13 +201,13 @@ export function useShellFileDrag(opts?: {
     }
     log("end", { path: activePath, inFlight });
     stopPoll();
-    void cancelNativeWatch();
     if (inFlight) {
       // Keep activePath/session so a probe that already saw "foreign" can hand off.
       endAfterProbe = true;
+      void cancelNativeWatch();
       return;
     }
-    clearSession();
+    clearSession(true);
   }
 
   /** Pause OLE handoff (e.g. while hovering a folder drop target). */
@@ -208,12 +220,7 @@ export function useShellFileDrag(opts?: {
       stopPoll();
       void cancelNativeWatch();
     } else if (activePath) {
-      void window.__TAURI__?.core
-        .invoke("arm_desktop_outgoing_drag_watch", {
-          path: activePath,
-          previewDataUrl,
-        })
-        .catch(() => undefined);
+      armNativeWatch();
       startPoll();
     }
   }
@@ -242,15 +249,15 @@ export function useShellFileDrag(opts?: {
       const foreign = await window.__TAURI__.core.invoke<boolean>(
         "is_desktop_drag_over_foreign",
       );
-      log("probe foreign=", foreign);
+      if (foreign) log("probe foreign=", foreign);
       // Single-threaded: set handoff before any further await so nested
       // Sortable end() → end() cannot abort this handoff.
       if (mySession !== session || handoff || suspended) {
-        if (endAfterProbe) clearSession();
+        if (endAfterProbe) clearSession(true);
         return;
       }
       if (!foreign || !activePath) {
-        if (endAfterProbe) clearSession();
+        if (endAfterProbe) clearSession(true);
         return;
       }
 
@@ -259,6 +266,7 @@ export function useShellFileDrag(opts?: {
       const path = activePath;
       const preview = previewDataUrl;
       stopPoll();
+      armSeq += 1;
       void cancelNativeWatch();
       activePath = "";
       log("probe → OLE", path);
@@ -305,7 +313,7 @@ export function useShellFileDrag(opts?: {
 export function cellPreviewDataUrl(el: HTMLElement | null): string | null {
   const img = el?.querySelector("img");
   const src = img?.src || "";
-  if (!src.starts_with("data:image/png;base64,")) return null;
+  if (!src.startsWith("data:image/png;base64,")) return null;
   if (src.length > MAX_PREVIEW_CHARS) return null;
   return src;
 }
