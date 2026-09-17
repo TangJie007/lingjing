@@ -117,11 +117,17 @@ export interface OnlineFileDownloadItem {
   fileSize: number;
   mimeType?: string | null;
   downloadedAt: string;
+  exportPath?: string | null;
 }
 
 /** Load `.onlinefile/list.json` entries whose files still exist. */
 export async function listOnlineFileDownloads(): Promise<OnlineFileDownloadItem[]> {
   return invoke<OnlineFileDownloadItem[]>("list_online_file_downloads");
+}
+
+/** Absolute local path for an online wallpaper if already downloaded. */
+export async function getOnlineFilePath(id: string): Promise<string | null> {
+  return invoke<string | null>("get_online_file_path", { id: String(id) });
 }
 
 export async function setWallpaper(item: WallpaperItem): Promise<EngineState> {

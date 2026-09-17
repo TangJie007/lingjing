@@ -19,12 +19,22 @@ interface NavItem {
 const route = useRoute();
 const router = useRouter();
 
-const activeKey = computed(() => {
+const activeKey = computed((): NavRouteName => {
   const name = route.name;
+  if (name === "wallpaper-detail") {
+    const nav = route.query.nav;
+    if (
+      typeof nav === "string" &&
+      (NAV_ROUTE_NAMES as readonly string[]).includes(nav)
+    ) {
+      return nav as NavRouteName;
+    }
+    return "local";
+  }
   if (typeof name === "string" && (NAV_ROUTE_NAMES as readonly string[]).includes(name)) {
     return name as NavRouteName;
   }
-  return "local" as NavRouteName;
+  return "local";
 });
 
 const items: NavItem[] = [

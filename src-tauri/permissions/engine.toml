@@ -30,6 +30,7 @@ commands.allow = [
   "cache_online_wallpaper",
   "save_online_wallpaper",
   "list_online_file_downloads",
+  "get_online_file_path",
   "open_desktop_item",
   "list_desktop_shell_context_menu",
   "list_desktop_shell_context_submenu",

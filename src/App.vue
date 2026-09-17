@@ -33,6 +33,7 @@ import {
   setFavoriteRemote,
   exportWallpaper,
   setWallpaper,
+  getOnlineFilePath,
   type EngineState,
   type PauseRecommendPayload,
 } from "./composables/useEngine";
@@ -44,7 +45,6 @@ import {
   fetchOnlineDownloads,
   fetchOnlineFavorites,
   fetchOnlineWallpapers,
-  downloadOnlineWallpaperToCache,
   saveOnlineWallpaperToDisk,
   setOnlineFavorite,
   type OnlineCategory,
@@ -350,7 +350,17 @@ function openWallpaperDetail(item: WallpaperItem) {
   selectedId.value = item.id;
   drawerItem.value = item;
   drawerOpen.value = false;
-  void router.push({ name: "wallpaper-detail", params: { id: item.id } });
+  const nav =
+    item.source === "online"
+      ? "online"
+      : route.name === "online"
+        ? "online"
+        : "local";
+  void router.push({
+    name: "wallpaper-detail",
+    params: { id: item.id },
+    query: { nav },
+  });
 }
 
 function onPreview(item: WallpaperItem) {
@@ -373,16 +383,29 @@ async function applySetWallpaper(item: WallpaperItem) {
   try {
     let toSet = item;
     if (item.source === "online") {
-      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
-        forButton: false,
-      });
-      try {
-        const localPath = await downloadOnlineWallpaperToCache(item);
-        toSet = { ...item, mediaSrc: localPath };
+      let localPath = await getOnlineFilePath(item.id);
+      if (!localPath) {
+        await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
+          forButton: true,
+        });
+        let saved: string | null = null;
+        try {
+          saved = await saveOnlineWallpaperToDisk(item);
+        } finally {
+          endOnlineDownloadProgress(saved ? 200 : 0);
+        }
+        if (!saved) {
+          showToast("已取消保存，未设置壁纸");
+          return;
+        }
         markLocalOnlineDownloaded(item.id);
-      } finally {
-        endOnlineDownloadProgress(200);
+        localPath = await getOnlineFilePath(item.id);
+        if (!localPath) {
+          showToast("下载完成但未找到本地文件");
+          return;
+        }
       }
+      toSet = { ...item, mediaSrc: localPath };
     }
     const state = await setWallpaper(toSet);
     engine.value = state;
@@ -397,10 +420,6 @@ async function applySetWallpaper(item: WallpaperItem) {
 }
 
 async function onSet(item: WallpaperItem) {
-  if (item.source === "online" && !isLoggedIn.value) {
-    loginOpen.value = true;
-    return;
-  }
   await applySetWallpaper(item);
 }
 

@@ -23,6 +23,9 @@ pub struct OnlineFileListItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
     pub downloaded_at: String,
+    /// User-chosen export path from the save dialog (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -161,6 +164,7 @@ fn upsert_list_item(
     title: Option<&str>,
     file_path: &Path,
     mime_type: Option<&str>,
+    export_path: Option<&str>,
 ) -> Result<OnlineFileListItem, String> {
     let file_name = file_path
         .file_name()
@@ -168,6 +172,15 @@ fn upsert_list_item(
         .ok_or_else(|| "无效的缓存文件名".to_string())?
         .to_string();
     let file_size = fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
+    let export = export_path
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut list = read_list_file(dir);
+    let prev_export = list
+        .items
+        .iter()
+        .find(|i| i.id == id)
+        .and_then(|i| i.export_path.clone());
     let item = OnlineFileListItem {
         id: id.to_string(),
         title: title
@@ -179,9 +192,9 @@ fn upsert_list_item(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty()),
         downloaded_at: now_rfc3339(),
+        export_path: export.or(prev_export),
     };
 
-    let mut list = read_list_file(dir);
     if let Some(existing) = list.items.iter_mut().find(|i| i.id == id) {
         *existing = item.clone();
     } else {
@@ -190,6 +203,30 @@ fn upsert_list_item(
     list.version = 1;
     write_list_file(dir, &list)?;
     Ok(item)
+}
+
+/// Absolute path of a locally cached online wallpaper, if present.
+#[tauri::command]
+pub fn get_online_file_path(app: AppHandle, id: String) -> Result<Option<String>, String> {
+    let dir = online_cache_root(&app)?;
+    let id = id.trim();
+    if id.is_empty() {
+        return Ok(None);
+    }
+    if let Some(p) = resolve_cached_path(&dir, id) {
+        return Ok(Some(p.to_string_lossy().to_string()));
+    }
+    // Fall back to recorded export path if cache file is gone but export still exists.
+    let list = read_list_file(&dir);
+    if let Some(item) = list.items.iter().find(|i| i.id == id) {
+        if let Some(export) = item.export_path.as_ref() {
+            let p = PathBuf::from(export);
+            if p.is_file() && fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false) {
+                return Ok(Some(p.to_string_lossy().to_string()));
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Return recorded `.onlinefile` downloads whose files still exist.
@@ -525,7 +562,7 @@ pub async fn cache_online_wallpaper(
     );
 
     if let Some(existing) = resolve_cached_path(&dir, &progress_id) {
-        let _ = upsert_list_item(&dir, &progress_id, None, &existing, None);
+        let _ = upsert_list_item(&dir, &progress_id, None, &existing, None, None);
         emit_progress(
             &app,
             DownloadProgressPayload {
@@ -588,6 +625,7 @@ pub async fn cache_online_wallpaper(
         None,
         &final_path,
         result.content_type.as_deref(),
+        None,
     )?;
 
     Ok(final_path.to_string_lossy().to_string())
@@ -654,8 +692,17 @@ pub async fn save_online_wallpaper(
         },
     );
 
+    let export_str = export_dest.to_string_lossy().to_string();
+
     let cached = if let Some(existing) = resolve_cached_path(&dir, &progress_id) {
-        upsert_list_item(&dir, &progress_id, title, &existing, None)?;
+        upsert_list_item(
+            &dir,
+            &progress_id,
+            title,
+            &existing,
+            None,
+            Some(export_str.as_str()),
+        )?;
         emit_progress(
             &app,
             DownloadProgressPayload {
@@ -720,6 +767,7 @@ pub async fn save_online_wallpaper(
             title,
             &final_path,
             result.content_type.as_deref(),
+            Some(export_str.as_str()),
         )?;
         final_path
     };

@@ -29,6 +29,11 @@ const emit = defineEmits<{
 }>();
 
 function goBack() {
+  const nav = route.query.nav;
+  if (nav === "online") {
+    void router.push({ name: "online" });
+    return;
+  }
   if (window.history.length > 1) router.back();
   else void router.push({ name: "local" });
 }
