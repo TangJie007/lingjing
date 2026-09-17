@@ -383,27 +383,10 @@ async function applySetWallpaper(item: WallpaperItem) {
   try {
     let toSet = item;
     if (item.source === "online") {
-      let localPath = await getOnlineFilePath(item.id);
+      const localPath = await getOnlineFilePath(item.id);
       if (!localPath) {
-        await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
-          forButton: true,
-        });
-        let saved: string | null = null;
-        try {
-          saved = await saveOnlineWallpaperToDisk(item);
-        } finally {
-          endOnlineDownloadProgress(saved ? 200 : 0);
-        }
-        if (!saved) {
-          showToast("已取消保存，未设置壁纸");
-          return;
-        }
-        markLocalOnlineDownloaded(item.id);
-        localPath = await getOnlineFilePath(item.id);
-        if (!localPath) {
-          showToast("下载完成但未找到本地文件");
-          return;
-        }
+        showToast("请先下载到本地后再设置壁纸");
+        return;
       }
       toSet = { ...item, mediaSrc: localPath };
     }
