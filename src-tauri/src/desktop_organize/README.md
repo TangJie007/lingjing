@@ -15,7 +15,7 @@
 | `shell_host.rs` | Shell 菜单独立子进程（`--lingscape-shell-menu-host`） |
 | `item_commands.rs` | Tauri 命令：打开/删除/重命名/设整理开关等 |
 | `menu_commands.rs` | Tauri 命令：Shell 右键菜单枚举与执行 |
-| `drag.rs` | Tauri 命令：拖出到外部窗口（CF_HDROP） |
+| `drag.rs` | Tauri 命令：拖出到外部窗口（CF_HDROP）；窗口判定见 docs |
 | `mod.rs` | 模块入口与对外 re-export |
 
 ## 对外接口
@@ -27,6 +27,7 @@
 ## 设计文档
 
 - [桌面整理：图标映射原理与方案对照](../../../docs/desktop-organize-reference.md) — Windows/腾讯/ling-scape 映射链路、对照表、可借鉴项与路线图
+- [分区拖出到资源管理器（OLE）](../../../docs/fence-ole-drag-out.md) — 外部窗口判定、`arm` 生命周期、自拖拒收、排障与禁改项
 
 ## 后续可继续拆分
 

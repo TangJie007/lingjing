@@ -1,4 +1,8 @@
-/** Shell OLE drag-out while Sortable is active (into Explorer folders / other apps). */
+/** Shell OLE drag-out while Sortable is active (into Explorer folders / other apps).
+ *
+ * Lifecycle and pitfalls: docs/fence-ole-drag-out.md
+ * — arm directly (no cancel-then-arm); native watch is required when focus is on Explorer.
+ */
 
 import { clearIconDragArm } from "./iconDragCursor";
 import { friendlyError, showFenceToast } from "./fenceUi";

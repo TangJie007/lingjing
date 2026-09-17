@@ -51,7 +51,11 @@
     用 `::{CLSID}`，不要再造 AppData「此电脑.lnk」。说明见 `desktop-organize-reference.md`。
 
 14. **OLE**  
-    `SetParent` 后需重装 drop target（`drop_target.rs`）。拖出在 `drag.rs`。
+    `SetParent` 后需重装 drop target（`drop_target.rs`）。拖出在 `drag.rs`。  
+    **拖到已打开的 Explorer（含 D: 等）** 方案与禁改项见 [`fence-ole-drag-out.md`](./fence-ole-drag-out.md)：  
+    - 禁止把 `SHELLDLL_DefView` 单独当桌面（Explorer 里也有）  
+    - 禁止 `cancel().then(arm)`；`@end` 不要无条件 `setSuspended(true)`  
+    - 原生 `arm_desktop_outgoing_drag_watch` 不可删（WebView 在 Explorer 上会节流）
 
 15. **Shell 菜单宿主**  
     `::{CLSID}` 用 one-shot，避免拖死常驻 host。主进程通过 `spawn_blocking` 等宿主返回——宿主内阻塞 UI（如属性）必须快速 spawn/异步。
@@ -90,9 +94,11 @@
 | 桌面图标消失且整理关不掉 | guard 文件、`set_desktop_organize(false)`、手动显示 ListView |
 | 在线页 CORS / 失败 | 是否走了 `apiFetch`；capability `http:` |
 | 托盘点了没窗 | `focus_main_window`：show + unminimize + focus |
+| 分区文件拖进已打开的 Explorer 没反应 | [`fence-ole-drag-out.md`](./fence-ole-drag-out.md)：日志是否有 `arm`/`foreign=true`；勿误判 `SHELLDLL_DefView` |
 
 ## 相关文档
 
 - [architecture.md](./architecture.md)
 - [directory-structure.md](./directory-structure.md)
 - [desktop-organize-reference.md](./desktop-organize-reference.md)
+- [fence-ole-drag-out.md](./fence-ole-drag-out.md)

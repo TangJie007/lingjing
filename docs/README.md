@@ -8,6 +8,7 @@
 | [directory-structure.md](./directory-structure.md) | 仓库目录与关键文件职责 |
 | [maintenance-notes.md](./maintenance-notes.md) | 已知坑、改动约束、排障清单 |
 | [desktop-organize-reference.md](./desktop-organize-reference.md) | 桌面整理：图标映射、与腾讯方案对照、路线图 |
+| [fence-ole-drag-out.md](./fence-ole-drag-out.md) | 分区拖出到 Explorer：OLE 方案、窗口判定、arm 生命周期、排障 |
 | [comet/](./comet/) | 历史需求/规格/验收（OpenSpec 风格） |
 | [comet/optimization-roadmap.md](./comet/optimization-roadmap.md) | 优化路线图 |
 | [comet/specs/](./comet/specs/) | 能力规格（壁纸引擎、托盘、设置等） |
@@ -24,5 +25,5 @@
 1. 根目录 `README.md`
 2. `architecture.md`
 3. `directory-structure.md`
-4. 按任务读：壁纸 → `wallpaper/` + `public/wallpaper.html`；桌面整理 → `desktop-organize-reference.md` + `desktop_organize/`
+4. 按任务读：壁纸 → `wallpaper/` + `public/wallpaper.html`；桌面整理 → `desktop-organize-reference.md` + `desktop_organize/`；拖出到资源管理器 → `fence-ole-drag-out.md`
 5. 改动前扫一眼 `maintenance-notes.md`

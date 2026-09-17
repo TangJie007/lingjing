@@ -105,7 +105,7 @@ src-tauri/
 | `item_commands.rs` | 打开/删/改名/移入文件夹 |
 | `menu_commands.rs` | 右键菜单命令分发 |
 | `shell_host.rs` | 拉起菜单宿主进程 |
-| `drag.rs` / `drop_target.rs` | OLE 拖出 / 拖入 |
+| `drag.rs` / `drop_target.rs` | OLE 拖出 / 拖入（拖出方案见 [fence-ole-drag-out.md](./fence-ole-drag-out.md)） |
 | `builtin_links.rs` | 此电脑/回收站/网络 CLSID |
 
 ## `docs/`

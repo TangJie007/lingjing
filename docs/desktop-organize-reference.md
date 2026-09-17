@@ -309,7 +309,7 @@ ling-scape（当前）:
 | 深度图标抽取 | PE 图标 + 关联图标 + 图片预览 |
 | 图标缓存 | path + mtime，重扫不闪烁 |
 | Shell COM 右键菜单 | 含图标、pin 条、子菜单 |
-| OLE 拖放 | `RegisterDragDrop` + CF_HDROP 拖出 |
+| OLE 拖放 | `RegisterDragDrop` + CF_HDROP 拖出（拖到 Explorer 细节见 [fence-ole-drag-out.md](./fence-ole-drag-out.md)） |
 | 布局持久化 | Rust 侧 `fence_layout.json` + 前端迁移 |
 
 ---
@@ -339,8 +339,11 @@ P3  图标两阶段加载                                 （性能优化，非�
 | `src-tauri/src/desktop_organize/lifecycle.rs` | 启用/禁用/监视/刷新 |
 | `src-tauri/src/desktop_organize/layout.rs` | 格子布局持久化 |
 | `src-tauri/src/desktop_organize/icon_cache.rs` | 图标 mtime 缓存 |
+| `src-tauri/src/desktop_organize/drag.rs` | OLE 拖出到 Explorer（见 [fence-ole-drag-out.md](./fence-ole-drag-out.md)） |
+| `src-tauri/src/desktop_organize/drop_target.rs` | OLE 拖入；OUTGOING_DRAG 拒自吞 |
 | `src-tauri/src/desktop.rs` | 隐藏/恢复系统桌面图标 |
 | `src/fences/FencesApp.vue` | 格子 UI、打开入口 |
+| `src/fences/useShellFileDrag.ts` | 拖出武装 / probe / handoff |
 | `src/fences/fenceLayout.ts` | 前端布局读写 |
 | `src/fences/fenceItems.ts` | 前端 icon 缓存与 diff |
 
@@ -351,7 +354,8 @@ P3  图标两阶段加载                                 （性能优化，非�
 - [MS-SHLLINK: Shell Link (.LNK) Binary File Format](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/)
 - [腾讯电脑管家 - 桌面整理帮助](https://gj.qq.com/help/2071.html)
 - 模块 README：`src-tauri/src/desktop_organize/README.md`
+- [分区拖出到资源管理器（OLE）](./fence-ole-drag-out.md)
 
 ---
 
-*最后更新：2026-09-01*
+*最后更新：2026-09-17*

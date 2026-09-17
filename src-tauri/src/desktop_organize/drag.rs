@@ -75,6 +75,7 @@ fn is_desktop_root_class(class: &str) -> bool {
     // Only Progman/WorkerW identify the real desktop surface.
     // Do NOT treat SHELLDLL_DefView alone as desktop — Explorer folder windows
     // also host SHELLDLL_DefView under CabinetWClass.
+    // Full rationale: docs/fence-ole-drag-out.md §3
     matches!(class, "Progman" | "WorkerW")
 }
 
@@ -790,6 +791,8 @@ pub fn cancel_desktop_outgoing_drag_watch() {
 }
 
 /// Tiny valid PNG (1x1 transparent) used as drag preview when no icon file is handy.
+/// Prefer this (or a short data-URL) on the arm command path — never block arm on shell icon extract.
+/// See docs/fence-ole-drag-out.md.
 const MINI_DRAG_PNG: &[u8] = &[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
