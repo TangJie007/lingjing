@@ -17,6 +17,8 @@ export interface OnlineDownloadProgressEvent {
 
 interface ProgressState {
   active: boolean;
+  /** When true, detail/drawer download buttons bind to this progress. */
+  forButton: boolean;
   label: string;
   id: string;
   downloaded: number;
@@ -26,6 +28,7 @@ interface ProgressState {
 
 const state = ref<ProgressState>({
   active: false,
+  forButton: false,
   label: "",
   id: "",
   downloaded: 0,
@@ -86,12 +89,16 @@ async function ensureListening() {
   return listenPromise;
 }
 
-/** Show the floating progress panel for an upcoming cache/download. */
-export async function beginOnlineDownloadProgress(label: string, id?: string) {
+export async function beginOnlineDownloadProgress(
+  label: string,
+  id?: string,
+  options?: { forButton?: boolean },
+) {
   clearHideTimer();
   await ensureListening();
   state.value = {
     active: true,
+    forButton: options?.forButton === true,
     label: label.trim() || "正在下载",
     id: id ? String(id) : "",
     downloaded: 0,
@@ -100,15 +107,14 @@ export async function beginOnlineDownloadProgress(label: string, id?: string) {
   };
 }
 
-/** Hide the panel (optionally after a short delay so 100% is visible). */
 export function endOnlineDownloadProgress(delayMs = 0) {
   clearHideTimer();
   if (delayMs <= 0) {
-    state.value = { ...state.value, active: false, phase: "idle" };
+    state.value = { ...state.value, active: false, forButton: false, phase: "idle" };
     return;
   }
   hideTimer = window.setTimeout(() => {
-    state.value = { ...state.value, active: false, phase: "idle" };
+    state.value = { ...state.value, active: false, forButton: false, phase: "idle" };
     hideTimer = null;
   }, delayMs);
 }
@@ -126,16 +132,27 @@ export function useOnlineDownloadProgress() {
     return `${Math.round(r * 100)}%`;
   });
 
-  const sizeLabel = computed(() => {
-    const { downloaded, total, phase } = state.value;
-    if (phase === "resolving") return "准备中…";
-    if (phase === "cached") return "已缓存";
-    if (total && total > 0) {
-      return `${formatBytes(downloaded)} / ${formatBytes(total)}`;
-    }
-    if (downloaded > 0) return formatBytes(downloaded);
-    return "连接中…";
-  });
+  function isDownloadingItem(itemId?: string | null) {
+    if (!state.value.active || !state.value.forButton) return false;
+    if (!itemId) return false;
+    return state.value.id === String(itemId);
+  }
 
-  return { state, ratio, percentLabel, sizeLabel };
+  function downloadButtonLabel(itemId?: string | null, idle = "↓ 下载") {
+    if (!isDownloadingItem(itemId)) return idle;
+    const pct = percentLabel.value;
+    if (pct) return `↓ ${pct}`;
+    if (state.value.phase === "resolving") return "↓ 准备中…";
+    if (state.value.phase === "done" || state.value.phase === "cached") return "↓ 完成";
+    if (state.value.downloaded > 0) return `↓ ${formatBytes(state.value.downloaded)}`;
+    return "↓ 下载中…";
+  }
+
+  return {
+    state,
+    ratio,
+    percentLabel,
+    isDownloadingItem,
+    downloadButtonLabel,
+  };
 }

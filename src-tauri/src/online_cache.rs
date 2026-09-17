@@ -30,6 +30,22 @@ pub struct CacheOnlinePayload {
     pub record_download: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveOnlinePayload {
+    /// Wallpaper id, e.g. `online-12`
+    pub id: String,
+    /// Download gateway URL (`…/download`) or direct media URL
+    pub url: String,
+    #[serde(default)]
+    pub authorization: Option<String>,
+    /// Suggested file name for the save dialog, e.g. `aurora.mp4`
+    pub file_name: String,
+    /// Hit gateway first to record member download history
+    #[serde(default)]
+    pub record_download: bool,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DownloadProgressPayload {
@@ -94,10 +110,13 @@ fn ext_from_content_type(ct: &str) -> Option<&'static str> {
     }
 }
 
-fn resolve_ext(payload: &CacheOnlinePayload, fetch_url: &str, content_type: Option<&str>) -> String {
-    if let Some(e) = payload
-        .file_ext
-        .as_ref()
+fn resolve_ext(
+    preferred: Option<&str>,
+    fetch_url: &str,
+    original_url: &str,
+    content_type: Option<&str>,
+) -> String {
+    if let Some(e) = preferred
         .map(|s| s.trim().trim_start_matches('.').to_ascii_lowercase())
         .filter(|s| !s.is_empty() && s.len() <= 8)
     {
@@ -109,7 +128,7 @@ fn resolve_ext(payload: &CacheOnlinePayload, fetch_url: &str, content_type: Opti
     if let Some(e) = content_type.and_then(ext_from_content_type) {
         return e.to_string();
     }
-    if let Some(e) = ext_from_url(&payload.url) {
+    if let Some(e) = ext_from_url(original_url) {
         return e;
     }
     "mp4".into()
@@ -159,7 +178,7 @@ async fn probe_download_gateway(url: &str, authorization: Option<&str>) -> Resul
         req = req.header(reqwest::header::AUTHORIZATION, authorization_value(auth));
     }
 
-    let response = req.send().await.map_err(|e| format!("下载失败: {e}"))?;
+    let response = req.send().await.map_err(|e| format!("获取下载地址失败: {e}"))?;
     let status = response.status();
     if status.as_u16() == 429 {
         return Err("下载请求过于频繁，请稍后再试".into());
@@ -168,7 +187,7 @@ async fn probe_download_gateway(url: &str, authorization: Option<&str>) -> Resul
         return Err("壁纸不存在或未上架".into());
     }
     if !(status.is_redirection() || status.is_success()) {
-        return Err(format!("下载失败: HTTP {status}"));
+        return Err(format!("获取下载地址失败: HTTP {status}"));
     }
 
     let location = response
@@ -177,6 +196,152 @@ async fn probe_download_gateway(url: &str, authorization: Option<&str>) -> Resul
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     Ok(location)
+}
+
+fn resolve_fetch_url(gateway_url: &str, location: Option<String>) -> String {
+    let Some(loc) = location.filter(|s| !s.trim().is_empty()) else {
+        return gateway_url.to_string();
+    };
+    let loc = loc.trim();
+    if loc.starts_with("http://") || loc.starts_with("https://") {
+        return loc.to_string();
+    }
+    // Relative Location — join against gateway origin
+    if let Ok(base) = reqwest::Url::parse(gateway_url) {
+        if let Ok(joined) = base.join(loc) {
+            return joined.to_string();
+        }
+    }
+    loc.to_string()
+}
+
+struct StreamDownloadResult {
+    #[allow(dead_code)]
+    downloaded: u64,
+    #[allow(dead_code)]
+    total: Option<u64>,
+    content_type: Option<String>,
+}
+
+/// Stream `fetch_url` into `dest`, writing via a `.part` temp file. Emits progress.
+async fn stream_url_to_file(
+    app: &AppHandle,
+    progress_id: &str,
+    fetch_url: &str,
+    authorization: Option<&str>,
+    dest: &Path,
+) -> Result<StreamDownloadResult, String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("创建下载客户端失败: {e}"))?;
+
+    let mut req = client.get(fetch_url);
+    if let Some(auth) = authorization.map(str::trim).filter(|s| !s.is_empty()) {
+        req = req.header(reqwest::header::AUTHORIZATION, authorization_value(auth));
+    }
+
+    let mut response = req.send().await.map_err(|e| format!("下载失败: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("下载失败: HTTP {}", response.status()));
+    }
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let total = response.content_length();
+
+    let tmp = dest
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!(
+            "{}.part",
+            dest.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("download.bin")
+        ));
+
+    emit_progress(
+        app,
+        DownloadProgressPayload {
+            id: progress_id.to_string(),
+            downloaded: 0,
+            total,
+            phase: "downloading",
+        },
+    );
+
+    let mut file = fs::File::create(&tmp).map_err(|e| format!("写入临时文件失败: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let mut last_emit = Instant::now() - Duration::from_secs(1);
+
+    loop {
+        let chunk = response.chunk().await.map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("读取下载内容失败: {e}")
+        })?;
+        let Some(chunk) = chunk else {
+            break;
+        };
+        if chunk.is_empty() {
+            continue;
+        }
+        file.write_all(&chunk).map_err(|e| {
+            let _ = fs::remove_file(&tmp);
+            format!("写入临时文件失败: {e}")
+        })?;
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+
+        let due = last_emit.elapsed() >= Duration::from_millis(80);
+        let finished = total.is_some_and(|t| t > 0 && downloaded >= t);
+        if due || finished {
+            emit_progress(
+                app,
+                DownloadProgressPayload {
+                    id: progress_id.to_string(),
+                    downloaded,
+                    total,
+                    phase: "downloading",
+                },
+            );
+            last_emit = Instant::now();
+        }
+    }
+
+    if downloaded == 0 {
+        let _ = fs::remove_file(&tmp);
+        return Err("下载内容为空".into());
+    }
+
+    file.sync_all().ok();
+    drop(file);
+
+    if dest.exists() {
+        let _ = fs::remove_file(dest);
+    }
+    fs::rename(&tmp, dest).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("保存文件失败: {e}")
+    })?;
+
+    emit_progress(
+        app,
+        DownloadProgressPayload {
+            id: progress_id.to_string(),
+            downloaded,
+            total: total.or(Some(downloaded)),
+            phase: "done",
+        },
+    );
+
+    Ok(StreamDownloadResult {
+        downloaded,
+        total,
+        content_type,
+    })
 }
 
 /// Download remote media into `{library_root}/.onlinefile/{id}.{ext}`.
@@ -191,7 +356,6 @@ pub async fn cache_online_wallpaper(
         return Err("缺少下载地址".into());
     }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        // Already a local path / asset — return as-is
         return Ok(url);
     }
 
@@ -217,13 +381,16 @@ pub async fn cache_online_wallpaper(
         },
     );
 
-    // Resolve gateway → signed object URL (and record member download when JWT present).
     let mut fetch_url = url.clone();
+    let mut fetch_auth = if payload.record_download {
+        None
+    } else {
+        auth.clone()
+    };
     if payload.record_download {
         let location = probe_download_gateway(&url, auth.as_deref()).await?;
-        if let Some(loc) = location.filter(|s| !s.trim().is_empty()) {
-            fetch_url = loc;
-        }
+        fetch_url = resolve_fetch_url(&url, location);
+        fetch_auth = None; // never send Authorization to signed R2 URL
     }
 
     if let Some(existing) = find_existing_cache(&dir, &stem) {
@@ -239,113 +406,116 @@ pub async fn cache_online_wallpaper(
         return Ok(existing.to_string_lossy().to_string());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(180))
-        .build()
-        .map_err(|e| format!("创建下载客户端失败: {e}"))?;
+    // Probe content-type/ext via a lightweight HEAD isn't reliable on R2; stream once.
+    // Use preferred ext first so dest path is known before streaming.
+    let preferred = payload.file_ext.clone();
+    let guess_ext = resolve_ext(preferred.as_deref(), &fetch_url, &url, None);
+    let dest = dir.join(format!("{stem}.{guess_ext}"));
 
-    // Presigned R2 URL must not carry Authorization — it invalidates the signature.
-    // Only attach auth when still hitting our own gateway (record_download already resolved).
-    let mut req = client.get(&fetch_url);
-    if !payload.record_download {
-        if let Some(ref a) = auth {
-            req = req.header(reqwest::header::AUTHORIZATION, authorization_value(a));
+    let result = stream_url_to_file(
+        &app,
+        &progress_id,
+        &fetch_url,
+        fetch_auth.as_deref(),
+        &dest,
+    )
+    .await?;
+
+    // If server content-type implies a better ext and file was saved with guess, rename.
+    let better = resolve_ext(
+        preferred.as_deref(),
+        &fetch_url,
+        &url,
+        result.content_type.as_deref(),
+    );
+    if better != guess_ext {
+        let renamed = dir.join(format!("{stem}.{better}"));
+        if renamed != dest {
+            let _ = fs::rename(&dest, &renamed);
+            return Ok(renamed.to_string_lossy().to_string());
         }
     }
 
-    let mut response = req
-        .send()
-        .await
-        .map_err(|e| format!("下载失败: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("下载失败: HTTP {}", response.status()));
+    Ok(dest.to_string_lossy().to_string())
+}
+
+/// Pick a save path, then stream the online wallpaper there (with progress).
+/// Returns `None` when the user cancels the dialog.
+#[tauri::command]
+pub async fn save_online_wallpaper(
+    app: AppHandle,
+    payload: SaveOnlinePayload,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let url = payload.url.trim().to_string();
+    if url.is_empty() {
+        return Err("缺少下载地址".into());
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("下载地址无效".into());
     }
 
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
+    let file_name = payload.file_name.trim();
+    let file_name = if file_name.is_empty() {
+        "wallpaper.bin".to_string()
+    } else {
+        file_name.to_string()
+    };
+
+    let progress_id = payload.id.trim().to_string();
+    let app_for_dialog = app.clone();
+    let suggested = file_name.clone();
+    let dest = tauri::async_runtime::spawn_blocking(move || {
+        app_for_dialog
+            .dialog()
+            .file()
+            .set_file_name(&suggested)
+            .blocking_save_file()
+            .and_then(|p| p.into_path().ok())
+    })
+    .await
+    .map_err(|e| format!("打开保存对话框失败: {e}"))?;
+
+    let Some(dest) = dest else {
+        return Ok(None);
+    };
+
+    let auth = payload
+        .authorization
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    let total = response.content_length();
-    let ext = resolve_ext(&payload, &fetch_url, content_type.as_deref());
-    let dest = dir.join(format!("{stem}.{ext}"));
-    let tmp = dir.join(format!("{stem}.{ext}.part"));
 
     emit_progress(
         &app,
         DownloadProgressPayload {
             id: progress_id.clone(),
             downloaded: 0,
-            total,
-            phase: "downloading",
+            total: None,
+            phase: "resolving",
         },
     );
 
-    let mut file =
-        fs::File::create(&tmp).map_err(|e| format!("写入临时文件失败: {e}"))?;
-    let mut downloaded: u64 = 0;
-    let mut last_emit = Instant::now() - Duration::from_secs(1);
-
-    loop {
-        let chunk = response
-            .chunk()
-            .await
-            .map_err(|e| {
-                let _ = fs::remove_file(&tmp);
-                format!("读取下载内容失败: {e}")
-            })?;
-        let Some(chunk) = chunk else {
-            break;
-        };
-        if chunk.is_empty() {
-            continue;
-        }
-        file.write_all(&chunk).map_err(|e| {
-            let _ = fs::remove_file(&tmp);
-            format!("写入临时文件失败: {e}")
-        })?;
-        downloaded = downloaded.saturating_add(chunk.len() as u64);
-
-        let due = last_emit.elapsed() >= Duration::from_millis(80);
-        let finished = total.is_some_and(|t| t > 0 && downloaded >= t);
-        if due || finished {
-            emit_progress(
-                &app,
-                DownloadProgressPayload {
-                    id: progress_id.clone(),
-                    downloaded,
-                    total,
-                    phase: "downloading",
-                },
-            );
-            last_emit = Instant::now();
-        }
+    let mut fetch_url = url.clone();
+    let mut fetch_auth = auth.clone();
+    if payload.record_download {
+        let location = probe_download_gateway(&url, auth.as_deref()).await?;
+        fetch_url = resolve_fetch_url(&url, location);
+        fetch_auth = None;
     }
 
-    if downloaded == 0 {
-        let _ = fs::remove_file(&tmp);
-        return Err("下载内容为空".into());
-    }
-
-    file.sync_all().ok();
-    drop(file);
-
-    fs::rename(&tmp, &dest).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        format!("保存缓存失败: {e}")
-    })?;
-
-    emit_progress(
+    stream_url_to_file(
         &app,
-        DownloadProgressPayload {
-            id: progress_id,
-            downloaded,
-            total: total.or(Some(downloaded)),
-            phase: "done",
-        },
-    );
+        &progress_id,
+        &fetch_url,
+        fetch_auth.as_deref(),
+        &dest,
+    )
+    .await?;
 
-    Ok(dest.to_string_lossy().to_string())
+    Ok(Some(dest.to_string_lossy().to_string()))
 }
 
 /// True if path is inside the `.onlinefile` cache (must not be indexed as local library).

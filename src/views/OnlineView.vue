@@ -205,9 +205,9 @@ const downloadList = computed(() =>
         v-else
         :items="discoverList"
         :selected-id="selectedId"
+        :show-apply="false"
         @select="emit('select', $event)"
         @preview="emit('preview', $event)"
-        @set="emit('set', $event)"
       />
     </template>
 
@@ -232,9 +232,9 @@ const downloadList = computed(() =>
           v-else
           :items="favoriteList"
           :selected-id="selectedId"
+          :show-apply="false"
           @select="emit('select', $event)"
           @preview="emit('preview', $event)"
-          @set="emit('set', $event)"
         />
 
         <div class="fav-sub mine-section-gap">已下载 {{ downloadList.length }} 张壁纸</div>
@@ -247,9 +247,9 @@ const downloadList = computed(() =>
           v-else
           :items="downloadList"
           :selected-id="selectedId"
+          :show-apply="false"
           @select="emit('select', $event)"
           @preview="emit('preview', $event)"
-          @set="emit('set', $event)"
         />
       </template>
     </template>

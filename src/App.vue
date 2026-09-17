@@ -7,7 +7,6 @@ import WinBar from "./components/WinBar.vue";
 import IconRail from "./components/IconRail.vue";
 import DetailDrawer from "./components/DetailDrawer.vue";
 import Toast from "./components/Toast.vue";
-import DownloadProgress from "./components/DownloadProgress.vue";
 import LoginModal from "./components/LoginModal.vue";
 import FirstRunAutostartModal from "./components/FirstRunAutostartModal.vue";
 import { showToast } from "./composables/useToast";
@@ -41,7 +40,7 @@ import {
   fetchOnlineFavorites,
   fetchOnlineWallpapers,
   downloadOnlineWallpaperToCache,
-  exportOnlineWallpaperToCache,
+  saveOnlineWallpaperToDisk,
   setOnlineFavorite,
   type OnlineCategory,
 } from "./composables/useLingjingApi";
@@ -365,7 +364,9 @@ async function applySetWallpaper(item: WallpaperItem) {
   try {
     let toSet = item;
     if (item.source === "online") {
-      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id);
+      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
+        forButton: false,
+      });
       try {
         const localPath = await downloadOnlineWallpaperToCache(item);
         toSet = { ...item, mediaSrc: localPath };
@@ -396,16 +397,15 @@ async function onSet(item: WallpaperItem) {
 async function onDownload(item: WallpaperItem) {
   try {
     if (item.source === "online") {
-      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id);
-      let localPath: string;
+      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
+        forButton: true,
+      });
+      let saved: string | null = null;
       try {
-        localPath = await exportOnlineWallpaperToCache(item);
+        saved = await saveOnlineWallpaperToDisk(item);
       } finally {
-        endOnlineDownloadProgress(200);
+        endOnlineDownloadProgress(saved ? 200 : 0);
       }
-      const ext = localPath.includes(".") ? localPath.split(".").pop() ?? "bin" : "bin";
-      const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_");
-      const saved = await exportWallpaper(localPath, `${safeName}.${ext}`);
       if (saved) {
         showToast(`已保存：${saved}`);
         if (isLoggedIn.value) void refreshCommunityDownloads();
@@ -739,7 +739,6 @@ async function onFirstRunConfirm(autostart: boolean) {
     </div>
 
     <Toast />
-    <DownloadProgress />
     <FirstRunAutostartModal :open="firstRunOpen" :saving="firstRunSaving" @confirm="onFirstRunConfirm" />
     <LoginModal :open="loginOpen" @close="loginOpen = false" @success="onLoginSuccess" />
   </div>

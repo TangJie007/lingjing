@@ -1,6 +1,6 @@
 import type { WallpaperItem, WallpaperType } from "../data/catalog";
 import { apiFetch } from "./apiFetch";
-import { cacheOnlineWallpaper } from "./useEngine";
+import { cacheOnlineWallpaper, saveOnlineWallpaper } from "./useEngine";
 import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl, useSettings } from "./useSettings";
 import { useAuth } from "./useAuth";
 
@@ -381,8 +381,38 @@ export async function downloadOnlineWallpaperToCache(
 }
 
 /**
- * User-facing download: hit `/download` (records history when JWT present),
- * cache into `.onlinefile`, return absolute local path for save dialog.
+ * User-facing download: save dialog first, then stream via `/download`
+ * (records history when JWT present). Returns saved path or null if cancelled.
+ */
+export async function saveOnlineWallpaperToDisk(
+  item: WallpaperItem,
+): Promise<string | null> {
+  if (item.source !== "online") {
+    throw new Error("仅支持在线壁纸下载");
+  }
+  const id = onlineWallpaperId(item.id);
+  if (id == null) throw new Error("无效的在线壁纸 ID");
+  const path =
+    pickStr(item.downloadPath) || `/api/public/wallpapers/${id}/download`;
+  const params = new URLSearchParams({ expires: "3600" });
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${absoluteApiPath(path)}${sep}${params}`;
+  const { authHeaders } = useAuth();
+  const auth = authHeaders().Authorization;
+  const ext = guessFileExt(item) || "bin";
+  const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_") || `wallpaper-${id}`;
+  return saveOnlineWallpaper({
+    id: String(item.id),
+    url,
+    fileName: `${safeName}.${ext}`,
+    authorization: typeof auth === "string" ? auth : undefined,
+    recordDownload: true,
+  });
+}
+
+/**
+ * @deprecated Prefer saveOnlineWallpaperToDisk for user downloads.
+ * Kept for callers that still cache then export.
  */
 export async function exportOnlineWallpaperToCache(
   item: WallpaperItem,
@@ -395,7 +425,8 @@ export async function exportOnlineWallpaperToCache(
   const path =
     pickStr(item.downloadPath) || `/api/public/wallpapers/${id}/download`;
   const params = new URLSearchParams({ expires: "3600" });
-  const url = `${absoluteApiPath(path)}${path.includes("?") ? "&" : "?"}${params}`;
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${absoluteApiPath(path)}${sep}${params}`;
   const { authHeaders } = useAuth();
   const auth = authHeaders().Authorization;
   return cacheOnlineWallpaper({

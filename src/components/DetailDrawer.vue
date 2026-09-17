@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import MediaThumb from "./MediaThumb.vue";
 import type { WallpaperItem } from "../data/catalog";
+import { useOnlineDownloadProgress } from "../composables/useOnlineDownloadProgress";
 
 const props = defineProps<{ item: WallpaperItem | null; open: boolean }>();
 const emit = defineEmits<{
@@ -11,6 +12,10 @@ const emit = defineEmits<{
   (e: "favorite", item: WallpaperItem): void;
   (e: "download", item: WallpaperItem): void;
 }>();
+
+const { isDownloadingItem, downloadButtonLabel } = useOnlineDownloadProgress();
+const downloading = computed(() => isDownloadingItem(props.item?.id));
+const downloadLabel = computed(() => downloadButtonLabel(props.item?.id));
 
 const COUNTDOWN = 30;
 const remain = ref(COUNTDOWN);
@@ -49,7 +54,17 @@ watch(
   { immediate: true },
 );
 
+watch(downloading, (busy) => {
+  if (busy) stopCountdown();
+  else if (props.open && props.item) startCountdown();
+});
+
 const tags = computed(() => props.item?.tags ?? ["#4K"]);
+
+function onDownloadClick() {
+  if (!props.item || downloading.value) return;
+  emit("download", props.item);
+}
 </script>
 
 <template>
@@ -103,7 +118,16 @@ const tags = computed(() => props.item?.tags ?? ["#4K"]);
             :aria-label="item.favorite ? '已收藏' : '收藏'"
             @click="emit('favorite', item)"
           >{{ item.favorite ? "♥ 收藏" : "♡ 收藏" }}</div>
-          <div class="btn-ghost" role="button" tabindex="0" aria-label="下载" @click="emit('download', item)">↓ 下载</div>
+          <div
+            class="btn-ghost"
+            :class="{ busy: downloading }"
+            role="button"
+            tabindex="0"
+            aria-label="下载"
+            :aria-busy="downloading"
+            :aria-disabled="downloading"
+            @click="onDownloadClick"
+          >{{ downloadLabel }}</div>
         </div>
         <div class="btn-apply" role="button" tabindex="0" aria-label="设为壁纸" @click="emit('set', item)">设为壁纸</div>
         <div class="d-note">30 秒未操作将自动收起 · 点击预览查看详情</div>

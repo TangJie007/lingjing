@@ -303,9 +303,11 @@ fn export_wallpaper(
         .blocking_save_file();
     match dest {
         Some(path) => {
-            let dest_str = path.to_string();
-            std::fs::copy(&src, &dest_str).map_err(|e| format!("复制失败: {e}"))?;
-            Ok(Some(dest_str))
+            let dest_path = path
+                .into_path()
+                .map_err(|e| format!("无效的保存路径: {e}"))?;
+            std::fs::copy(&src, &dest_path).map_err(|e| format!("复制失败: {e}"))?;
+            Ok(Some(dest_path.to_string_lossy().to_string()))
         }
         None => Ok(None),
     }
@@ -433,6 +435,7 @@ pub fn run() {
             get_last_wallpaper,
             export_wallpaper,
             online_cache::cache_online_wallpaper,
+            online_cache::save_online_wallpaper,
             desktop_organize::item_commands::open_desktop_item,
             desktop_organize::menu_commands::list_desktop_shell_context_menu,
             desktop_organize::menu_commands::list_desktop_shell_context_submenu,

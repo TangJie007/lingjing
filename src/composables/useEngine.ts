@@ -87,6 +87,25 @@ export async function cacheOnlineWallpaper(options: {
   });
 }
 
+/** Save online wallpaper via system dialog; streams to the chosen path. */
+export async function saveOnlineWallpaper(options: {
+  id: string;
+  url: string;
+  fileName: string;
+  authorization?: string;
+  recordDownload?: boolean;
+}): Promise<string | null> {
+  return invoke<string | null>("save_online_wallpaper", {
+    payload: {
+      id: options.id,
+      url: options.url,
+      fileName: options.fileName,
+      authorization: options.authorization,
+      recordDownload: options.recordDownload === true,
+    },
+  });
+}
+
 export async function setWallpaper(item: WallpaperItem): Promise<EngineState> {
   const uri = resolveMediaUri(item);
   if (!uri) throw new Error("该资源暂无可用媒体");

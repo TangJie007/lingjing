@@ -8,9 +8,12 @@ withDefaults(
     items: WallpaperItem[];
     selectedId?: string | null;
     meta?: (item: WallpaperItem) => string;
+    /** When false, hide the hover「设为壁纸」button (online lists). */
+    showApply?: boolean;
   }>(),
   {
     meta: wallpaperMeta,
+    showApply: true,
   },
 );
 
@@ -31,7 +34,7 @@ const emit = defineEmits<{
       :style="{ animationDelay: `${Math.min(idx, 5) * 60}ms` }"
       role="button"
       tabindex="0"
-      :aria-label="`${item.name}，设为壁纸`"
+      :aria-label="item.name"
       @click="emit('select', item)"
       @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('select', item); } }"
     >
@@ -44,7 +47,7 @@ const emit = defineEmits<{
         <slot name="overlay" :item="item" />
         <div class="hover-acts">
           <span class="ha-btn preview" @click.stop="emit('preview', item)">▶ 预览</span>
-          <slot name="apply" :item="item">
+          <slot v-if="showApply" name="apply" :item="item">
             <span
               v-if="!item.missing"
               class="ha-btn apply"

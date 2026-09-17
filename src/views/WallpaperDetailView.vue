@@ -4,11 +4,13 @@ import { useRoute, useRouter } from "vue-router";
 import DetailMediaPreview from "../components/DetailMediaPreview.vue";
 import EmptyState from "../components/EmptyState.vue";
 import type { WallpaperItem } from "../data/catalog";
+import { useOnlineDownloadProgress } from "../composables/useOnlineDownloadProgress";
 
 const route = useRoute();
 const router = useRouter();
 
 const findWallpaper = inject<(id: string) => WallpaperItem | null>("findWallpaper");
+const { isDownloadingItem, downloadButtonLabel } = useOnlineDownloadProgress();
 
 const item = computed(() => {
   const id = String(route.params.id ?? "");
@@ -16,6 +18,8 @@ const item = computed(() => {
 });
 
 const tags = computed(() => item.value?.tags ?? ["#4K"]);
+const downloading = computed(() => isDownloadingItem(item.value?.id));
+const downloadLabel = computed(() => downloadButtonLabel(item.value?.id));
 
 const emit = defineEmits<{
   (e: "set", item: WallpaperItem): void;
@@ -26,6 +30,11 @@ const emit = defineEmits<{
 function goBack() {
   if (window.history.length > 1) router.back();
   else void router.push({ name: "local" });
+}
+
+function onDownloadClick() {
+  if (!item.value || downloading.value) return;
+  emit("download", item.value);
 }
 </script>
 
@@ -76,8 +85,16 @@ function goBack() {
             >
               {{ item.favorite ? "♥ 收藏" : "♡ 收藏" }}
             </div>
-            <div class="btn-ghost" role="button" tabindex="0" @click="emit('download', item)">
-              ↓ 下载
+            <div
+              class="btn-ghost"
+              :class="{ busy: downloading }"
+              role="button"
+              tabindex="0"
+              :aria-busy="downloading"
+              :aria-disabled="downloading"
+              @click="onDownloadClick"
+            >
+              {{ downloadLabel }}
             </div>
           </div>
           <div
@@ -163,5 +180,11 @@ function goBack() {
 }
 .detail-page-actions .act-row .btn-ghost {
   flex: 1;
+}
+.detail-page-actions .btn-ghost.busy {
+  opacity: 0.75;
+  pointer-events: none;
+  cursor: default;
+  font-variant-numeric: tabular-nums;
 }
 </style>
