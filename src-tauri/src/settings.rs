@@ -74,10 +74,10 @@ fn default_volume() -> f64 {
 fn default_loop_mode() -> String {
     "single".into()
 }
-const DEV_API_BASE_URL: &str = "http://localhost:8000";
+const DEV_API_BASE_URL: &str = "http://localhost:3080";
 const PROD_API_BASE_URL: &str = "https://36fa666671.eicp.vip";
 
-/// debug 构建 → 本地 8000；release 打包 → 线上域名
+/// debug 构建 → 本地 Gateway 3080；release 打包 → 线上域名
 fn default_api_base_url() -> String {
     if cfg!(debug_assertions) {
         DEV_API_BASE_URL.into()
@@ -91,6 +91,8 @@ fn normalize_api_base_url(url: &str) -> String {
     if trimmed.is_empty()
         || trimmed.eq_ignore_ascii_case("http://localhost:3002")
         || trimmed.eq_ignore_ascii_case("https://localhost:3002")
+        || trimmed.eq_ignore_ascii_case("http://localhost:8000")
+        || trimmed.eq_ignore_ascii_case("http://127.0.0.1:8000")
     {
         return default_api_base_url();
     }
@@ -101,6 +103,8 @@ fn normalize_api_base_url(url: &str) -> String {
             return DEV_API_BASE_URL.into();
         }
     } else if trimmed.eq_ignore_ascii_case(DEV_API_BASE_URL)
+        || trimmed.eq_ignore_ascii_case("http://127.0.0.1:3080")
+        || trimmed.eq_ignore_ascii_case("http://localhost:8000")
         || trimmed.eq_ignore_ascii_case("http://127.0.0.1:8000")
     {
         return PROD_API_BASE_URL.into();

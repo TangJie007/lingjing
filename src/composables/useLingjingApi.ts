@@ -73,6 +73,26 @@ function apiBase(): string {
   return normalizeApiBaseUrl(settings.value.apiBaseUrl || DEFAULT_API_BASE_URL);
 }
 
+/** Python 直连 path → Gateway `/api/lingjing/*`（响应里的 stream/download 等） */
+function toGatewayPath(path: string): string {
+  if (/^https?:\/\//i.test(path) || path.startsWith("/api/lingjing/")) {
+    return path;
+  }
+  if (path === "/api/public/categories" || path.startsWith("/api/public/categories/")) {
+    return path.replace(/^\/api\/public\/categories/, "/api/lingjing/wallpaper-categories");
+  }
+  if (path.startsWith("/api/public/")) {
+    return `/api/lingjing/${path.slice("/api/public/".length)}`;
+  }
+  if (path.startsWith("/api/auth/")) {
+    return `/api/lingjing/auth/${path.slice("/api/auth/".length)}`;
+  }
+  if (path.startsWith("/api/")) {
+    return `/api/lingjing/${path.slice("/api/".length)}`;
+  }
+  return path;
+}
+
 function formatSize(bytes?: number | null): string {
   if (!bytes || bytes <= 0) return "—";
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)}M`;
@@ -121,20 +141,22 @@ function resolveMediaSrc(w: ApiWallpaper): string | undefined {
   const stream = pickStr(w.stream_path, w.streamPath);
   if (!stream) return undefined;
   if (/^https?:\/\//i.test(stream)) return stream;
+  const gatewayPath = toGatewayPath(stream.startsWith("/") ? stream : `/${stream}`);
   const base = apiBase().replace(/\/$/, "");
-  return stream.startsWith("/") ? `${base}${stream}` : `${base}/${stream}`;
+  return `${base}${gatewayPath}`;
 }
 
 function resolveDownloadPath(w: ApiWallpaper): string | undefined {
   const path = pickStr(w.download_path, w.downloadPath);
-  if (path) return path;
-  return undefined;
+  if (!path) return undefined;
+  return toGatewayPath(path);
 }
 
 function absoluteApiPath(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
+  const gatewayPath = toGatewayPath(path.startsWith("/") ? path : `/${path}`);
   const base = apiBase().replace(/\/$/, "");
-  return path.startsWith("/") ? `${base}${path}` : `${base}/${path}`;
+  return `${base}${gatewayPath}`;
 }
 
 function guessFileExt(item: WallpaperItem): string | undefined {
@@ -158,7 +180,7 @@ export function mapOnlineWallpaper(w: ApiWallpaper): WallpaperItem {
   const downloadPath =
     resolveDownloadPath(w) ||
     (Number.isInteger(idNum) && idNum > 0
-      ? `/api/public/wallpapers/${idNum}/download`
+      ? `/api/lingjing/wallpapers/${idNum}/download`
       : undefined);
   return {
     id: `online-${w.id}`,
@@ -187,7 +209,7 @@ function onlineWallpaperId(id: string | number): number | null {
 
 export async function fetchOnlineCategories(): Promise<OnlineCategory[]> {
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/public/categories`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpaper-categories`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<CategoryListData>;
@@ -229,7 +251,7 @@ export async function fetchOnlineWallpapers(options?: {
     }
   }
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/public/wallpapers?${params}`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpapers?${params}`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<WallpaperListData>;
@@ -254,7 +276,7 @@ export async function fetchOnlineFavorites(options?: {
     page_size: String(pageSize),
   });
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/wallpapers/favorites?${params}`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpapers/favorites?${params}`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<WallpaperListData>;
@@ -283,7 +305,7 @@ export async function fetchOnlineDownloads(options?: {
     page_size: String(pageSize),
   });
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/wallpapers/downloads?${params}`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpapers/downloads?${params}`, {
     headers: { ...authHeaders() },
   });
   const body = (await res.json()) as ApiEnvelope<WallpaperListData>;
@@ -304,7 +326,7 @@ export async function setOnlineFavorite(
   const id = onlineWallpaperId(wallpaperId);
   if (id == null) throw new Error("无效的在线壁纸 ID");
   const { authHeaders } = useAuth();
-  const res = await apiFetch(`${apiBase()}/api/wallpapers/${id}/favorite`, {
+  const res = await apiFetch(`${apiBase()}/api/lingjing/wallpapers/${id}/favorite`, {
     method: favorite ? "POST" : "DELETE",
     headers: { ...authHeaders() },
   });
@@ -322,7 +344,7 @@ export interface OnlineSignedFileUrl {
 }
 
 /**
- * GET /api/public/wallpapers/{id}/file-url — R2 presigned download URL.
+ * GET /api/lingjing/wallpapers/{id}/file-url — R2 presigned download URL.
  * Used before caching online wallpaper to `.onlinefile`.
  */
 export async function fetchOnlineFileUrl(
@@ -334,7 +356,7 @@ export async function fetchOnlineFileUrl(
   const params = new URLSearchParams({ expires: String(expires) });
   const { authHeaders } = useAuth();
   const res = await apiFetch(
-    `${apiBase()}/api/public/wallpapers/${id}/file-url?${params}`,
+    `${apiBase()}/api/lingjing/wallpapers/${id}/file-url?${params}`,
     { headers: { ...authHeaders() } },
   );
   const body = (await res.json()) as ApiEnvelope<{
@@ -395,7 +417,7 @@ export async function saveOnlineWallpaperToDisk(
   const id = onlineWallpaperId(item.id);
   if (id == null) throw new Error("无效的在线壁纸 ID");
   const path =
-    pickStr(item.downloadPath) || `/api/public/wallpapers/${id}/download`;
+    pickStr(item.downloadPath) || `/api/lingjing/wallpapers/${id}/download`;
   const params = new URLSearchParams({ expires: "3600" });
   const sep = path.includes("?") ? "&" : "?";
   const url = `${absoluteApiPath(path)}${sep}${params}`;
@@ -427,7 +449,7 @@ export async function exportOnlineWallpaperToCache(
   const id = onlineWallpaperId(item.id);
   if (id == null) throw new Error("无效的在线壁纸 ID");
   const path =
-    pickStr(item.downloadPath) || `/api/public/wallpapers/${id}/download`;
+    pickStr(item.downloadPath) || `/api/lingjing/wallpapers/${id}/download`;
   const params = new URLSearchParams({ expires: "3600" });
   const sep = path.includes("?") ? "&" : "?";
   const url = `${absoluteApiPath(path)}${sep}${params}`;

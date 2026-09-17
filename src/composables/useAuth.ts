@@ -60,7 +60,7 @@ function apiBase(): string {
 }
 
 function authUrl(path: string): string {
-  return `${apiBase()}/api/auth/${path.replace(/^\//, "")}`;
+  return `${apiBase()}/api/lingjing/auth/${path.replace(/^\//, "")}`;
 }
 
 async function parseJson<T>(res: Response): Promise<ApiEnvelope<T>> {
@@ -130,7 +130,7 @@ async function refreshMe(): Promise<LingjingUser | null> {
   return user.value;
 }
 
-/** Probe login state via GET /api/auth/session (HTTP 200 + valid flag). */
+/** Probe login state via GET /api/lingjing/auth/session (HTTP 200 + valid flag). */
 async function checkSession(): Promise<boolean> {
   if (!token.value) return false;
   try {

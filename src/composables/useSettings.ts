@@ -1,12 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ref, watch } from "vue";
 
-/** 开发默认：本地社区 API */
-export const DEV_API_BASE_URL = "http://localhost:8000";
+/** 开发默认：本地 Gateway */
+export const DEV_API_BASE_URL = "http://localhost:3080";
 /** 正式打包默认：线上社区 API */
 export const PROD_API_BASE_URL = "https://36fa666671.eicp.vip";
 
-/** 当前构建环境应对应的默认 API 基址（vite: DEV→本地，PROD→线上） */
+/** 当前构建环境应对应的默认 API 基址（vite: DEV→本地网关，PROD→线上） */
 export const DEFAULT_API_BASE_URL = import.meta.env.DEV
   ? DEV_API_BASE_URL
   : PROD_API_BASE_URL;
@@ -14,6 +14,8 @@ export const DEFAULT_API_BASE_URL = import.meta.env.DEV
 const LEGACY_API_BASE_URLS = new Set([
   "http://localhost:3002",
   "https://localhost:3002",
+  "http://localhost:8000",
+  "http://127.0.0.1:8000",
 ]);
 
 export interface AppSettings {
@@ -74,7 +76,9 @@ export function normalizeApiBaseUrl(url?: string | null): string {
     }
   } else if (
     trimmed === DEV_API_BASE_URL ||
-    trimmed === "http://127.0.0.1:8000"
+    trimmed === "http://localhost:8000" ||
+    trimmed === "http://127.0.0.1:8000" ||
+    trimmed === "http://127.0.0.1:3080"
   ) {
     return PROD_API_BASE_URL;
   }
