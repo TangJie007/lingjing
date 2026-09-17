@@ -13,8 +13,9 @@ const emit = defineEmits<{
   (e: "download", item: WallpaperItem): void;
 }>();
 
-const { isDownloadingItem, downloadButtonLabel } = useOnlineDownloadProgress();
+const { isDownloadingItem, isDownloadDisabled, downloadButtonLabel } = useOnlineDownloadProgress();
 const downloading = computed(() => isDownloadingItem(props.item?.id));
+const downloadDisabled = computed(() => isDownloadDisabled(props.item?.id));
 const downloadLabel = computed(() => downloadButtonLabel(props.item?.id));
 
 const COUNTDOWN = 30;
@@ -62,7 +63,7 @@ watch(downloading, (busy) => {
 const tags = computed(() => props.item?.tags ?? ["#4K"]);
 
 function onDownloadClick() {
-  if (!props.item || downloading.value) return;
+  if (!props.item || downloadDisabled.value) return;
   emit("download", props.item);
 }
 </script>
@@ -120,12 +121,12 @@ function onDownloadClick() {
           >{{ item.favorite ? "♥ 收藏" : "♡ 收藏" }}</div>
           <div
             class="btn-ghost"
-            :class="{ busy: downloading }"
+            :class="{ busy: downloading, disabled: downloadDisabled && !downloading }"
             role="button"
             tabindex="0"
             aria-label="下载"
             :aria-busy="downloading"
-            :aria-disabled="downloading"
+            :aria-disabled="downloadDisabled"
             @click="onDownloadClick"
           >{{ downloadLabel }}</div>
         </div>

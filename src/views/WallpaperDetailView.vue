@@ -10,7 +10,7 @@ const route = useRoute();
 const router = useRouter();
 
 const findWallpaper = inject<(id: string) => WallpaperItem | null>("findWallpaper");
-const { isDownloadingItem, downloadButtonLabel } = useOnlineDownloadProgress();
+const { isDownloadingItem, isDownloadDisabled, downloadButtonLabel } = useOnlineDownloadProgress();
 
 const item = computed(() => {
   const id = String(route.params.id ?? "");
@@ -19,6 +19,7 @@ const item = computed(() => {
 
 const tags = computed(() => item.value?.tags ?? ["#4K"]);
 const downloading = computed(() => isDownloadingItem(item.value?.id));
+const downloadDisabled = computed(() => isDownloadDisabled(item.value?.id));
 const downloadLabel = computed(() => downloadButtonLabel(item.value?.id));
 
 const emit = defineEmits<{
@@ -33,7 +34,7 @@ function goBack() {
 }
 
 function onDownloadClick() {
-  if (!item.value || downloading.value) return;
+  if (!item.value || downloadDisabled.value) return;
   emit("download", item.value);
 }
 </script>
@@ -87,11 +88,11 @@ function onDownloadClick() {
             </div>
             <div
               class="btn-ghost"
-              :class="{ busy: downloading }"
+              :class="{ busy: downloading, disabled: downloadDisabled && !downloading }"
               role="button"
               tabindex="0"
               :aria-busy="downloading"
-              :aria-disabled="downloading"
+              :aria-disabled="downloadDisabled"
               @click="onDownloadClick"
             >
               {{ downloadLabel }}
@@ -186,5 +187,10 @@ function onDownloadClick() {
   pointer-events: none;
   cursor: default;
   font-variant-numeric: tabular-nums;
+}
+.detail-page-actions .btn-ghost.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: default;
 }
 </style>

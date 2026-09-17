@@ -92,6 +92,8 @@ export async function saveOnlineWallpaper(options: {
   id: string;
   url: string;
   fileName: string;
+  title?: string;
+  fileExt?: string;
   authorization?: string;
   recordDownload?: boolean;
 }): Promise<string | null> {
@@ -100,10 +102,26 @@ export async function saveOnlineWallpaper(options: {
       id: options.id,
       url: options.url,
       fileName: options.fileName,
+      title: options.title,
+      fileExt: options.fileExt,
       authorization: options.authorization,
       recordDownload: options.recordDownload === true,
     },
   });
+}
+
+export interface OnlineFileDownloadItem {
+  id: string;
+  title?: string | null;
+  fileName: string;
+  fileSize: number;
+  mimeType?: string | null;
+  downloadedAt: string;
+}
+
+/** Load `.onlinefile/list.json` entries whose files still exist. */
+export async function listOnlineFileDownloads(): Promise<OnlineFileDownloadItem[]> {
+  return invoke<OnlineFileDownloadItem[]>("list_online_file_downloads");
 }
 
 export async function setWallpaper(item: WallpaperItem): Promise<EngineState> {

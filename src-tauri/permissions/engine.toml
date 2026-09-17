@@ -29,6 +29,7 @@ commands.allow = [
   "export_wallpaper",
   "cache_online_wallpaper",
   "save_online_wallpaper",
+  "list_online_file_downloads",
   "open_desktop_item",
   "list_desktop_shell_context_menu",
   "list_desktop_shell_context_submenu",

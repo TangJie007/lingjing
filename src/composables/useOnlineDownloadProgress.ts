@@ -1,5 +1,6 @@
 import { computed, ref } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { isLocalOnlineDownloaded } from "./useLocalOnlineDownloads";
 
 export type OnlineDownloadPhase =
   | "resolving"
@@ -138,7 +139,14 @@ export function useOnlineDownloadProgress() {
     return state.value.id === String(itemId);
   }
 
+  function isDownloadDisabled(itemId?: string | null) {
+    return isDownloadingItem(itemId) || isLocalOnlineDownloaded(itemId);
+  }
+
   function downloadButtonLabel(itemId?: string | null, idle = "↓ 下载") {
+    if (isLocalOnlineDownloaded(itemId) && !isDownloadingItem(itemId)) {
+      return "↓ 已下载";
+    }
     if (!isDownloadingItem(itemId)) return idle;
     const pct = percentLabel.value;
     if (pct) return `↓ ${pct}`;
@@ -153,6 +161,7 @@ export function useOnlineDownloadProgress() {
     ratio,
     percentLabel,
     isDownloadingItem,
+    isDownloadDisabled,
     downloadButtonLabel,
   };
 }

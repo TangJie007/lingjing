@@ -989,6 +989,11 @@ input, textarea {
   cursor: default;
   font-variant-numeric: tabular-nums;
 }
+.btn-ghost.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: default;
+}
 .btn-ghost.liked {
   color: var(--error); border-color: #FECACA; background: #FEF2F2;
 }

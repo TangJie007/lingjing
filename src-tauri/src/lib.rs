@@ -436,6 +436,7 @@ pub fn run() {
             export_wallpaper,
             online_cache::cache_online_wallpaper,
             online_cache::save_online_wallpaper,
+            online_cache::list_online_file_downloads,
             desktop_organize::item_commands::open_desktop_item,
             desktop_organize::menu_commands::list_desktop_shell_context_menu,
             desktop_organize::menu_commands::list_desktop_shell_context_submenu,

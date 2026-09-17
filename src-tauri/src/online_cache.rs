@@ -8,7 +8,38 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 const ONLINE_CACHE_DIR: &str = ".onlinefile";
+const LIST_FILE: &str = "list.json";
 const PROGRESS_EVENT: &str = "online-download-progress";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineFileListItem {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub file_name: String,
+    #[serde(default)]
+    pub file_size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    pub downloaded_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OnlineFileListFile {
+    version: u32,
+    items: Vec<OnlineFileListItem>,
+}
+
+impl Default for OnlineFileListFile {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            items: Vec::new(),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +72,12 @@ pub struct SaveOnlinePayload {
     pub authorization: Option<String>,
     /// Suggested file name for the save dialog, e.g. `aurora.mp4`
     pub file_name: String,
+    /// Display title stored in list.json
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Preferred extension without dot
+    #[serde(default)]
+    pub file_ext: Option<String>,
     /// Hit gateway first to record member download history
     #[serde(default)]
     pub record_download: bool,
@@ -65,6 +102,113 @@ fn emit_progress(app: &AppHandle, payload: DownloadProgressPayload) {
 fn online_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
     let root = crate::settings::library_root(app)?;
     Ok(root.join(ONLINE_CACHE_DIR))
+}
+
+fn list_json_path(dir: &Path) -> PathBuf {
+    dir.join(LIST_FILE)
+}
+
+fn read_list_file(dir: &Path) -> OnlineFileListFile {
+    let path = list_json_path(dir);
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return OnlineFileListFile::default();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn write_list_file(dir: &Path, list: &OnlineFileListFile) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| format!("创建 .onlinefile 目录失败: {e}"))?;
+    let path = list_json_path(dir);
+    let tmp = dir.join(format!("{LIST_FILE}.tmp"));
+    let raw = serde_json::to_string_pretty(list).map_err(|e| format!("序列化 list.json 失败: {e}"))?;
+    fs::write(&tmp, raw).map_err(|e| format!("写入 list.json 失败: {e}"))?;
+    fs::rename(&tmp, &path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("保存 list.json 失败: {e}")
+    })
+}
+
+fn now_rfc3339() -> String {
+    // Local wall-clock ISO-like stamp without extra deps.
+    use std::time::SystemTime;
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{secs}")
+}
+
+fn resolve_cached_path(dir: &Path, id: &str) -> Option<PathBuf> {
+    let stem = sanitize_file_stem(id);
+    let list = read_list_file(dir);
+    if let Some(item) = list.items.iter().find(|i| i.id == id || sanitize_file_stem(&i.id) == stem)
+    {
+        let p = dir.join(&item.file_name);
+        if p.is_file() {
+            if let Ok(meta) = p.metadata() {
+                if meta.len() > 0 {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    find_existing_cache(dir, &stem)
+}
+
+fn upsert_list_item(
+    dir: &Path,
+    id: &str,
+    title: Option<&str>,
+    file_path: &Path,
+    mime_type: Option<&str>,
+) -> Result<OnlineFileListItem, String> {
+    let file_name = file_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| "无效的缓存文件名".to_string())?
+        .to_string();
+    let file_size = fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
+    let item = OnlineFileListItem {
+        id: id.to_string(),
+        title: title
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        file_name,
+        file_size,
+        mime_type: mime_type
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+        downloaded_at: now_rfc3339(),
+    };
+
+    let mut list = read_list_file(dir);
+    if let Some(existing) = list.items.iter_mut().find(|i| i.id == id) {
+        *existing = item.clone();
+    } else {
+        list.items.push(item.clone());
+    }
+    list.version = 1;
+    write_list_file(dir, &list)?;
+    Ok(item)
+}
+
+/// Return recorded `.onlinefile` downloads whose files still exist.
+#[tauri::command]
+pub fn list_online_file_downloads(app: AppHandle) -> Result<Vec<OnlineFileListItem>, String> {
+    let dir = online_cache_root(&app)?;
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut list = read_list_file(&dir);
+    let before = list.items.len();
+    list.items.retain(|item| {
+        let p = dir.join(&item.file_name);
+        p.is_file() && fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false)
+    });
+    if list.items.len() != before {
+        let _ = write_list_file(&dir, &list);
+    }
+    Ok(list.items)
 }
 
 fn sanitize_file_stem(id: &str) -> String {
@@ -359,7 +503,6 @@ pub async fn cache_online_wallpaper(
         return Ok(url);
     }
 
-    let stem = sanitize_file_stem(payload.id.trim());
     let progress_id = payload.id.trim().to_string();
     let dir = online_cache_root(&app)?;
     fs::create_dir_all(&dir).map_err(|e| format!("创建 .onlinefile 目录失败: {e}"))?;
@@ -381,19 +524,8 @@ pub async fn cache_online_wallpaper(
         },
     );
 
-    let mut fetch_url = url.clone();
-    let mut fetch_auth = if payload.record_download {
-        None
-    } else {
-        auth.clone()
-    };
-    if payload.record_download {
-        let location = probe_download_gateway(&url, auth.as_deref()).await?;
-        fetch_url = resolve_fetch_url(&url, location);
-        fetch_auth = None; // never send Authorization to signed R2 URL
-    }
-
-    if let Some(existing) = find_existing_cache(&dir, &stem) {
+    if let Some(existing) = resolve_cached_path(&dir, &progress_id) {
+        let _ = upsert_list_item(&dir, &progress_id, None, &existing, None);
         emit_progress(
             &app,
             DownloadProgressPayload {
@@ -406,10 +538,21 @@ pub async fn cache_online_wallpaper(
         return Ok(existing.to_string_lossy().to_string());
     }
 
-    // Probe content-type/ext via a lightweight HEAD isn't reliable on R2; stream once.
-    // Use preferred ext first so dest path is known before streaming.
+    let mut fetch_url = url.clone();
+    let mut fetch_auth = if payload.record_download {
+        None
+    } else {
+        auth.clone()
+    };
+    if payload.record_download {
+        let location = probe_download_gateway(&url, auth.as_deref()).await?;
+        fetch_url = resolve_fetch_url(&url, location);
+        fetch_auth = None;
+    }
+
     let preferred = payload.file_ext.clone();
     let guess_ext = resolve_ext(preferred.as_deref(), &fetch_url, &url, None);
+    let stem = sanitize_file_stem(&progress_id);
     let dest = dir.join(format!("{stem}.{guess_ext}"));
 
     let result = stream_url_to_file(
@@ -421,26 +564,37 @@ pub async fn cache_online_wallpaper(
     )
     .await?;
 
-    // If server content-type implies a better ext and file was saved with guess, rename.
     let better = resolve_ext(
         preferred.as_deref(),
         &fetch_url,
         &url,
         result.content_type.as_deref(),
     );
-    if better != guess_ext {
+    let final_path = if better != guess_ext {
         let renamed = dir.join(format!("{stem}.{better}"));
         if renamed != dest {
             let _ = fs::rename(&dest, &renamed);
-            return Ok(renamed.to_string_lossy().to_string());
+            renamed
+        } else {
+            dest
         }
-    }
+    } else {
+        dest
+    };
 
-    Ok(dest.to_string_lossy().to_string())
+    upsert_list_item(
+        &dir,
+        &progress_id,
+        None,
+        &final_path,
+        result.content_type.as_deref(),
+    )?;
+
+    Ok(final_path.to_string_lossy().to_string())
 }
 
-/// Pick a save path, then stream the online wallpaper there (with progress).
-/// Returns `None` when the user cancels the dialog.
+/// Ensure wallpaper is in `.onlinefile` (+ list.json), then copy to a user-chosen path.
+/// Skips network download when the file is already cached. Returns `None` if cancelled.
 #[tauri::command]
 pub async fn save_online_wallpaper(
     app: AppHandle,
@@ -456,6 +610,10 @@ pub async fn save_online_wallpaper(
         return Err("下载地址无效".into());
     }
 
+    let progress_id = payload.id.trim().to_string();
+    let dir = online_cache_root(&app)?;
+    fs::create_dir_all(&dir).map_err(|e| format!("创建 .onlinefile 目录失败: {e}"))?;
+
     let file_name = payload.file_name.trim();
     let file_name = if file_name.is_empty() {
         "wallpaper.bin".to_string()
@@ -463,10 +621,9 @@ pub async fn save_online_wallpaper(
         file_name.to_string()
     };
 
-    let progress_id = payload.id.trim().to_string();
     let app_for_dialog = app.clone();
     let suggested = file_name.clone();
-    let dest = tauri::async_runtime::spawn_blocking(move || {
+    let export_dest = tauri::async_runtime::spawn_blocking(move || {
         app_for_dialog
             .dialog()
             .file()
@@ -477,16 +634,15 @@ pub async fn save_online_wallpaper(
     .await
     .map_err(|e| format!("打开保存对话框失败: {e}"))?;
 
-    let Some(dest) = dest else {
+    let Some(export_dest) = export_dest else {
         return Ok(None);
     };
 
-    let auth = payload
-        .authorization
+    let title = payload
+        .title
         .as_ref()
         .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+        .filter(|s| !s.is_empty());
 
     emit_progress(
         &app,
@@ -498,24 +654,91 @@ pub async fn save_online_wallpaper(
         },
     );
 
-    let mut fetch_url = url.clone();
-    let mut fetch_auth = auth.clone();
-    if payload.record_download {
-        let location = probe_download_gateway(&url, auth.as_deref()).await?;
-        fetch_url = resolve_fetch_url(&url, location);
-        fetch_auth = None;
+    let cached = if let Some(existing) = resolve_cached_path(&dir, &progress_id) {
+        upsert_list_item(&dir, &progress_id, title, &existing, None)?;
+        emit_progress(
+            &app,
+            DownloadProgressPayload {
+                id: progress_id.clone(),
+                downloaded: 1,
+                total: Some(1),
+                phase: "cached",
+            },
+        );
+        existing
+    } else {
+        let auth = payload
+            .authorization
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        let mut fetch_url = url.clone();
+        let mut fetch_auth = auth.clone();
+        if payload.record_download {
+            let location = probe_download_gateway(&url, auth.as_deref()).await?;
+            fetch_url = resolve_fetch_url(&url, location);
+            fetch_auth = None;
+        }
+
+        let preferred = payload.file_ext.clone();
+        let guess_ext = resolve_ext(preferred.as_deref(), &fetch_url, &url, None);
+        let stem = sanitize_file_stem(&progress_id);
+        let dest = dir.join(format!("{stem}.{guess_ext}"));
+
+        let result = stream_url_to_file(
+            &app,
+            &progress_id,
+            &fetch_url,
+            fetch_auth.as_deref(),
+            &dest,
+        )
+        .await?;
+
+        let better = resolve_ext(
+            preferred.as_deref(),
+            &fetch_url,
+            &url,
+            result.content_type.as_deref(),
+        );
+        let final_path = if better != guess_ext {
+            let renamed = dir.join(format!("{stem}.{better}"));
+            if renamed != dest {
+                let _ = fs::rename(&dest, &renamed);
+                renamed
+            } else {
+                dest
+            }
+        } else {
+            dest
+        };
+
+        upsert_list_item(
+            &dir,
+            &progress_id,
+            title,
+            &final_path,
+            result.content_type.as_deref(),
+        )?;
+        final_path
+    };
+
+    if export_dest != cached {
+        fs::copy(&cached, &export_dest).map_err(|e| format!("复制到保存位置失败: {e}"))?;
     }
 
-    stream_url_to_file(
+    emit_progress(
         &app,
-        &progress_id,
-        &fetch_url,
-        fetch_auth.as_deref(),
-        &dest,
-    )
-    .await?;
+        DownloadProgressPayload {
+            id: progress_id,
+            downloaded: 1,
+            total: Some(1),
+            phase: "done",
+        },
+    );
 
-    Ok(Some(dest.to_string_lossy().to_string()))
+    Ok(Some(export_dest.to_string_lossy().to_string()))
 }
 
 /// True if path is inside the `.onlinefile` cache (must not be indexed as local library).

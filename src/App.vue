@@ -14,6 +14,11 @@ import {
   beginOnlineDownloadProgress,
   endOnlineDownloadProgress,
 } from "./composables/useOnlineDownloadProgress";
+import {
+  isLocalOnlineDownloaded,
+  markLocalOnlineDownloaded,
+  refreshLocalOnlineDownloads,
+} from "./composables/useLocalOnlineDownloads";
 import { soundOn } from "./composables/useAudio";
 import { CATALOG, type WallpaperItem } from "./data/catalog";
 import {
@@ -279,7 +284,11 @@ async function refreshOnline() {
     onlineCategories.value = cats;
     onlineItems.value = wallpaperResult.items;
     await syncOnlineFavoriteFlags(onlineItems.value);
-    await Promise.all([refreshCommunityFavorites(), refreshCommunityDownloads()]);
+    await Promise.all([
+      refreshCommunityFavorites(),
+      refreshCommunityDownloads(),
+      refreshLocalOnlineDownloads(),
+    ]);
   } catch (e) {
     onlineItems.value = [];
     const msg = e instanceof Error ? e.message : String(e);
@@ -370,6 +379,7 @@ async function applySetWallpaper(item: WallpaperItem) {
       try {
         const localPath = await downloadOnlineWallpaperToCache(item);
         toSet = { ...item, mediaSrc: localPath };
+        markLocalOnlineDownloaded(item.id);
       } finally {
         endOnlineDownloadProgress(200);
       }
@@ -397,6 +407,10 @@ async function onSet(item: WallpaperItem) {
 async function onDownload(item: WallpaperItem) {
   try {
     if (item.source === "online") {
+      if (isLocalOnlineDownloaded(item.id)) {
+        showToast("已下载到本地");
+        return;
+      }
       await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
         forButton: true,
       });
@@ -407,6 +421,7 @@ async function onDownload(item: WallpaperItem) {
         endOnlineDownloadProgress(saved ? 200 : 0);
       }
       if (saved) {
+        markLocalOnlineDownloaded(item.id);
         showToast(`已保存：${saved}`);
         if (isLoggedIn.value) void refreshCommunityDownloads();
       } else {
@@ -630,6 +645,7 @@ onMounted(async () => {
   const sessionOk = await checkSession().catch(() => false);
   if (sessionOk) await refreshMe().catch(() => undefined);
   await refreshLibrary();
+  void refreshLocalOnlineDownloads();
   try {
     unlisten = await onEngineState((s) => {
       engine.value = s;

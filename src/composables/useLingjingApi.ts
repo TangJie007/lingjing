@@ -405,6 +405,8 @@ export async function saveOnlineWallpaperToDisk(
     id: String(item.id),
     url,
     fileName: `${safeName}.${ext}`,
+    title: item.name,
+    fileExt: ext,
     authorization: typeof auth === "string" ? auth : undefined,
     recordDownload: true,
   });
