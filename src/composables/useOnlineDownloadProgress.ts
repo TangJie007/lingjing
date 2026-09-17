@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { isLocalOnlineDownloaded } from "./useLocalOnlineDownloads";
 
 export type OnlineDownloadPhase =
+  | "queued"
   | "resolving"
   | "downloading"
   | "done"
@@ -46,7 +47,7 @@ const jobs = ref<DownloadJob[]>([]);
 /** @deprecated single-job view kept for detail button helpers */
 const state = computed(() => {
   const active =
-    jobs.value.find((j) => isActivePhase(j.phase)) ?? jobs.value[0];
+    jobs.value.find((j) => isBusyPhase(j.phase) && !j.outcome) ?? jobs.value[0];
   if (!active) {
     return {
       active: false,
@@ -59,7 +60,7 @@ const state = computed(() => {
     };
   }
   return {
-    active: isActivePhase(active.phase),
+    active: isBusyPhase(active.phase) && !active.outcome,
     forButton: active.forButton,
     label: active.label,
     id: active.id,
@@ -72,7 +73,13 @@ const state = computed(() => {
 let unlisten: UnlistenFn | null = null;
 let listenPromise: Promise<void> | null = null;
 
-function isActivePhase(phase: OnlineDownloadPhase): boolean {
+/** Queued / resolving / downloading (not yet finished). */
+function isBusyPhase(phase: OnlineDownloadPhase): boolean {
+  return phase === "queued" || phase === "resolving" || phase === "downloading";
+}
+
+/** Network in flight (excludes queued). */
+function isRunningPhase(phase: OnlineDownloadPhase): boolean {
   return phase === "resolving" || phase === "downloading";
 }
 
@@ -81,6 +88,11 @@ function todayKey(d = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function dayKeyFromMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  return todayKey(new Date(ms));
 }
 
 function isFinishedJob(job: DownloadJob): boolean {
@@ -104,24 +116,33 @@ function readStoredDate(): string | null {
   }
 }
 
-/** Drop finished rows from a previous calendar day (keep in-flight jobs). */
-function pruneIfNewDay() {
+/**
+ * Drop yesterday's finished rows from memory + storage.
+ * Keeps in-flight / queued jobs across midnight.
+ */
+export function pruneIfNewDay() {
   const today = todayKey();
   const stored = readStoredDate();
-  if (stored && stored !== today) {
+  const hasStaleFinished = jobs.value.some(
+    (j) => isFinishedJob(j) && dayKeyFromMs(j.updatedAt) !== today,
+  );
+
+  if ((stored && stored !== today) || hasStaleFinished) {
     localStorage.removeItem(STORAGE_KEY);
-    jobs.value = jobs.value.filter((j) => isActivePhase(j.phase) && !j.outcome);
+    jobs.value = jobs.value.filter(
+      (j) => isBusyPhase(j.phase) && !j.outcome,
+    );
   }
 }
 
 function persistFinishedJobs() {
   try {
+    pruneIfNewDay();
     const today = todayKey();
     const records = jobs.value
-      .filter(isFinishedJob)
+      .filter((j) => isFinishedJob(j) && dayKeyFromMs(j.updatedAt) === today)
       .map((j) => ({
         ...j,
-        // Active flags should never stick on history rows.
         forButton: false,
         phase:
           j.outcome === "failed"
@@ -145,7 +166,9 @@ function hydrateFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as DayStore;
-    if (!parsed || parsed.date !== todayKey() || !Array.isArray(parsed.records)) {
+    const today = todayKey();
+    if (!parsed || parsed.date !== today || !Array.isArray(parsed.records)) {
+      localStorage.removeItem(STORAGE_KEY);
       return;
     }
     const records = parsed.records.filter(
@@ -153,7 +176,12 @@ function hydrateFromStorage() {
         !!r &&
         typeof r === "object" &&
         typeof (r as DownloadJob).id === "string" &&
-        typeof (r as DownloadJob).label === "string",
+        typeof (r as DownloadJob).label === "string" &&
+        dayKeyFromMs(
+          typeof (r as DownloadJob).updatedAt === "number"
+            ? (r as DownloadJob).updatedAt
+            : 0,
+        ) === today,
     );
     if (records.length === 0 || jobs.value.length > 0) return;
     jobs.value = records.map((r) => ({
@@ -187,7 +215,7 @@ function patchJob(id: string, patch: Partial<DownloadJob>) {
   jobs.value = copy;
 }
 
-/** Update an in-flight job's byte progress (plugin-http driven downloads). */
+/** Update an in-flight job's byte progress. */
 export function reportOnlineDownloadProgress(
   id: string,
   downloaded: number,
@@ -198,15 +226,12 @@ export function reportOnlineDownloadProgress(
   const idx = jobs.value.findIndex((j) => j.id === jobId);
   if (idx < 0) return;
   const cur = jobs.value[idx]!;
-  if (!isActivePhase(cur.phase) && cur.outcome) return;
+  if (!isBusyPhase(cur.phase) && cur.outcome) return;
   const copy = jobs.value.slice();
   copy[idx] = {
     ...cur,
     downloaded,
-    total:
-      typeof total === "number" && total > 0
-        ? total
-        : cur.total,
+    total: typeof total === "number" && total > 0 ? total : cur.total,
     phase,
     updatedAt: Date.now(),
   };
@@ -266,7 +291,9 @@ async function ensureListening() {
           const idx = jobs.value.findIndex((j) => j.id === id);
           if (idx < 0) return;
           const cur = jobs.value[idx]!;
-          if (!isActivePhase(cur.phase) && cur.outcome) return;
+          if (!isBusyPhase(cur.phase) && cur.outcome) return;
+          // Ignore progress while still queued (another job may be running).
+          if (cur.phase === "queued") return;
           const next: DownloadJob = {
             ...cur,
             downloaded: p.downloaded ?? cur.downloaded,
@@ -300,7 +327,7 @@ async function ensureListening() {
 export async function beginOnlineDownloadProgress(
   label: string,
   id?: string,
-  options?: { forButton?: boolean },
+  options?: { forButton?: boolean; phase?: OnlineDownloadPhase },
 ) {
   await ensureListening();
   pruneIfNewDay();
@@ -311,7 +338,7 @@ export async function beginOnlineDownloadProgress(
     label: label.trim() || "正在下载",
     downloaded: 0,
     total: null,
-    phase: "resolving",
+    phase: options?.phase ?? "resolving",
     forButton: options?.forButton === true,
     updatedAt: Date.now(),
   };
@@ -373,11 +400,126 @@ export function endOnlineDownloadJob(id: string, delayMs = 0) {
   endOnlineDownloadProgress(delayMs, id);
 }
 
+type QueueRunner = () => Promise<void>;
+const pendingRuns = new Map<string, QueueRunner>();
+let pumpActive = false;
+
+function hasBusyJob(id: string): boolean {
+  return jobs.value.some(
+    (j) => j.id === String(id) && isBusyPhase(j.phase) && !j.outcome,
+  );
+}
+
+/**
+ * Enqueue an online download; only one runs at a time (FIFO).
+ * `run` should perform the actual download (e.g. saveOnlineWallpaperToDisk).
+ */
+export async function enqueueOnlineDownload(options: {
+  id: string;
+  label: string;
+  run: QueueRunner;
+}): Promise<"queued" | "duplicate" | "already"> {
+  const id = String(options.id);
+  if (isLocalOnlineDownloaded(id)) return "already";
+  if (hasBusyJob(id)) return "duplicate";
+
+  await ensureListening();
+  pruneIfNewDay();
+  archiveFinishedIfNeeded(id);
+
+  const job: DownloadJob = {
+    id,
+    label: options.label.trim() || "正在下载",
+    downloaded: 0,
+    total: null,
+    phase: "queued",
+    forButton: true,
+    updatedAt: Date.now(),
+  };
+  upsertJob(job);
+  pendingRuns.set(id, options.run);
+  void pumpDownloadQueue();
+  return "queued";
+}
+
+async function pumpDownloadQueue() {
+  if (pumpActive) return;
+  pumpActive = true;
+  try {
+    while (true) {
+      pruneIfNewDay();
+      const next = jobs.value.find(
+        (j) => j.phase === "queued" && !j.outcome,
+      );
+      if (!next) break;
+
+      const run = pendingRuns.get(next.id);
+      pendingRuns.delete(next.id);
+      if (!run) {
+        finishOnlineDownloadJob(next.id, {
+          success: false,
+          cancelled: true,
+        });
+        continue;
+      }
+
+      // Re-check cancel that happened between find and start.
+      const stillQueued = jobs.value.find(
+        (j) => j.id === next.id && j.phase === "queued" && !j.outcome,
+      );
+      if (!stillQueued) continue;
+
+      patchJob(next.id, {
+        phase: "resolving",
+        forButton: true,
+        downloaded: 0,
+        total: null,
+      });
+
+      try {
+        await run();
+        // Ignore if cancelled while running (cancel sets outcome).
+        const cur = jobs.value.find((j) => j.id === next.id);
+        if (cur && !cur.outcome) {
+          finishOnlineDownloadJob(next.id, { success: true });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const cur = jobs.value.find((j) => j.id === next.id);
+        if (cur?.outcome === "cancelled" || /已取消/.test(msg)) {
+          if (!cur?.outcome) {
+            finishOnlineDownloadJob(next.id, {
+              success: false,
+              cancelled: true,
+            });
+          }
+        } else if (!cur?.outcome) {
+          finishOnlineDownloadJob(next.id, { success: false, error: msg });
+        }
+      }
+    }
+  } finally {
+    pumpActive = false;
+    // A cancel/enqueue may have raced while we were finishing.
+    if (jobs.value.some((j) => j.phase === "queued" && !j.outcome)) {
+      void pumpDownloadQueue();
+    }
+  }
+}
+
 export async function cancelOnlineDownload(id: string): Promise<boolean> {
   const jobId = String(id);
+  const cur = jobs.value.find((j) => j.id === jobId);
+  pendingRuns.delete(jobId);
+  abortHttpDownload(jobId);
+
+  if (cur?.phase === "queued" && !cur.outcome) {
+    finishOnlineDownloadJob(jobId, { success: false, cancelled: true });
+    return true;
+  }
+
   patchJob(jobId, { phase: "cancelled", outcome: "cancelled", forButton: false });
   persistFinishedJobs();
-  abortHttpDownload(jobId);
   try {
     return await invoke<boolean>("cancel_online_download", { id: jobId });
   } catch (e) {
@@ -388,17 +530,18 @@ export async function cancelOnlineDownload(id: string): Promise<boolean> {
 
 export function useOnlineDownloadProgress() {
   const activeJobs = computed(() =>
-    jobs.value.filter((j) => isActivePhase(j.phase) && !j.outcome),
+    jobs.value.filter((j) => isBusyPhase(j.phase) && !j.outcome),
   );
 
-  /** Today's records: active first, then finished newest-first. */
+  /** Today's records: busy first (queue order), then finished newest-first. */
   const todayJobs = computed(() => {
-    const active = jobs.value.filter((j) => isActivePhase(j.phase) && !j.outcome);
+    const today = todayKey();
+    const busy = jobs.value.filter((j) => isBusyPhase(j.phase) && !j.outcome);
     const finished = jobs.value
-      .filter((j) => isFinishedJob(j))
+      .filter((j) => isFinishedJob(j) && dayKeyFromMs(j.updatedAt) === today)
       .slice()
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    return [...active, ...finished];
+    return [...busy, ...finished];
   });
 
   const activeCount = computed(() => activeJobs.value.length);
@@ -419,6 +562,7 @@ export function useOnlineDownloadProgress() {
     if (job.outcome === "success" || job.phase === "done" || job.phase === "cached") {
       return 1;
     }
+    if (job.phase === "queued") return null;
     if (!job.total || job.total <= 0) return null;
     return Math.min(1, job.downloaded / job.total);
   }
@@ -437,6 +581,7 @@ export function useOnlineDownloadProgress() {
     if (job.outcome === "success" || job.phase === "done" || job.phase === "cached") {
       return "成功";
     }
+    if (job.phase === "queued") return "排队中…";
     if (job.phase === "resolving") return "准备中…";
     const pct = jobPercent(job);
     if (pct) return pct;
@@ -450,7 +595,7 @@ export function useOnlineDownloadProgress() {
       (j) =>
         j.id === String(itemId) &&
         j.forButton &&
-        isActivePhase(j.phase) &&
+        isBusyPhase(j.phase) &&
         !j.outcome,
     );
   }
@@ -466,6 +611,7 @@ export function useOnlineDownloadProgress() {
     if (!isDownloadingItem(itemId)) return idle;
     const job = jobs.value.find((j) => j.id === String(itemId) && !j.outcome);
     if (!job) return "↓ 下载中…";
+    if (job.phase === "queued") return "↓ 排队中…";
     const pct = jobPercent(job);
     if (pct) return `↓ ${pct}`;
     if (job.phase === "resolving") return "↓ 准备中…";
@@ -490,5 +636,7 @@ export function useOnlineDownloadProgress() {
     downloadButtonLabel,
     cancelOnlineDownload,
     pruneIfNewDay,
+    isBusyPhase,
+    isRunningPhase,
   };
 }

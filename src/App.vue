@@ -11,8 +11,7 @@ import LoginModal from "./components/LoginModal.vue";
 import FirstRunAutostartModal from "./components/FirstRunAutostartModal.vue";
 import { showToast } from "./composables/useToast";
 import {
-  beginOnlineDownloadProgress,
-  finishOnlineDownloadJob,
+  enqueueOnlineDownload,
 } from "./composables/useOnlineDownloadProgress";
 import {
   isLocalOnlineDownloaded,
@@ -398,25 +397,35 @@ async function onDownload(item: WallpaperItem) {
         showToast("已下载到本地");
         return;
       }
-      await beginOnlineDownloadProgress(`下载「${item.name}」`, item.id, {
-        forButton: true,
+      const status = await enqueueOnlineDownload({
+        id: item.id,
+        label: `下载「${item.name}」`,
+        run: async () => {
+          try {
+            await saveOnlineWallpaperToDisk(item);
+            markLocalOnlineDownloaded(item.id);
+            void refreshLocalOnlineDownloads();
+            showToast(`已下载「${item.name}」`);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (/已取消/.test(msg)) {
+              showToast(`已取消「${item.name}」`);
+            } else {
+              showToast(msg);
+            }
+            throw e instanceof Error ? e : new Error(msg);
+          }
+        },
       });
-      try {
-        await saveOnlineWallpaperToDisk(item);
-        finishOnlineDownloadJob(item.id, { success: true });
-        markLocalOnlineDownloaded(item.id);
+      if (status === "already") {
         showToast("已下载到本地");
-        void refreshLocalOnlineDownloads();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (/已取消/.test(msg)) {
-          finishOnlineDownloadJob(item.id, { success: false, cancelled: true });
-          showToast("已取消下载");
-          return;
-        }
-        finishOnlineDownloadJob(item.id, { success: false, error: msg });
-        showToast(msg);
+        return;
       }
+      if (status === "duplicate") {
+        showToast("已在下载队列中");
+        return;
+      }
+      showToast("已加入下载队列");
       return;
     }
     if (!item.mediaSrc) {

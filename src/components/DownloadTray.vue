@@ -23,7 +23,9 @@ const hasActive = computed(() => activeCount.value > 0);
 function isActiveJob(job: DownloadJob) {
   return (
     !job.outcome &&
-    (job.phase === "resolving" || job.phase === "downloading")
+    (job.phase === "queued" ||
+      job.phase === "resolving" ||
+      job.phase === "downloading")
   );
 }
 
@@ -119,8 +121,11 @@ onUnmounted(() => {
                   : "成功"
             }}</span>
           </div>
-          <div v-if="isActiveJob(job)" class="win-dl-track" aria-hidden="true">
-            <div
+          <div
+            v-if="isActiveJob(job) && job.phase !== 'queued'"
+            class="win-dl-track"
+            aria-hidden="true"
+          >            <div
               class="win-dl-fill"
               :class="{ pulse: jobRatio(job) == null && job.phase === 'downloading' }"
               :style="jobRatio(job) != null ? { transform: `scaleX(${jobRatio(job)})` } : undefined"
