@@ -10,7 +10,7 @@ use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::ptr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter};
@@ -41,6 +41,17 @@ unsafe impl Sync for InstalledTarget {}
 static INSTALLED: Mutex<Vec<InstalledTarget>> = Mutex::new(Vec::new());
 static DROP_APP: Mutex<Option<AppHandle>> = Mutex::new(None);
 static INSTALL_GEN: AtomicU64 = AtomicU64::new(0);
+/// True while we are the OLE drag *source* — reject drops on our own targets
+/// so Explorer/folder windows receive the drop instead of a no-op self-drop.
+static OUTGOING_DRAG: AtomicBool = AtomicBool::new(false);
+
+pub fn set_outgoing_drag(active: bool) {
+    OUTGOING_DRAG.store(active, Ordering::SeqCst);
+}
+
+fn is_outgoing_drag() -> bool {
+    OUTGOING_DRAG.load(Ordering::SeqCst)
+}
 
 fn hdrop_format() -> FORMATETC {
     FORMATETC {
@@ -252,6 +263,14 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
         _pt: &POINTL,
         pdwEffect: *mut DROPEFFECT,
     ) -> windows::core::Result<()> {
+        if is_outgoing_drag() {
+            unsafe {
+                *self.enter_valid.get() = false;
+                *self.cursor_effect.get() = DROPEFFECT_NONE;
+                *pdwEffect = DROPEFFECT_NONE;
+            }
+            return Ok(());
+        }
         let allowed = unsafe { *pdwEffect };
         // QueryGetData only — some sources do not expose CF_HDROP until Drop.
         let valid = data_has_files(pDataObj);
@@ -277,6 +296,12 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
         _pt: &POINTL,
         pdwEffect: *mut DROPEFFECT,
     ) -> windows::core::Result<()> {
+        if is_outgoing_drag() {
+            unsafe {
+                *pdwEffect = DROPEFFECT_NONE;
+            }
+            return Ok(());
+        }
         unsafe {
             if *self.enter_valid.get() {
                 let allowed = *pdwEffect;
@@ -305,7 +330,7 @@ impl IDropTarget_Impl for FenceDropTarget_Impl {
         _pt: &POINTL,
         pdwEffect: *mut DROPEFFECT,
     ) -> windows::core::Result<()> {
-        if !unsafe { *self.enter_valid.get() } {
+        if is_outgoing_drag() || !unsafe { *self.enter_valid.get() } {
             unsafe {
                 *pdwEffect = DROPEFFECT_NONE;
             }

@@ -1,12 +1,15 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::scan::strip_extended_path;
 use super::state::FENCE_LABEL;
 use super::util::run_on_ui;
 #[cfg(windows)]
 use super::win;
+
+static OUTGOING_WATCH_GEN: AtomicU64 = AtomicU64::new(0);
 
 fn from_base64(input: &str) -> Option<Vec<u8>> {
     use base64::Engine;
@@ -68,9 +71,11 @@ fn window_class_name(hwnd: windows::Win32::Foundation::HWND) -> String {
 }
 
 #[cfg(windows)]
-fn is_desktop_shell_class(class: &str) -> bool {
-    // Do NOT include SysListView32 — Explorer folder views use it too.
-    matches!(class, "Progman" | "WorkerW" | "SHELLDLL_DefView")
+fn is_desktop_root_class(class: &str) -> bool {
+    // Only Progman/WorkerW identify the real desktop surface.
+    // Do NOT treat SHELLDLL_DefView alone as desktop — Explorer folder windows
+    // also host SHELLDLL_DefView under CabinetWClass.
+    matches!(class, "Progman" | "WorkerW")
 }
 
 #[cfg(windows)]
@@ -80,7 +85,10 @@ fn is_explorer_frame_class(class: &str) -> bool {
         "CabinetWClass"
             | "ExploreWClass"
             | "Microsoft.UI.Content.DesktopChildSiteBridge"
+            | "XamlExplorerHostIslandWindow"
+            | "Windows.UI.Core.CoreWindow"
     ) || class.starts_with("Windows.UI.Core.CoreWindow")
+        || class.contains("Explorer")
 }
 
 #[cfg(windows)]
@@ -105,41 +113,130 @@ fn collect_own_hwnds(app: &AppHandle, fence_hwnd: isize) -> Vec<isize> {
     own
 }
 
+/// Classify cursor hit for outgoing drag. Returns (is_foreign, debug reason).
 #[cfg(windows)]
-fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
+fn classify_cursor_foreign(app: &AppHandle, fence_hwnd: isize) -> (bool, String) {
     use windows::Win32::Foundation::{HWND, POINT};
-    use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetParent, WindowFromPoint};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetCursorPos, GetParent, WindowFromPoint, GA_ROOT,
+    };
     unsafe {
         let fence = HWND(fence_hwnd as *mut _);
         if fence.0.is_null() {
-            return false;
+            return (false, "fence hwnd null".into());
         }
         let own = collect_own_hwnds(app, fence_hwnd);
         let mut pt = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut pt).is_err() {
-            return false;
+            return (false, "GetCursorPos failed".into());
         }
-        let mut hwnd = WindowFromPoint(pt);
-        // Fence is a WS_CHILD of the desktop DefView — walk parents instead of GA_ROOT.
+        let hit = WindowFromPoint(pt);
+        if hit.0.is_null() {
+            return (true, format!("null hit at {},{}", pt.x, pt.y));
+        }
+        let hit_class = window_class_name(hit);
+        let mut chain = Vec::new();
+        // Fence is a WS_CHILD of the desktop DefView — walk parents.
+        // SHELLDLL_DefView appears both on the desktop AND inside Explorer;
+        // keep walking until Progman/WorkerW (desktop) or CabinetWClass (Explorer).
+        let mut hwnd = hit;
         for _ in 0..24 {
             if hwnd.0.is_null() {
-                return true;
+                break;
             }
             let id = hwnd.0 as isize;
-            if own.contains(&id) {
-                return false;
-            }
             let class = window_class_name(hwnd);
-            if is_explorer_frame_class(&class) {
-                return true;
+            chain.push(format!("{class}({id:#x})"));
+            if own.contains(&id) {
+                return (
+                    false,
+                    format!(
+                        "own hwnd at {},{} hit={hit_class} chain=[{}]",
+                        pt.x,
+                        pt.y,
+                        chain.join(" > ")
+                    ),
+                );
             }
-            if is_desktop_shell_class(&class) {
-                return false;
+            if is_explorer_frame_class(&class) {
+                return (
+                    true,
+                    format!(
+                        "explorer frame at {},{} hit={hit_class} chain=[{}]",
+                        pt.x,
+                        pt.y,
+                        chain.join(" > ")
+                    ),
+                );
+            }
+            if is_desktop_root_class(&class) {
+                return (
+                    false,
+                    format!(
+                        "desktop root at {},{} hit={hit_class} chain=[{}]",
+                        pt.x,
+                        pt.y,
+                        chain.join(" > ")
+                    ),
+                );
             }
             hwnd = GetParent(hwnd).unwrap_or_default();
         }
-        true
+
+        let root = GetAncestor(hit, GA_ROOT);
+        if !root.0.is_null() {
+            let rid = root.0 as isize;
+            let rc = window_class_name(root);
+            chain.push(format!("root:{rc}({rid:#x})"));
+            if own.contains(&rid) {
+                return (
+                    false,
+                    format!(
+                        "own root at {},{} hit={hit_class} chain=[{}]",
+                        pt.x,
+                        pt.y,
+                        chain.join(" > ")
+                    ),
+                );
+            }
+            if is_desktop_root_class(&rc) || rc == "Progman" {
+                return (
+                    false,
+                    format!(
+                        "desktop root-ancestor at {},{} hit={hit_class} chain=[{}]",
+                        pt.x,
+                        pt.y,
+                        chain.join(" > ")
+                    ),
+                );
+            }
+            if is_explorer_frame_class(&rc) || !rc.is_empty() {
+                return (
+                    true,
+                    format!(
+                        "foreign root at {},{} hit={hit_class} chain=[{}]",
+                        pt.x,
+                        pt.y,
+                        chain.join(" > ")
+                    ),
+                );
+            }
+        }
+        (
+            false,
+            format!(
+                "unclassified at {},{} hit={hit_class} chain=[{}]",
+                pt.x,
+                pt.y,
+                chain.join(" > ")
+            ),
+        )
     }
+}
+
+#[cfg(windows)]
+fn is_cursor_over_foreign_window(app: &AppHandle, fence_hwnd: isize) -> bool {
+    classify_cursor_foreign(app, fence_hwnd).0
 }
 
 #[cfg(windows)]
@@ -312,14 +409,37 @@ mod ole_drag {
     /// Start OLE drag with both COPY and MOVE allowed; the drop target picks the effect.
     pub fn start(path: &Path, preview_png: &[u8]) -> Result<(), String> {
         init_ole()?;
-        let data_object = file_data_object(path)?;
+        // Prefer non-extended paths — Explorer is picky about \\?\ prefixes in drag data.
+        let clean = {
+            let s = path.to_string_lossy().replace('/', "\\");
+            let trimmed = s
+                .strip_prefix(r"\\?\UNC\")
+                .map(|rest| format!(r"\\{rest}"))
+                .or_else(|| s.strip_prefix(r"\\?\").map(|rest| rest.to_string()))
+                .unwrap_or(s);
+            std::path::PathBuf::from(trimmed)
+        };
+        let data_object = file_data_object(&clean)?;
         attach_drag_image(&data_object, preview_png);
         let drop_source: IDropSource = ShellFileDropSource.into();
         let ok_effects = DROPEFFECT_COPY | DROPEFFECT_MOVE;
         let mut out_effect = DROPEFFECT::default();
+
+        // Prevent our own desktop drop targets from swallowing the drag
+        // (would look like "dropped successfully" but copy-onto-self is a no-op).
+        super::super::drop_target::set_outgoing_drag(true);
+        struct OutgoingGuard;
+        impl Drop for OutgoingGuard {
+            fn drop(&mut self) {
+                super::super::drop_target::set_outgoing_drag(false);
+            }
+        }
+        let _guard = OutgoingGuard;
+
         let hr = unsafe { DoDragDrop(&data_object, &drop_source, ok_effects, &mut out_effect) };
         tracing::info!(
-            "[desktop-organize] DoDragDrop finished hr={hr:?} effect={out_effect:?}"
+            "[desktop-organize] DoDragDrop finished hr={hr:?} effect={out_effect:?} path={}",
+            clean.display()
         );
         if hr.is_err() {
             return Err(format!("启动文件拖放失败: {hr:?}"));
@@ -336,7 +456,9 @@ pub fn is_desktop_drag_over_foreign(app: AppHandle) -> Result<bool, String> {
             .get_webview_window(FENCE_LABEL)
             .ok_or_else(|| "格子窗口未就绪".to_string())?;
         let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
-        Ok(is_cursor_over_foreign_window(&app, hwnd))
+        let (foreign, reason) = classify_cursor_foreign(&app, hwnd);
+        tracing::info!("[desktop-organize] probe foreign={foreign} {reason}");
+        Ok(foreign)
     }
     #[cfg(not(windows))]
     {
@@ -430,6 +552,145 @@ pub fn try_start_desktop_file_drag_if_foreign(
         let _ = (app, path, mode, preview_data_url);
         Ok(false)
     }
+}
+
+/// Native poller: while LBUTTON is held, watch for cursor over Explorer / other windows
+/// and start OLE drag. Survives WebView timer throttling when focus is on Explorer.
+/// Returns a generation id; call `cancel_desktop_outgoing_drag_watch` to abort.
+#[tauri::command]
+pub fn arm_desktop_outgoing_drag_watch(
+    app: AppHandle,
+    path: String,
+    preview_data_url: Option<String>,
+) -> Result<u64, String> {
+    #[cfg(windows)]
+    {
+        let trimmed = path.trim().to_string();
+        if trimmed.is_empty() {
+            return Err("路径为空".into());
+        }
+        if trimmed.starts_with("::") {
+            return Err("系统图标不支持拖出到其他程序".into());
+        }
+        let path_buf = PathBuf::from(&trimmed);
+        if !path_buf.exists() {
+            return Err("文件不存在".into());
+        }
+        let abs = strip_extended_path(std::fs::canonicalize(&path_buf).unwrap_or(path_buf));
+        let preview = drag_preview_png(&abs, preview_data_url.as_deref());
+        let gen = OUTGOING_WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+        tracing::info!(
+            "[desktop-organize] arm outgoing watch gen={gen} path={trimmed}"
+        );
+
+        std::thread::spawn(move || {
+            let mut last_log = std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(1))
+                .unwrap_or_else(std::time::Instant::now);
+            while OUTGOING_WATCH_GEN.load(Ordering::SeqCst) == gen {
+                if !is_lbutton_down() {
+                    tracing::info!(
+                        "[desktop-organize] watch gen={gen} stop: LBUTTON up path={trimmed}"
+                    );
+                    break;
+                }
+                let Some(window) = app.get_webview_window(FENCE_LABEL) else {
+                    tracing::info!("[desktop-organize] watch gen={gen} stop: no fence window");
+                    break;
+                };
+                let Ok(hwnd) = window.hwnd() else {
+                    tracing::info!("[desktop-organize] watch gen={gen} stop: no hwnd");
+                    break;
+                };
+                let hwnd = hwnd.0 as isize;
+                let (foreign, reason) = classify_cursor_foreign(&app, hwnd);
+                if last_log.elapsed() >= std::time::Duration::from_millis(200) {
+                    tracing::info!(
+                        "[desktop-organize] watch gen={gen} foreign={foreign} {reason}"
+                    );
+                    last_log = std::time::Instant::now();
+                }
+                if !foreign {
+                    std::thread::sleep(std::time::Duration::from_millis(16));
+                    continue;
+                }
+                if OUTGOING_WATCH_GEN.load(Ordering::SeqCst) != gen {
+                    break;
+                }
+                // Tell the webview to tear down Sortable *before* DoDragDrop,
+                // while LBUTTON is still physically down.
+                tracing::info!(
+                    "[desktop-organize] watch gen={gen} handoff → OLE path={trimmed} {reason}"
+                );
+                let _ = app.emit("desktop-outgoing-drag-handoff", trimmed.clone());
+                std::thread::sleep(std::time::Duration::from_millis(24));
+                if OUTGOING_WATCH_GEN.load(Ordering::SeqCst) != gen || !is_lbutton_down() {
+                    tracing::info!(
+                        "[desktop-organize] watch gen={gen} aborted before DoDragDrop lbtn={} gen_ok={}",
+                        is_lbutton_down(),
+                        OUTGOING_WATCH_GEN.load(Ordering::SeqCst) == gen
+                    );
+                    break;
+                }
+                let app2 = app.clone();
+                let abs2 = abs.clone();
+                let preview2 = preview.clone();
+                let path_log = trimmed.clone();
+                let result = run_on_ui(&app, move || -> Result<(), String> {
+                    if !is_lbutton_down() {
+                        return Err("鼠标已松开，取消拖出".into());
+                    }
+                    tracing::info!(
+                        "[desktop-organize] watch starting shell file drag path={path_log} effects=COPY|MOVE"
+                    );
+                    ole_drag::start(&abs2, &preview2)?;
+                    let _ = super::lifecycle::refresh(&app2);
+                    Ok(())
+                });
+                match result {
+                    Ok(Ok(())) => {
+                        tracing::info!(
+                            "[desktop-organize] watch shell file drag finished path={trimmed}"
+                        );
+                        let _ = app.emit("desktop-outgoing-drag-done", true);
+                    }
+                    Ok(Err(e)) => {
+                        tracing::info!(
+                            "[desktop-organize] watch shell file drag failed path={trimmed}: {e}"
+                        );
+                        let _ = app.emit("desktop-outgoing-drag-done", false);
+                    }
+                    Err(e) => {
+                        tracing::info!(
+                            "[desktop-organize] watch shell file drag ui failed path={trimmed}: {e}"
+                        );
+                        let _ = app.emit("desktop-outgoing-drag-done", false);
+                    }
+                }
+                // Invalidate this watch so we don't re-enter.
+                let _ = OUTGOING_WATCH_GEN.compare_exchange(
+                    gen,
+                    gen.wrapping_add(1),
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+                break;
+            }
+        });
+
+        Ok(gen)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, path, preview_data_url);
+        Ok(0)
+    }
+}
+
+#[tauri::command]
+pub fn cancel_desktop_outgoing_drag_watch() {
+    let gen = OUTGOING_WATCH_GEN.fetch_add(1, Ordering::SeqCst);
+    tracing::info!("[desktop-organize] cancel outgoing watch prev_gen={gen}");
 }
 
 /// Tiny valid PNG (1x1 transparent) used as drag preview when no icon file is handy.

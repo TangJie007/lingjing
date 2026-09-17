@@ -8,6 +8,12 @@ const PROBE_INTERVAL_MS = 32;
 /** Skip huge image data-URLs as OLE preview — decode/copy cost dominates. */
 const MAX_PREVIEW_CHARS = 48_000;
 
+const LOG = "[shell-drag]";
+
+function log(...args: unknown[]) {
+  console.info(LOG, ...args);
+}
+
 function cancelHtmlDragArtifacts() {
   // Force-end Sortable / pointer capture left behind when the mouse is released
   // over another window (Explorer) after OLE handoff.
@@ -71,12 +77,14 @@ export function useShellFileDrag(opts?: {
   let suspended = false;
   let session = 0;
   let pollTimer: number | null = null;
+  let unlistenHandoff: (() => void) | undefined;
+  let unlistenDone: (() => void) | undefined;
 
   function stopPoll() {
     if (pollTimer != null) {
       window.clearInterval(pollTimer);
-      pollTimer = null;
     }
+    pollTimer = null;
   }
 
   function startPoll() {
@@ -87,8 +95,18 @@ export function useShellFileDrag(opts?: {
     }, PROBE_INTERVAL_MS);
   }
 
+  async function cancelNativeWatch() {
+    if (!window.__TAURI__) return;
+    try {
+      await window.__TAURI__.core.invoke("cancel_desktop_outgoing_drag_watch");
+    } catch {
+      /* ignore */
+    }
+  }
+
   function clearSession() {
     stopPoll();
+    void cancelNativeWatch();
     activePath = "";
     inFlight = false;
     endAfterProbe = false;
@@ -101,6 +119,42 @@ export function useShellFileDrag(opts?: {
     opts?.onUiReset?.();
   }
 
+  function onNativeHandoff() {
+    if (handoff) return;
+    log("native handoff");
+    handoff = true;
+    endAfterProbe = false;
+    stopPoll();
+    activePath = "";
+    // End Sortable while LBUTTON is still physically down (DoDragDrop needs it).
+    cancelHtmlDragArtifacts();
+    opts?.onUiReset?.();
+  }
+
+  function onNativeDone() {
+    log("native done");
+    inFlight = false;
+    handoff = false;
+    clearSession();
+  }
+
+  async function ensureNativeListeners() {
+    if (!window.__TAURI__ || unlistenHandoff) return;
+    try {
+      unlistenHandoff = await window.__TAURI__.event.listen(
+        "desktop-outgoing-drag-handoff",
+        () => onNativeHandoff(),
+      );
+      unlistenDone = await window.__TAURI__.event.listen(
+        "desktop-outgoing-drag-done",
+        () => onNativeDone(),
+      );
+      log("native listeners ready");
+    } catch (e) {
+      console.warn("desktop outgoing drag listen failed", e);
+    }
+  }
+
   function begin(path: string, preview: string | null) {
     activePath = path;
     previewDataUrl =
@@ -110,13 +164,32 @@ export function useShellFileDrag(opts?: {
     endAfterProbe = false;
     suspended = false;
     session += 1;
+    log("begin", path);
+    void ensureNativeListeners();
+    void cancelNativeWatch().then(() => {
+      if (!window.__TAURI__ || !activePath) return;
+      void window.__TAURI__.core
+        .invoke("arm_desktop_outgoing_drag_watch", {
+          path: activePath,
+          previewDataUrl,
+        })
+        .then((gen: unknown) => log("armed watch gen=", gen))
+        .catch((err: unknown) => {
+          console.warn("arm_desktop_outgoing_drag_watch failed", err);
+        });
+    });
     startPoll();
   }
 
   function end() {
     // Sortable mouseup often races OLE handoff — don't abort mid-flight.
-    if (handoff) return;
+    if (handoff) {
+      log("end ignored (handoff)");
+      return;
+    }
+    log("end", { path: activePath, inFlight });
     stopPoll();
+    void cancelNativeWatch();
     if (inFlight) {
       // Keep activePath/session so a probe that already saw "foreign" can hand off.
       endAfterProbe = true;
@@ -130,9 +203,17 @@ export function useShellFileDrag(opts?: {
     if (handoff) return;
     if (suspended === next) return;
     suspended = next;
+    log("suspended=", next);
     if (next) {
       stopPoll();
+      void cancelNativeWatch();
     } else if (activePath) {
+      void window.__TAURI__?.core
+        .invoke("arm_desktop_outgoing_drag_watch", {
+          path: activePath,
+          previewDataUrl,
+        })
+        .catch(() => undefined);
       startPoll();
     }
   }
@@ -161,6 +242,7 @@ export function useShellFileDrag(opts?: {
       const foreign = await window.__TAURI__.core.invoke<boolean>(
         "is_desktop_drag_over_foreign",
       );
+      log("probe foreign=", foreign);
       // Single-threaded: set handoff before any further await so nested
       // Sortable end() → end() cannot abort this handoff.
       if (mySession !== session || handoff || suspended) {
@@ -177,7 +259,9 @@ export function useShellFileDrag(opts?: {
       const path = activePath;
       const preview = previewDataUrl;
       stopPoll();
+      void cancelNativeWatch();
       activePath = "";
+      log("probe → OLE", path);
 
       // End Sortable while LBUTTON is still physically down (DoDragDrop needs it).
       cancelHtmlDragArtifacts();
@@ -192,6 +276,7 @@ export function useShellFileDrag(opts?: {
             previewDataUrl: preview,
           },
         );
+        log("OLE started=", started);
         if (!started) {
           // Cursor left foreign window before OLE could start.
           resetUi();
@@ -199,6 +284,7 @@ export function useShellFileDrag(opts?: {
         // When started, native drag already finished; UI was reset above.
       } catch (err) {
         const msg = friendlyError(err);
+        log("OLE error", msg);
         if (!msg.includes("鼠标已松开")) {
           showFenceToast(msg);
         }
@@ -219,7 +305,7 @@ export function useShellFileDrag(opts?: {
 export function cellPreviewDataUrl(el: HTMLElement | null): string | null {
   const img = el?.querySelector("img");
   const src = img?.src || "";
-  if (!src.startsWith("data:image/png;base64,")) return null;
+  if (!src.starts_with("data:image/png;base64,")) return null;
   if (src.length > MAX_PREVIEW_CHARS) return null;
   return src;
 }
