@@ -21,6 +21,9 @@ pub struct OnlineFileListItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     pub file_name: String,
+    /// Absolute path of the cached file (primary lookup for set-wallpaper).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
     #[serde(default)]
     pub file_size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -72,11 +75,12 @@ pub struct CacheOnlinePayload {
 pub struct SaveOnlinePayload {
     /// Wallpaper id, e.g. `online-12`
     pub id: String,
-    /// Download gateway URL (`…/download`) or direct media URL
+    /// Download gateway URL (`…/download`). With `record_download`, probed
+    /// (no redirect follow) for history; bytes come from the 302 `Location`
+    /// unless `fetch_url` overrides.
     pub url: String,
-    /// Optional direct media URL (e.g. R2 presigned). When set with
-    /// `record_download`, gateway `url` is only probed for history; bytes
-    /// are streamed from this URL instead of the 302 Location.
+    /// Optional override for the byte stream URL. Prefer leaving unset so
+    /// downloads follow `/download` → Location.
     #[serde(default)]
     pub fetch_url: Option<String>,
     #[serde(default)]
@@ -192,21 +196,58 @@ fn now_rfc3339() -> String {
     format!("{secs}")
 }
 
+fn path_is_nonempty_file(p: &Path) -> bool {
+    p.is_file() && fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false)
+}
+
 fn resolve_cached_path(dir: &Path, id: &str) -> Option<PathBuf> {
     let stem = sanitize_file_stem(id);
     let list = read_list_file(dir);
     if let Some(item) = list.items.iter().find(|i| i.id == id || sanitize_file_stem(&i.id) == stem)
     {
+        if let Some(local) = item.local_path.as_ref() {
+            let p = PathBuf::from(local.trim());
+            if path_is_nonempty_file(&p) {
+                return Some(p);
+            }
+        }
         let p = dir.join(&item.file_name);
-        if p.is_file() {
-            if let Ok(meta) = p.metadata() {
-                if meta.len() > 0 {
-                    return Some(p);
+        if path_is_nonempty_file(&p) {
+            return Some(p);
+        }
+    }
+    find_existing_cache(dir, &stem)
+}
+
+/// Match `@tauri-apps/api` `convertFileSrc` on Windows (asset protocol).
+pub fn path_to_asset_uri(path: &Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let mut encoded = String::with_capacity(normalized.len() + 8);
+    for ch in normalized.chars() {
+        match ch {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' | '/' | ':' => {
+                encoded.push(ch);
+            }
+            _ => {
+                let mut buf = [0u8; 4];
+                for b in ch.encode_utf8(&mut buf).as_bytes() {
+                    encoded.push_str(&format!("%{b:02X}"));
                 }
             }
         }
     }
-    find_existing_cache(dir, &stem)
+    format!("http://asset.localhost/{encoded}")
+}
+
+/// Resolve online wallpaper to a local asset URI via `.onlinefile/list.json`.
+/// Returns `None` when not cached locally (caller must not fall back to remote COS).
+pub fn resolve_online_asset_uri(app: &AppHandle, id: &str) -> Result<Option<String>, String> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Ok(None);
+    }
+    let dir = online_cache_root(app)?;
+    Ok(resolve_cached_path(&dir, id).map(|p| path_to_asset_uri(&p)))
 }
 
 fn upsert_list_item(
@@ -232,12 +273,22 @@ fn upsert_list_item(
         .iter()
         .find(|i| i.id == id)
         .and_then(|i| i.export_path.clone());
+    let abs = file_path
+        .canonicalize()
+        .unwrap_or_else(|_| file_path.to_path_buf());
+    let abs_str = abs.to_string_lossy();
+    // Windows canonicalize may prefix `\\?\` which breaks asset URLs.
+    let abs_clean = abs_str
+        .strip_prefix(r"\\?\")
+        .unwrap_or(abs_str.as_ref())
+        .to_string();
     let item = OnlineFileListItem {
         id: id.to_string(),
         title: title
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty()),
         file_name,
+        local_path: Some(abs_clean),
         file_size,
         mime_type: mime_type
             .map(|s| s.trim().to_string())
@@ -272,7 +323,7 @@ pub fn get_online_file_path(app: AppHandle, id: String) -> Result<Option<String>
     if let Some(item) = list.items.iter().find(|i| i.id == id) {
         if let Some(export) = item.export_path.as_ref() {
             let p = PathBuf::from(export);
-            if p.is_file() && fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false) {
+            if path_is_nonempty_file(&p) {
                 return Ok(Some(p.to_string_lossy().to_string()));
             }
         }
@@ -290,8 +341,14 @@ pub fn list_online_file_downloads(app: AppHandle) -> Result<Vec<OnlineFileListIt
     let mut list = read_list_file(&dir);
     let before = list.items.len();
     list.items.retain(|item| {
+        if let Some(local) = item.local_path.as_ref() {
+            let p = PathBuf::from(local.trim());
+            if path_is_nonempty_file(&p) {
+                return true;
+            }
+        }
         let p = dir.join(&item.file_name);
-        p.is_file() && fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false)
+        path_is_nonempty_file(&p)
     });
     if list.items.len() != before {
         let _ = write_list_file(&dir, &list);

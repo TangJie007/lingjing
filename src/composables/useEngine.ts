@@ -91,7 +91,7 @@ export async function cacheOnlineWallpaper(options: {
 export async function saveOnlineWallpaper(options: {
   id: string;
   url: string;
-  /** Direct media URL; when set with recordDownload, `url` is only probed for history. */
+  /** Optional byte-stream URL override; leave unset to follow `/download` → Location. */
   fetchUrl?: string;
   fileName?: string;
   title?: string;
@@ -117,6 +117,8 @@ export interface OnlineFileDownloadItem {
   id: string;
   title?: string | null;
   fileName: string;
+  /** Absolute local path when available (from `.onlinefile/list.json`). */
+  localPath?: string | null;
   fileSize: number;
   mimeType?: string | null;
   downloadedAt: string;

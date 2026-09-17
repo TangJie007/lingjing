@@ -383,6 +383,7 @@ async function applySetWallpaper(item: WallpaperItem) {
   try {
     let toSet = item;
     if (item.source === "online") {
+      // Prefer `.onlinefile/list.json` local path — never set from overseas COS URLs.
       const localPath = await getOnlineFilePath(item.id);
       if (!localPath) {
         showToast("请先下载到本地后再设置壁纸");

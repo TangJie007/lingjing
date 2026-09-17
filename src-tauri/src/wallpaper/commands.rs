@@ -47,9 +47,27 @@ pub fn set_wallpaper(
         payload.media_type,
         payload.uri
     );
-    if payload.uri.trim().is_empty() {
-        return Err("该资源暂无可用媒体".into());
-    }
+
+    // Online wallpapers: always play from `.onlinefile/list.json` local path.
+    // Never stream remote COS/R2 URLs into the wallpaper engine (overseas = very slow).
+    let uri = if payload.id.starts_with("online-") {
+        match crate::online_cache::resolve_online_asset_uri(&app, &payload.id)? {
+            Some(local_uri) => {
+                tracing::info!("[engine] set_wallpaper using local online cache uri={local_uri}");
+                local_uri
+            }
+            None => {
+                return Err("请先下载到本地后再设置壁纸".into());
+            }
+        }
+    } else {
+        let u = payload.uri.trim().to_string();
+        if u.is_empty() {
+            return Err("该资源暂无可用媒体".into());
+        }
+        u
+    };
+
     let default_volume = settings::load_settings(&app)
         .map(|s| s.default_volume.clamp(0.0, 1.0))
         .unwrap_or(0.0);
@@ -62,7 +80,7 @@ pub fn set_wallpaper(
     state.media_id = Some(payload.id.clone());
     state.title = Some(payload.title.clone());
     state.media_type = Some(payload.media_type.clone());
-    state.uri = Some(payload.uri.clone());
+    state.uri = Some(uri.clone());
     state.playing = true;
     state.volume = volume;
     state.muted = muted;
@@ -81,7 +99,7 @@ pub fn set_wallpaper(
             id: payload.id,
             title: payload.title,
             media_type: payload.media_type,
-            uri: payload.uri,
+            uri,
             source: "engine".into(),
         },
     );
@@ -282,8 +300,30 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
             Ok(Some(l)) => l,
             _ => return,
         };
-        if !system::media_path_exists(&last.uri) {
-            tracing::info!("[engine] skip restore: media missing uri={}", last.uri);
+
+        // Prefer local `.onlinefile` path for online ids; never restore overseas COS URLs.
+        let uri = if last.id.starts_with("online-") {
+            match crate::online_cache::resolve_online_asset_uri(&app_for_task, &last.id) {
+                Ok(Some(local_uri)) => local_uri,
+                Ok(None) => {
+                    tracing::info!(
+                        "[engine] skip restore: online cache missing id={}",
+                        last.id
+                    );
+                    let _ = settings::clear_last_wallpaper(&app_for_task);
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("[engine] skip restore: resolve online cache failed: {e}");
+                    return;
+                }
+            }
+        } else {
+            last.uri.clone()
+        };
+
+        if !system::media_path_exists(&uri) {
+            tracing::info!("[engine] skip restore: media missing uri={uri}");
             let _ = settings::clear_last_wallpaper(&app_for_task);
             return;
         }
@@ -291,7 +331,7 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
             media_id: Some(last.id.clone()),
             title: Some(last.title.clone()),
             media_type: Some(last.media_type.clone()),
-            uri: Some(last.uri.clone()),
+            uri: Some(uri),
             playing: true,
             volume: settings::load_settings(&app_for_task)
                 .map(|s| s.default_volume)

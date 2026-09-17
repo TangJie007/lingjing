@@ -381,8 +381,8 @@ export async function downloadOnlineWallpaperToCache(
 }
 
 /**
- * User-facing download: probe `/download` to record history, stream bytes from
- * a fresh `file-url` signed URL into `.onlinefile`. Returns local cache path.
+ * User-facing download via `/download` (JWT + history + 302 to object URL).
+ * Streams into `.onlinefile`. Does not use `file-url`.
  */
 export async function saveOnlineWallpaperToDisk(
   item: WallpaperItem,
@@ -397,20 +397,13 @@ export async function saveOnlineWallpaperToDisk(
   const params = new URLSearchParams({ expires: "3600" });
   const sep = path.includes("?") ? "&" : "?";
   const url = `${absoluteApiPath(path)}${sep}${params}`;
-  const signed = await fetchOnlineFileUrl(item.id, 3600);
   const { authHeaders } = useAuth();
   const auth = authHeaders().Authorization;
-  const raw = signed.url.split("?")[0] ?? signed.url;
-  const fromSigned = raw.includes(".") ? (raw.split(".").pop() ?? "").toLowerCase() : "";
-  const ext =
-    fromSigned && /^[a-z0-9]{1,8}$/i.test(fromSigned)
-      ? fromSigned
-      : guessFileExt(item) || "bin";
+  const ext = guessFileExt(item) || "bin";
   const safeName = item.name.replace(/[\\/:*?"<>|]/g, "_") || `wallpaper-${id}`;
   return saveOnlineWallpaper({
     id: String(item.id),
     url,
-    fetchUrl: signed.url,
     fileName: `${safeName}.${ext}`,
     title: item.name,
     fileExt: ext,
