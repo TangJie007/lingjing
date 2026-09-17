@@ -301,7 +301,7 @@ export function useShellContextMenu() {
     }
   }
 
-  function samePath(a: number[] | undefined, b: number[]) {
+  function sameMenuPath(a: number[] | undefined, b: number[]) {
     return !!a && a.length === b.length && a.every((n, i) => n === b[i]);
   }
 
@@ -310,7 +310,7 @@ export function useShellContextMenu() {
     menuPath: number[],
   ): ShellMenuEntry | undefined {
     for (const entry of list) {
-      if (entry.children && samePath(entry.menuPath, menuPath)) return entry;
+      if (entry.children && sameMenuPath(entry.menuPath, menuPath)) return entry;
       const nested = entry.children && findSubmenu(entry.children, menuPath);
       if (nested) return nested;
     }

@@ -82,7 +82,6 @@ export function useShellFileDrag(opts?: {
   let session = 0;
   let pollTimer: number | null = null;
   let unlistenHandoff: (() => void) | undefined;
-  let unlistenDone: (() => void) | undefined;
   let armSeq = 0;
 
   function stopPoll() {
@@ -171,7 +170,7 @@ export function useShellFileDrag(opts?: {
         "desktop-outgoing-drag-handoff",
         () => onNativeHandoff(),
       );
-      unlistenDone = await window.__TAURI__.event.listen(
+      await window.__TAURI__.event.listen(
         "desktop-outgoing-drag-done",
         () => onNativeDone(),
       );
