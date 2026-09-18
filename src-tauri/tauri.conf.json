@@ -86,6 +86,9 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "certificateThumbprint": "EE2C3A2A7E835B287CF48530E4BAA5064BF09C6E",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
       "nsis": {
         "installMode": "currentUser",
         "languages": ["SimpChinese", "English"],

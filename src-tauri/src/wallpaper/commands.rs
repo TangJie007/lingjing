@@ -349,11 +349,9 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
                 return;
             }
             crate::online_cache::path_to_asset_uri(&path)
-        } else if system::is_bundled_app_asset_uri(&last.uri) {
-            last.uri.clone()
         } else {
             tracing::info!(
-                "[engine] skip restore: unsupported or missing uri={}",
+                "[engine] skip restore: no local file uri={}",
                 last.uri
             );
             let _ = settings::clear_last_wallpaper(&app_for_task);

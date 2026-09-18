@@ -72,7 +72,6 @@ fn plan_migration(app: &AppHandle, to_dir: &str) -> Result<MigrationPlan, String
         from_dir.join("library.json"),
         from_dir.join("favorites.json"),
         from_dir.join("settings.json"),
-        from_dir.join("last_wallpaper.json"),
     ];
     for c in candidates.iter() {
         if !c.is_file() {

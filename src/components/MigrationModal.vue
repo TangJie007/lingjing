@@ -81,7 +81,7 @@ async function migrate(keepOriginals: boolean) {
         </header>
         <ul class="mm-notes">
           <li><strong>会迁移</strong>：library.json、library/ 下的媒体文件</li>
-          <li><strong>不会迁移</strong>：settings.json、favorites.json、last_wallpaper.json（仍留在应用数据目录）</li>
+          <li><strong>不会迁移</strong>：settings.json、favorites.json（仍留在应用数据目录）</li>
           <li>选择「迁移」（不保留原文件）时，还会清理应用数据目录中的旧 library 副本</li>
         </ul>
         <div class="mm-paths">

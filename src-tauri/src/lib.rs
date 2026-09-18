@@ -354,15 +354,7 @@ pub fn run() {
             }
 
             let handle = app.handle().clone();
-            let handle_for_attach = handle.clone();
             let handle_for_settings = handle.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(800));
-                match wallpaper::attach_existing(&handle_for_attach) {
-                    Ok(()) => tracing::info!("[wallpaper] startup attach ok"),
-                    Err(e) => tracing::info!("[wallpaper] startup attach skipped: {e}"),
-                }
-            });
 
             if let Ok(s) = settings::load_settings(&handle_for_settings) {
                 let mgr = handle.autolaunch();
@@ -403,6 +395,16 @@ pub fn run() {
 
             let app_for_restore = handle.clone();
             std::thread::spawn(move || {
+                // First launch (no version record) and "never applied" must not
+                // cover the desktop with the black wallpaper webview.
+                if !settings::has_version_record(&app_for_restore) {
+                    tracing::info!("[wallpaper] skip startup: first run");
+                    return;
+                }
+                if !settings::has_applied_wallpaper(&app_for_restore) {
+                    tracing::info!("[wallpaper] skip startup: wallpaper never applied");
+                    return;
+                }
                 wallpaper::commands::restore_last_wallpaper(&app_for_restore)
             });
 

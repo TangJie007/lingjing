@@ -149,7 +149,7 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
         <h3>壁纸路径</h3>
         <p class="path-note">
           更改路径后，<strong>library.json 与媒体文件</strong>会迁移到新目录。
-          <strong>settings / favorites / last_wallpaper</strong> 仍保存在系统应用数据目录，不会被迁移。
+          <strong>settings.json / favorites.json</strong> 仍保存在系统应用数据目录，不会被迁移。
         </p>
         <div class="path-ctrl">
           <input

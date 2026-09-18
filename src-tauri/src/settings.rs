@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager};
 
 const SETTINGS_FILE: &str = "settings.json";
-const LAST_WALLPAPER_FILE: &str = "last_wallpaper.json";
 const VERSION_RECORD_FILE: &str = "version_record.json";
 const LIBRARY_SUBDIR: &str = "library";
 
@@ -43,6 +42,9 @@ pub struct AppSettings {
     pub desktop_organize_enabled: bool,
     #[serde(default = "default_api_base_url")]
     pub api_base_url: String,
+    /// Set only after the user successfully applies a wallpaper. Absent means never applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallpaper: Option<LastWallpaper>,
 }
 
 impl Default for AppSettings {
@@ -61,6 +63,7 @@ impl Default for AppSettings {
             online_enabled: false,
             desktop_organize_enabled: false,
             api_base_url: default_api_base_url(),
+            last_wallpaper: None,
         }
     }
 }
@@ -122,10 +125,6 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join(SETTINGS_FILE))
 }
 
-fn last_wallpaper_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app_data_dir(app)?.join(LAST_WALLPAPER_FILE))
-}
-
 fn version_record_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join(VERSION_RECORD_FILE))
 }
@@ -149,18 +148,37 @@ pub fn write_version_record(app: &AppHandle, version: &str) -> Result<(), String
 
 pub fn load_settings(app: &AppHandle) -> Result<AppSettings, String> {
     let path = settings_path(app)?;
-    if !path.exists() {
-        return Ok(AppSettings::default());
+    let mut settings = if !path.exists() {
+        AppSettings::default()
+    } else {
+        let raw = fs::read_to_string(&path).map_err(|e| format!("读取 settings.json 失败: {e}"))?;
+        let value: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| format!("解析 settings.json 失败: {e}"))?;
+        let mut settings: AppSettings = serde_json::from_value(value).unwrap_or_default();
+        settings.api_base_url = normalize_api_base_url(&settings.api_base_url);
+        settings
+    };
+    if settings.last_wallpaper.is_none() {
+        if let Some(legacy) = read_legacy_last_wallpaper(app) {
+            settings.last_wallpaper = Some(legacy);
+            let _ = write_settings_file(app, &settings);
+            if let Ok(dir) = app_data_dir(app) {
+                let _ = fs::remove_file(dir.join("last_wallpaper.json"));
+            }
+        }
     }
-    let raw = fs::read_to_string(&path).map_err(|e| format!("读取 settings.json 失败: {e}"))?;
-    let value: serde_json::Value = serde_json::from_str(&raw)
-        .map_err(|e| format!("解析 settings.json 失败: {e}"))?;
-    let mut settings: AppSettings = serde_json::from_value(value.clone()).unwrap_or_default();
-    settings.api_base_url = normalize_api_base_url(&settings.api_base_url);
     Ok(settings)
 }
 
+/// Frontend saves the whole settings object and does not know about last wallpaper.
+/// Keep the on-disk value so a volume/toggle save cannot wipe it.
 pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
+    let mut next = settings.clone();
+    next.last_wallpaper = load_settings(app).ok().and_then(|s| s.last_wallpaper);
+    write_settings_file(app, &next)
+}
+
+fn write_settings_file(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
     let path = settings_path(app)?;
     crate::util::write_json_atomic(&path, settings)
 }
@@ -192,25 +210,35 @@ pub struct LastWallpaper {
 }
 
 pub fn save_last_wallpaper(app: &AppHandle, last: &LastWallpaper) -> Result<(), String> {
-    let path = last_wallpaper_path(app)?;
-    crate::util::write_json_atomic(&path, last)
+    let mut settings = load_settings(app).unwrap_or_default();
+    settings.last_wallpaper = Some(last.clone());
+    write_settings_file(app, &settings)
 }
 
 pub fn load_last_wallpaper(app: &AppHandle) -> Result<Option<LastWallpaper>, String> {
-    let path = last_wallpaper_path(app)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let raw = fs::read_to_string(&path).map_err(|e| format!("读取 last_wallpaper.json 失败: {e}"))?;
-    let value: LastWallpaper =
-        serde_json::from_str(&raw).map_err(|e| format!("解析 last_wallpaper.json 失败: {e}"))?;
-    Ok(Some(value))
+    Ok(load_settings(app)?.last_wallpaper)
 }
 
 pub fn clear_last_wallpaper(app: &AppHandle) -> Result<(), String> {
-    let path = last_wallpaper_path(app)?;
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| format!("删除 last_wallpaper.json 失败: {e}"))?;
+    let mut settings = load_settings(app).unwrap_or_default();
+    settings.last_wallpaper = None;
+    write_settings_file(app, &settings)?;
+    if let Ok(dir) = app_data_dir(app) {
+        let legacy = dir.join("last_wallpaper.json");
+        if legacy.exists() {
+            let _ = fs::remove_file(legacy);
+        }
     }
     Ok(())
+}
+
+fn read_legacy_last_wallpaper(app: &AppHandle) -> Option<LastWallpaper> {
+    let path = app_data_dir(app).ok()?.join("last_wallpaper.json");
+    let raw = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// True only after the user has successfully applied a wallpaper.
+pub fn has_applied_wallpaper(app: &AppHandle) -> bool {
+    load_last_wallpaper(app).ok().flatten().is_some()
 }
