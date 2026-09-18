@@ -25,8 +25,15 @@ const emit = defineEmits<{
 const pinEntries = computed(() => props.entries.filter((e) => e.pin));
 const bodyEntries = computed(() => props.entries.filter((e) => !e.pin));
 
+function isProperties(entry: ShellMenuEntry) {
+  const label = (entry.label || "").replace(/&/g, "");
+  return label.includes("属性") || /properties/i.test(label);
+}
+
 function onSelect(entry: ShellMenuEntry) {
-  if (entry.disabled || entry.id == null || entry.id === 0) return;
+  if (entry.disabled) return;
+  // Shell sometimes reports 属性 with id 0; still run it.
+  if ((entry.id == null || entry.id === 0) && !isProperties(entry)) return;
   emit("command", entry);
 }
 
@@ -56,7 +63,7 @@ function iconOf(entry: ShellMenuEntry) {
       <template v-for="(entry, idx) in bodyEntries" :key="idx">
         <ContextMenuSeparator v-if="entry.separator" class="sep" />
         <ContextMenuSub
-          v-else-if="entry.children"
+          v-else-if="entry.children && !isProperties(entry)"
           @update:open="$event && emit('submenu', entry.menuPath || [])"
         >
           <ContextMenuSubTrigger class="item has-sub" :disabled="!!entry.disabled">

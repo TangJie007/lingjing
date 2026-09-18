@@ -473,6 +473,17 @@ export function useShellContextMenu() {
       return;
     }
 
+    const label = (entry.label || "").replace(/&/g, "");
+    if (p && (label.includes("属性") || /properties/i.test(label))) {
+      try {
+        await window.__TAURI__.core.invoke("open_desktop_item_properties", { path: p });
+      } catch (e) {
+        console.error("[shell-menu] properties failed", e);
+        showFenceErrorToast(friendlyError(e));
+      }
+      return;
+    }
+
     try {
       await window.__TAURI__.core.invoke("invoke_desktop_shell_context_command", {
         path: p || "",

@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use super::item_commands::{
-    delete_desktop_item, open_desktop_item, open_desktop_item_properties, open_desktop_item_with,
-    show_desktop_item_in_folder,
+    delete_desktop_item, open_desktop_item, open_desktop_item_with, show_desktop_item_in_folder,
 };
 use super::lifecycle::refresh;
 use super::scan::{desktop_scan_dirs, strip_extended_path};
@@ -171,7 +170,7 @@ fn dispatch_builtin_shell_command(
         BUILTIN_OPEN => open_desktop_item(app.clone(), path.to_string()),
         BUILTIN_SHOW_IN_FOLDER => show_desktop_item_in_folder(path.to_string()),
         BUILTIN_OPEN_WITH => open_desktop_item_with(path.to_string()),
-        BUILTIN_PROPERTIES => open_desktop_item_properties(path.to_string()),
+        BUILTIN_PROPERTIES => crate::shell_menu::show_item_properties(path),
         BUILTIN_OPEN_NEW_WINDOW => open_folder_in_new_window(path),
         BUILTIN_CUT => clipboard_set_files(&[path], true),
         BUILTIN_COPY => clipboard_set_files(&[path], false),

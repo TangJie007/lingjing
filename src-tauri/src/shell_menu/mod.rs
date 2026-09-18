@@ -31,4 +31,4 @@ pub use ids::{
     BUILTIN_OPEN_WITH, BUILTIN_PASTE, BUILTIN_PERSONALIZE, BUILTIN_PROPERTIES, BUILTIN_REFRESH,
     BUILTIN_RENAME, BUILTIN_SHOW_IN_FOLDER,
 };
-pub use verbs::delete_to_recycle_bin;
+pub use verbs::{delete_to_recycle_bin, show_item_properties};

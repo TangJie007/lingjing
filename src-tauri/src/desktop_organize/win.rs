@@ -1300,27 +1300,6 @@ use std::ffi::OsStr;
         })
     }
 
-    /// Properties via rundll32 so the dialog is owned by a helper process,
-    /// not our WorkerW-hosted STA (avoids second-open deadlocks).
-    pub fn shell_show_properties(path: &str) -> Result<(), String> {
-        let path = path.to_string();
-        spawn_detached_open(move || {
-            let r = std::process::Command::new("rundll32")
-                .arg("shell32.dll,ShellExec_RunDLL")
-                .arg("properties")
-                .arg(&path)
-                .spawn();
-            if let Err(e) = r {
-                tracing::info!(
-                    "[desktop-organize] properties rundll32 failed: {e}; fallback ShellExecuteEx"
-                );
-                if let Err(e2) = shell_execute_async(&path, "properties") {
-                    tracing::info!("[desktop-organize] shell_show_properties failed: {e2}");
-                }
-            }
-        })
-    }
-
     /// True when `path` (file or .lnk) launches this running exe.
     pub fn path_is_self_app(path: &str) -> bool {
         let Ok(self_exe) = std::env::current_exe() else {

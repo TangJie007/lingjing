@@ -192,8 +192,8 @@ pub fn open_desktop_item_with(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
-    let trimmed = path.trim();
+pub async fn open_desktop_item_properties(path: String) -> Result<(), String> {
+    let trimmed = path.trim().to_string();
     if trimmed.is_empty() {
         return Err("路径为空".into());
     }
@@ -201,7 +201,7 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
         || {
             #[cfg(windows)]
             {
-                super::namespace_clsid_for_path(trimmed).is_some()
+                super::namespace_clsid_for_path(&trimmed).is_some()
             }
             #[cfg(not(windows))]
             {
@@ -209,15 +209,21 @@ pub fn open_desktop_item_properties(path: String) -> Result<(), String> {
             }
         };
     if !is_namespace {
-        let p = Path::new(trimmed);
+        let p = Path::new(&trimmed);
         if !p.exists() {
             return Err("文件不存在".into());
         }
     }
     #[cfg(windows)]
     {
-        let props_path = super::namespace_clsid_for_path(trimmed).unwrap_or(trimmed);
-        return win::shell_show_properties(props_path);
+        let props_path = super::namespace_clsid_for_path(&trimmed)
+            .unwrap_or(trimmed.as_str())
+            .to_string();
+        return tauri::async_runtime::spawn_blocking(move || {
+            crate::shell_menu::show_item_properties(&props_path)
+        })
+        .await
+        .map_err(|e| format!("打开属性任务失败: {e}"))?;
     }
     #[cfg(not(windows))]
     {

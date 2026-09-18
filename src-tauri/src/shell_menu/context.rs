@@ -444,6 +444,12 @@ pub fn invoke_shell_context_command(
                 "link" => Some(Err("BUILTIN_LINK".into())),
                 "rename" => Some(Err("BUILTIN_RENAME".into())),
                 _ if label.contains("管理员") => Some(shell_execute_verb(p, "runas")),
+                _ if label.contains("属性")
+                    || label.eq_ignore_ascii_case("properties")
+                    || label.eq_ignore_ascii_case("property") =>
+                {
+                    Some(super::verbs::show_item_properties(p))
+                }
                 _ if label.contains("剪切") => Some(Err("BUILTIN_CUT".into())),
                 _ if label.contains("复制") => Some(Err("BUILTIN_COPY".into())),
                 _ if label.contains("删除") => Some(super::verbs::delete_to_recycle_bin(p)),
