@@ -3,7 +3,7 @@ import { computed, inject, ref, watch, type Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import WallpaperCardGrid from "../components/WallpaperCardGrid.vue";
 import EmptyState from "../components/EmptyState.vue";
-import { CATALOG, type WallpaperItem } from "../data/catalog";
+import { type WallpaperItem } from "../data/catalog";
 import type { OnlineCategory } from "../composables/useLingjingApi";
 
 const props = withDefaults(
@@ -117,7 +117,7 @@ function setFilter(f: FilterItem) {
 }
 
 const discoverList = computed(() => {
-  let r = [...(props.items ?? CATALOG)];
+  let r = [...(props.items ?? [])];
   if (!props.onlineEnabled) {
     if (activeCat.value !== "全部") r = r.filter((i) => i.category === activeCat.value);
   }

@@ -36,7 +36,7 @@ const routes: RouteRecordRaw[] = [
     path: "/online",
     name: "online",
     component: OnlineView,
-    meta: { showDrawer: true },
+    meta: { showDrawer: true, requiresOnline: true },
   },
   {
     path: "/favorite",

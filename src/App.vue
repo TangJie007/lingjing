@@ -20,7 +20,7 @@ import {
   useLocalOnlineDownloads,
 } from "./composables/useLocalOnlineDownloads";
 import { soundOn } from "./composables/useAudio";
-import { CATALOG, type WallpaperItem } from "./data/catalog";
+import { type WallpaperItem } from "./data/catalog";
 import {
   enginePause,
   enginePlay,
@@ -87,7 +87,7 @@ const onlineFetchError = ref("");
 
 const onlineGridItems = computed(() => {
   if (!settings.value.onlineEnabled) {
-    return CATALOG.filter((i) => !!i.mediaSrc);
+    return [];
   }
   return onlineItems.value;
 });
@@ -97,7 +97,7 @@ const onlineGridLoading = computed(
 );
 
 const onlineEmptyText = computed(() => {
-  if (!settings.value.onlineEnabled) return "没有匹配的壁纸";
+  if (!settings.value.onlineEnabled) return "在线功能已关闭";
   if (onlineFetchError.value) return onlineFetchError.value;
   return "暂无在线壁纸，请确认 API 服务已启动";
 });
@@ -108,11 +108,10 @@ const drawerVisible = computed(
 
 const playQueue = computed(() => {
   const locals = localItems.value;
-  const samples = settings.value.onlineEnabled
-    ? onlineItems.value.filter((i) => !!i.mediaSrc)
-    : CATALOG.filter((i) => !!i.mediaSrc);
-  if (route.name === "local") return locals.length ? locals : samples;
-  return [...samples, ...locals];
+  if (route.name === "local") return locals;
+  if (!settings.value.onlineEnabled) return locals;
+  const online = onlineItems.value.filter((i) => !!i.mediaSrc);
+  return [...online, ...locals];
 });
 
 const favoriteItems = computed(() => {
@@ -123,8 +122,6 @@ const favoriteItems = computed(() => {
     } else {
       for (const i of onlineItems.value) if (i.favorite) out.push(i);
     }
-  } else {
-    for (const i of CATALOG) if (i.favorite) out.push(i);
   }
   for (const i of localItems.value) if (i.favorite) out.push(i);
   return out;
@@ -156,10 +153,10 @@ const routeViewProps = computed(() => {
 });
 
 function allWallpapers(): WallpaperItem[] {
-  const samples = settings.value.onlineEnabled
+  const online = settings.value.onlineEnabled
     ? onlineItems.value.filter((i) => !!i.mediaSrc)
-    : CATALOG.filter((i) => !!i.mediaSrc);
-  return [...samples, ...localItems.value];
+    : [];
+  return [...online, ...localItems.value];
 }
 
 function findWallpaper(id: string): WallpaperItem | null {
@@ -215,8 +212,6 @@ async function applyFavorites(ids: string[]) {
   const set = new Set(ids);
   if (settings.value.onlineEnabled) {
     for (const i of onlineItems.value) i.favorite = set.has(String(i.id));
-  } else {
-    for (const i of CATALOG) i.favorite = set.has(String(i.id));
   }
   for (const i of localItems.value) i.favorite = set.has(String(i.id));
 }
@@ -309,16 +304,8 @@ async function onOnlineCategoryChange(categoryId: number | null) {
 async function refreshLibrary() {
   try {
     localItems.value = await listLibrary();
-    const { ids, isNew } = await loadFavoriteIds();
-    if (isNew) {
-      const seeds = CATALOG.filter((i) => i.favorite).map((i) => String(i.id));
-      for (const id of seeds) {
-        await setFavoriteRemote(id, true);
-      }
-      await applyFavorites(seeds);
-    } else {
-      await applyFavorites(ids);
-    }
+    const { ids } = await loadFavoriteIds();
+    await applyFavorites(ids);
   } catch (e) {
     console.warn(e);
   }
@@ -478,9 +465,9 @@ async function onRemoveLocal(item: WallpaperItem) {
     const { ids } = await loadFavoriteIds();
     await applyFavorites(ids);
     if (wasCurrent) {
-      current.value = localItems.value[0] ?? CATALOG[0] ?? null;
+      current.value = localItems.value[0] ?? null;
     } else if (current.value?.id === item.id) {
-      current.value = localItems.value[0] ?? CATALOG[0] ?? null;
+      current.value = localItems.value[0] ?? null;
     }
     showToast("删除成功");
   } catch (e) {

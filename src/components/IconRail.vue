@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NAV_ROUTE_NAMES, type NavRouteName } from "../router";
 import { NAV_FREQ, playClick } from "../composables/useAudio";
+import { useSettings } from "../composables/useSettings";
 import iconOnline from "../assets/svg/online.svg";
 import iconLocal from "../assets/svg/local.svg";
 import iconPat from "../assets/svg/pat.svg";
@@ -18,6 +19,7 @@ interface NavItem {
 
 const route = useRoute();
 const router = useRouter();
+const settings = useSettings();
 
 const activeKey = computed((): NavRouteName => {
   const name = route.name;
@@ -37,13 +39,17 @@ const activeKey = computed((): NavRouteName => {
   return "local";
 });
 
-const items: NavItem[] = [
+const ALL_ITEMS: NavItem[] = [
   { key: "online", label: "在线", aria: "在线资源与我的收藏", icon: iconOnline },
   { key: "local", label: "本地", aria: "本地资源", icon: iconLocal },
   { key: "pet", label: "桌宠", aria: "桌宠管理", icon: iconPat },
   { key: "settings", label: "设置", aria: "设置", icon: iconSetting },
   { key: "about", label: "关于", aria: "关于", icon: iconAbout },
 ];
+
+const items = computed(() =>
+  ALL_ITEMS.filter((it) => it.key !== "online" || settings.value.onlineEnabled),
+);
 
 const indicator = ref<HTMLElement | null>(null);
 const rail = ref<HTMLElement | null>(null);
@@ -90,6 +96,15 @@ function syncIndicator() {
 
 onMounted(() => nextTick(syncIndicator));
 watch(activeKey, () => nextTick(syncIndicator));
+watch(
+  () => settings.value.onlineEnabled,
+  (enabled) => {
+    if (!enabled && (route.name === "online" || route.query.nav === "online")) {
+      void router.replace({ name: "local" });
+    }
+    nextTick(syncIndicator);
+  },
+);
 </script>
 
 <template>

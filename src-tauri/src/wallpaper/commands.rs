@@ -50,11 +50,14 @@ pub fn set_wallpaper(
 
     // Online wallpapers: always play from `.onlinefile/list.json` local path.
     // Never stream remote COS/R2 URLs into the wallpaper engine (overseas = very slow).
-    let uri = if payload.id.starts_with("online-") {
+    let (play_uri, persist_uri) = if payload.id.starts_with("online-") {
         match crate::online_cache::resolve_online_asset_uri(&app, &payload.id)? {
             Some(local_uri) => {
                 tracing::info!("[engine] set_wallpaper using local online cache uri={local_uri}");
-                local_uri
+                let persist = system::filesystem_path_from_uri(&local_uri)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| local_uri.clone());
+                (local_uri, persist)
             }
             None => {
                 return Err("请先下载到本地后再设置壁纸".into());
@@ -65,7 +68,21 @@ pub fn set_wallpaper(
         if u.is_empty() {
             return Err("该资源暂无可用媒体".into());
         }
-        u
+        if let Some(path) = system::filesystem_path_from_uri(&u) {
+            if !system::path_is_nonempty_file(&path) {
+                return Err("媒体文件不存在或为空，无法设为壁纸".into());
+            }
+            let play = crate::online_cache::path_to_asset_uri(&path);
+            let persist = path.to_string_lossy().into_owned();
+            (play, persist)
+        } else if system::is_bundled_app_asset_uri(&u) {
+            // Packaged /samples/* and same-origin app assets.
+            (u.clone(), u)
+        } else if u.starts_with("http://") || u.starts_with("https://") {
+            return Err("无法直接使用远程地址设壁纸，请先下载到本地".into());
+        } else {
+            return Err("媒体文件不存在，无法设为壁纸".into());
+        }
     };
 
     let default_volume = settings::load_settings(&app)
@@ -80,7 +97,7 @@ pub fn set_wallpaper(
     state.media_id = Some(payload.id.clone());
     state.title = Some(payload.title.clone());
     state.media_type = Some(payload.media_type.clone());
-    state.uri = Some(uri.clone());
+    state.uri = Some(play_uri.clone());
     state.playing = true;
     state.volume = volume;
     state.muted = muted;
@@ -99,7 +116,7 @@ pub fn set_wallpaper(
             id: payload.id,
             title: payload.title,
             media_type: payload.media_type,
-            uri,
+            uri: persist_uri,
             source: "engine".into(),
         },
     );
@@ -286,7 +303,8 @@ pub fn clear_engine_wallpaper(app: &AppHandle, engine: &EngineHandle) -> Result<
     state.user_paused = false;
     let snapshot = state.clone();
     drop(state);
-    push_command(app, "clear", &snapshot)?;
+    // Detach wallpaper window so an empty black WebView does not cover the desktop.
+    crate::wallpaper::cleanup(app);
     push_state(app, &snapshot);
     let _ = settings::clear_last_wallpaper(app);
     Ok(snapshot)
@@ -298,11 +316,14 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
         tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
         let last = match settings::load_last_wallpaper(&app_for_task) {
             Ok(Some(l)) => l,
-            _ => return,
+            _ => {
+                tracing::info!("[engine] skip restore: no last wallpaper");
+                return;
+            }
         };
 
         // Prefer local `.onlinefile` path for online ids; never restore overseas COS URLs.
-        let uri = if last.id.starts_with("online-") {
+        let play_uri = if last.id.starts_with("online-") {
             match crate::online_cache::resolve_online_asset_uri(&app_for_task, &last.id) {
                 Ok(Some(local_uri)) => local_uri,
                 Ok(None) => {
@@ -318,20 +339,32 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
                     return;
                 }
             }
-        } else {
+        } else if let Some(path) = system::filesystem_path_from_uri(&last.uri) {
+            if !system::path_is_nonempty_file(&path) {
+                tracing::info!(
+                    "[engine] skip restore: media missing path={}",
+                    path.display()
+                );
+                let _ = settings::clear_last_wallpaper(&app_for_task);
+                return;
+            }
+            crate::online_cache::path_to_asset_uri(&path)
+        } else if system::is_bundled_app_asset_uri(&last.uri) {
             last.uri.clone()
-        };
-
-        if !system::media_path_exists(&uri) {
-            tracing::info!("[engine] skip restore: media missing uri={uri}");
+        } else {
+            tracing::info!(
+                "[engine] skip restore: unsupported or missing uri={}",
+                last.uri
+            );
             let _ = settings::clear_last_wallpaper(&app_for_task);
             return;
-        }
+        };
+
         let mut state = EngineState {
             media_id: Some(last.id.clone()),
             title: Some(last.title.clone()),
             media_type: Some(last.media_type.clone()),
-            uri: Some(uri),
+            uri: Some(play_uri),
             playing: true,
             volume: settings::load_settings(&app_for_task)
                 .map(|s| s.default_volume)
@@ -344,6 +377,17 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
             low_power: false,
         };
         apply_engine_runtime(&mut state, &app_for_task);
-        let _ = push_command(&app_for_task, "set", &state);
+        if let Err(e) = push_command(&app_for_task, "set", &state) {
+            tracing::warn!("[engine] restore push_command failed: {e}");
+            crate::wallpaper::cleanup(&app_for_task);
+            return;
+        }
+        // Keep engine handle in sync if registered.
+        if let Some(engine) = app_for_task.try_state::<EngineHandle>() {
+            if let Ok(mut guard) = engine.state.lock() {
+                *guard = state.clone();
+            }
+        }
+        push_state(&app_for_task, &state);
     });
 }
