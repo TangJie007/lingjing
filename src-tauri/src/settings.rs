@@ -30,8 +30,6 @@ pub struct AppSettings {
     pub sound_on: bool,
     #[serde(default = "default_volume")]
     pub default_volume: f64,
-    #[serde(default = "default_true")]
-    pub import_copy_to_data: bool,
     #[serde(default)]
     pub library_dir_override: Option<String>,
     #[serde(default = "default_loop_mode")]
@@ -57,7 +55,6 @@ impl Default for AppSettings {
             pause_on_rdp: true,
             sound_on: true,
             default_volume: 0.0,
-            import_copy_to_data: true,
             library_dir_override: None,
             loop_mode: default_loop_mode(),
             online_enabled: false,

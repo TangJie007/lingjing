@@ -37,6 +37,17 @@ fn library_root(app: &AppHandle) -> Result<PathBuf, String> {
     crate::settings::library_root(app)
 }
 
+/// Only files copied into the wallpaper library may be deleted with an item.
+fn file_is_inside(root: &std::path::Path, file: &std::path::Path) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let Ok(file) = file.canonicalize() else {
+        return false;
+    };
+    file.starts_with(root)
+}
+
 fn library_index_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(library_root(app)?.join("library.json"))
 }
@@ -105,13 +116,8 @@ pub fn list_items(app: &AppHandle) -> Result<Vec<LibraryItem>, String> {
 
 pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult, String> {
     let mut lib = load_library(app)?;
-    let copy_to_data = crate::settings::load_settings(app)
-        .map(|s| s.import_copy_to_data)
-        .unwrap_or(true);
     let dir = library_root(app)?;
-    if copy_to_data {
-        fs::create_dir_all(&dir).map_err(|e| format!("创建库目录失败: {e}"))?;
-    }
+    fs::create_dir_all(&dir).map_err(|e| format!("创建库目录失败: {e}"))?;
     let mut imported = Vec::new();
     let mut errors = Vec::new();
     let mut imported_at_base = now_imported_at_ms();
@@ -144,18 +150,13 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
             .map(|m| format_size(m.len()))
             .unwrap_or_else(|| "?".into());
         let kind = media_kind(&ext).to_string();
-        let (path_str, stored) = if copy_to_data {
-            let dest_name = format!("{id}.{ext}");
-            let dest = dir.join(&dest_name);
-            if let Err(e) = fs::copy(&src_path, &dest) {
-                errors.push(format!("复制失败 {name}: {e}"));
-                continue;
-            }
-            let p = dest.to_string_lossy().to_string();
-            (p.clone(), p)
-        } else {
-            (src_path.to_string_lossy().to_string(), src_path.to_string_lossy().to_string())
-        };
+        let dest_name = format!("{id}.{ext}");
+        let dest = dir.join(&dest_name);
+        if let Err(e) = fs::copy(&src_path, &dest) {
+            errors.push(format!("复制失败 {name}: {e}"));
+            continue;
+        }
+        let stored = dest.to_string_lossy().to_string();
         let imported_at = {
             let t = imported_at_base;
             imported_at_base += 1;
@@ -172,7 +173,7 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) -> Result<ImportResult,
             heat: "本地".into(),
             favorite: false,
             tags: vec!["#本地".into()],
-            media_src: path_str,
+            media_src: stored.clone(),
             path: stored,
             imported_at: Some(imported_at),
             missing: false,
@@ -206,9 +207,11 @@ pub fn remove_item(app: &AppHandle, id: &str) -> Result<(), String> {
     let mut lib = load_library(app)?;
     if let Some(pos) = lib.items.iter().position(|i| i.id == id) {
         let item = lib.items.remove(pos);
-        let path = std::path::Path::new(&item.path);
-        if path.exists() && path.is_file() {
-            let _ = fs::remove_file(path);
+        if let Ok(root) = library_root(app) {
+            let path = std::path::Path::new(&item.path);
+            if path.is_file() && file_is_inside(&root, path) {
+                let _ = fs::remove_file(path);
+            }
         }
         save_library(app, &lib)?;
         let _ = crate::favorites::set_favorite(app, id.to_string(), false);

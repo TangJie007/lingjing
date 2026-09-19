@@ -232,7 +232,6 @@ pub fn migrate_library(
     );
     if report.copied > 0 {
         s.library_dir_override = Some(to_dir);
-        s.import_copy_to_data = true;
         let _ = settings::persist_and_notify(app, &s);
         if !keep_originals {
             report.cleaned_stale = cleanup_stale_app_data_library(app);

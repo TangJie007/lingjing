@@ -148,8 +148,7 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
       <section class="set-card set-card-top">
         <h3>壁纸路径</h3>
         <p class="path-note">
-          更改路径后，<strong>library.json 与媒体文件</strong>会迁移到新目录。
-          <strong>settings.json / favorites.json</strong> 仍保存在系统应用数据目录，不会被迁移。
+          已导入的壁纸会随新路径一起搬走，设置和收藏不受影响。
         </p>
         <div class="path-ctrl">
           <input
@@ -164,19 +163,6 @@ function onMigrated(report: { copied: number; skipped: number; failed: number; e
             @click="pickLibraryDir"
             @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickLibraryDir(); } }"
           >更改路径</div>
-        </div>
-        <div class="path-ctrl path-ctrl-import">
-          <label
-            class="toggle"
-            :class="{ on: settings.importCopyToData }"
-            role="switch"
-            tabindex="0"
-            :aria-checked="settings.importCopyToData"
-            aria-label="复制到应用数据目录"
-            @click="settings.importCopyToData = !settings.importCopyToData"
-            @keydown="(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); settings.importCopyToData = !settings.importCopyToData; } }"
-          />
-          <span class="import-label">导入时复制到应用数据目录（关闭后仅记录原始路径）</span>
         </div>
       </section>
 
@@ -428,22 +414,11 @@ footer-note {
   margin-top: 0;
 }
 
-.path-ctrl-import {
-  margin-top: 0;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-}
-
 .path-note {
   font-size: 11px;
   color: var(--text-2);
   line-height: 1.4;
   margin: 0 0 8px;
-}
-
-.path-note strong {
-  color: var(--text);
-  font-weight: 600;
 }
 
 .path-ctrl input {
@@ -466,12 +441,6 @@ footer-note {
 .path-ctrl :deep(.btn) {
   font-size: 12px;
   padding: 6px 12px;
-}
-
-.import-label {
-  font-size: 12px;
-  color: var(--text);
-  line-height: 1.35;
 }
 
 .slider {

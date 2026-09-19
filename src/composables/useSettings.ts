@@ -26,7 +26,6 @@ export interface AppSettings {
   pauseOnRdp: boolean;
   soundOn: boolean;
   defaultVolume: number;
-  importCopyToData: boolean;
   libraryDirOverride: string | null;
   loopMode: "list" | "single" | "random";
   onlineEnabled: boolean;
@@ -42,7 +41,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pauseOnRdp: true,
   soundOn: true,
   defaultVolume: 0,
-  importCopyToData: true,
   libraryDirOverride: null,
   loopMode: "single",
   onlineEnabled: false,
