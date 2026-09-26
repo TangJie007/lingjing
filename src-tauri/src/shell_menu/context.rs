@@ -434,23 +434,17 @@ pub fn invoke_shell_context_command(
                 let _ = DestroyMenu(hmenu);
                 return Err("已移除该菜单项".into());
             }
+            // 记录 verb / label 便于排查 shell extension 行为
+            tracing::info!(
+                "[shell-menu] invoke_shell_context_command verb='{}' label='{}' path='{}'",
+                verb,
+                label,
+                p
+            );
+
             let handled = match verb.as_str() {
                 "open" | "openas" | "runas" | "properties" | "edit" => {
                     Some(shell_execute_verb(p, &verb))
-                }
-                v if v.contains("extract") || v.contains("decompress") => {
-                    // 解压缩类 verb（如 "ExtractAll"、"7zExtract"、"WinRAR extract"）：
-                    // 必须走 ShellExecuteExW，因为 InvokeCommand 的对话框在子进程的
-                    // COM apartment 中创建，子进程退出后对话框会立即销毁。
-                    let _ = AllowSetForegroundWindow(u32::MAX);
-                    match shell_execute_verb(p, &verb) {
-                        Ok(()) => Some(Ok(())),
-                        // ShellExecute 失败则 fallback 到 InvokeCommand + pump_for(5000)
-                        Err(e) => {
-                            tracing::info!("[shell-menu] shell_execute_verb failed for {verb}: {e}, falling back to InvokeCommand");
-                            None
-                        }
-                    }
                 }
                 "delete" => Some(super::verbs::delete_to_recycle_bin(p)),
                 "cut" => Some(Err("BUILTIN_CUT".into())),
@@ -467,29 +461,6 @@ pub fn invoke_shell_context_command(
                 _ if label.contains("剪切") => Some(Err("BUILTIN_CUT".into())),
                 _ if label.contains("复制") => Some(Err("BUILTIN_COPY".into())),
                 _ if label.contains("删除") => Some(super::verbs::delete_to_recycle_bin(p)),
-                _ if label.contains("解压")
-                    || label.contains("提取")
-                    || label.contains("压缩为")
-                    || label.to_ascii_lowercase().contains("extract")
-                    || label.to_ascii_lowercase().contains("decompress")
-                    || label.to_ascii_lowercase().contains("compress to") =>
-                {
-                    // 有些 shell extension（如部分解压缩工具）没有暴露 verb，
-                    // 仅靠 label 关键词匹配。如果 verb 非空则用 ShellExecute；
-                    // 否则返回 None 让它走 InvokeCommand（command_id offset）路径。
-                    if verb.is_empty() {
-                        None
-                    } else {
-                        let _ = AllowSetForegroundWindow(u32::MAX);
-                        match shell_execute_verb(p, &verb) {
-                            Ok(()) => Some(Ok(())),
-                            Err(e) => {
-                                tracing::info!("[shell-menu] shell_execute_verb failed for label-match {label}: {e}, falling back to InvokeCommand");
-                                None
-                            }
-                        }
-                    }
-                }
                 _ => None,
             };
             if let Some(result) = handled {
@@ -526,11 +497,12 @@ pub fn invoke_shell_context_command(
         // 让 shell extension 创建的对话框能正确获得前台焦点
         let _ = AllowSetForegroundWindow(u32::MAX);
         let invoke_hr = pcm.InvokeCommand(&ici as *const _ as *const _);
-        // Keep host alive long enough for shell-extension dialogs (e.g. extraction
-        // wizards) to fully initialize and detach.  InvokeCommand often returns
-        // before the UI it spawned is visible, and killing the host too early
-        // destroys COM-owned windows.
-        pump_for(5000);
+        // Keep host alive long enough for shell-extension dialogs to fully
+        // initialize and detach.  InvokeCommand returns immediately after asking
+        // the extension to show UI — the real dialog creation happens asynchronously
+        // on our thread's message queue. 15 seconds covers everything from zip "Extract
+        // All" wizards to 7-Zip/WinRAR dialogs.
+        pump_for(15000);
         let _ = DestroyMenu(hmenu);
         // Keep directory buffer alive through InvokeCommand + settle.
         drop(workdir_w);
