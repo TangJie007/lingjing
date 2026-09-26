@@ -314,6 +314,7 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
     let app_for_task = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+
         let last = match settings::load_last_wallpaper(&app_for_task) {
             Ok(Some(l)) => l,
             _ => {
@@ -322,40 +323,43 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
             }
         };
 
-        // Prefer local `.onlinefile` path for online ids; never restore overseas COS URLs.
-        let play_uri = if last.id.starts_with("online-") {
-            match crate::online_cache::resolve_online_asset_uri(&app_for_task, &last.id) {
-                Ok(Some(local_uri)) => local_uri,
-                Ok(None) => {
+        // Resolve the playable URI (local path for online ids, fs path otherwise).
+        // On any miss, clear the stale record and bail out.
+        let play_uri = {
+            if last.id.starts_with("online-") {
+                match crate::online_cache::resolve_online_asset_uri(&app_for_task, &last.id) {
+                    Ok(Some(local_uri)) => local_uri,
+                    Ok(None) => {
+                        tracing::info!(
+                            "[engine] skip restore: online cache missing id={}",
+                            last.id
+                        );
+                        let _ = settings::clear_last_wallpaper(&app_for_task);
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!("[engine] skip restore: resolve online cache failed: {e}");
+                        return;
+                    }
+                }
+            } else if let Some(path) = system::filesystem_path_from_uri(&last.uri) {
+                if !system::path_is_nonempty_file(&path) {
                     tracing::info!(
-                        "[engine] skip restore: online cache missing id={}",
-                        last.id
+                        "[engine] skip restore: media missing path={}",
+                        path.display()
                     );
                     let _ = settings::clear_last_wallpaper(&app_for_task);
                     return;
                 }
-                Err(e) => {
-                    tracing::warn!("[engine] skip restore: resolve online cache failed: {e}");
-                    return;
-                }
-            }
-        } else if let Some(path) = system::filesystem_path_from_uri(&last.uri) {
-            if !system::path_is_nonempty_file(&path) {
+                crate::online_cache::path_to_asset_uri(&path)
+            } else {
                 tracing::info!(
-                    "[engine] skip restore: media missing path={}",
-                    path.display()
+                    "[engine] skip restore: no local file uri={}",
+                    last.uri
                 );
                 let _ = settings::clear_last_wallpaper(&app_for_task);
                 return;
             }
-            crate::online_cache::path_to_asset_uri(&path)
-        } else {
-            tracing::info!(
-                "[engine] skip restore: no local file uri={}",
-                last.uri
-            );
-            let _ = settings::clear_last_wallpaper(&app_for_task);
-            return;
         };
 
         let mut state = EngineState {
@@ -375,17 +379,76 @@ pub fn restore_last_wallpaper(app: &AppHandle) {
             low_power: false,
         };
         apply_engine_runtime(&mut state, &app_for_task);
+
+        // Initial push. On a cold boot, Explorer / WorkerW may not be fully up yet,
+        // or WorkerW gets rebuilt a moment later and our child window is orphaned.
+        // In both cases the wallpaper window either fails to attach, or the video
+        // element sits on a stale layer and Chrome's autoplay stays paused.
+        // The first attempt is best-effort; retries below force a re-attach.
         if let Err(e) = push_command(&app_for_task, "set", &state) {
             tracing::warn!("[engine] restore push_command failed: {e}");
             crate::wallpaper::cleanup(&app_for_task);
-            return;
+        } else {
+            // Keep engine handle in sync if registered.
+            if let Some(engine) = app_for_task.try_state::<EngineHandle>() {
+                if let Ok(mut guard) = engine.state.lock() {
+                    *guard = state.clone();
+                }
+            }
+            push_state(&app_for_task, &state);
         }
-        // Keep engine handle in sync if registered.
-        if let Some(engine) = app_for_task.try_state::<EngineHandle>() {
-            if let Ok(mut guard) = engine.state.lock() {
-                *guard = state.clone();
+
+        // Retries: force re-attach and re-push "set" + "play" at two later offsets.
+        // Covers (a) cold-boot Explorer still initializing WorkerW and (b) the
+        // system-resume watcher's 12 s resume-grace window expiring before the
+        // user is even at the desktop, which can silently flip the engine to pause.
+        let app_r = app_for_task.clone();
+        let state_r = state.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(4500)).await;
+            force_restore_play(&app_r, &state_r, "retry-5s");
+            tokio::time::sleep(std::time::Duration::from_millis(6000)).await;
+            force_restore_play(&app_r, &state_r, "retry-11s");
+        });
+    });
+}
+
+/// Force re-attach the wallpaper window to WorkerW and re-push `set` + `play`
+/// so the video actually starts moving. Used by `restore_last_wallpaper` to
+/// compensate for Explorer / WorkerW being recreated after a cold boot.
+fn force_restore_play(app: &AppHandle, state: &EngineState, tag: &str) {
+    if state.media_id.is_none() {
+        return;
+    }
+    // Respect any pause that happened after the initial push (user hit pause,
+    // or the OS watcher emitted a pause because they boot into battery / fullscreen).
+    if let Some(engine) = app.try_state::<EngineHandle>() {
+        if let Ok(guard) = engine.state.lock() {
+            if guard.user_paused || !guard.playing {
+                tracing::info!(
+                    "[engine] restore {tag} skip: user_paused={} playing={}",
+                    guard.user_paused,
+                    guard.playing
+                );
+                return;
             }
         }
-        push_state(&app_for_task, &state);
-    });
+    }
+    // Flip the "already attached" bit so push_command re-runs attach_to_desktop.
+    crate::wallpaper::set_attached(false);
+    if let Err(e) = crate::wallpaper::attach_existing(app) {
+        tracing::info!("[engine] restore {tag} re-attach failed: {e}");
+        return;
+    }
+    let mut snap = state.clone();
+    snap.playing = true;
+    if let Err(e) = push_command(app, "set", &snap) {
+        tracing::info!("[engine] restore {tag} set failed: {e}");
+        return;
+    }
+    if let Err(e) = push_command(app, "play", &snap) {
+        tracing::info!("[engine] restore {tag} play failed: {e}");
+        return;
+    }
+    tracing::info!("[engine] restore {tag} replayed media_id={:?}", snap.media_id);
 }

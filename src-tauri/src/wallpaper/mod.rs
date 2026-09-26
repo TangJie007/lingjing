@@ -14,6 +14,12 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalSize, WebviewWindow};
 const WALLPAPER_LABEL: &str = "wallpaper";
 static ATTACHED: AtomicBool = AtomicBool::new(false);
 
+/// Force `push_command` to re-run the WorkerW attach path. Useful after cold
+/// boot or WorkerW recreation, where the previous attach may have been orphaned.
+pub fn set_attached(v: bool) {
+    ATTACHED.store(v, Ordering::SeqCst);
+}
+
 fn run_on_ui<T, F>(app: &AppHandle, f: F) -> Result<T, String>
 where
     T: Send + 'static,
