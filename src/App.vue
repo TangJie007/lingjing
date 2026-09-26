@@ -392,7 +392,14 @@ async function onDownload(item: WallpaperItem) {
             await saveOnlineWallpaperToDisk(item);
             markLocalOnlineDownloaded(item.id);
             void refreshLocalOnlineDownloads();
-            showToast(`已下载「${item.name}」`);
+            // 下载成功即自动设为壁纸（set_wallpaper 会立即推送到桌面引擎并自动播放）。
+            // 若用户此前手动暂停过（userPaused），尊重其意愿不打断；系统自动暂停（全屏/电池/远程）不受此限。
+            const eng = engine.value;
+            if (!eng?.mediaId && !eng?.userPaused) {
+              await applySetWallpaper(item);
+            } else {
+              showToast(`已下载「${item.name}」`);
+            }
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             if (/已取消/.test(msg)) {
